@@ -44,8 +44,8 @@ export function generateEdges(cols, rows) {
 }
 
 export function getPad(displayW, displayH) {
-  // Must exceed max tab protrusion: tab is 30% of edge, pad needs to be > that
-  return Math.ceil(Math.min(displayW, displayH) * 0.35);
+  // Must exceed max tab protrusion: tab head reaches ~22% of edge length
+  return Math.ceil(Math.min(displayW, displayH) * 0.25);
 }
 
 /**
@@ -74,11 +74,11 @@ function drawEdge(ctx, x1, y1, x2, y2, dir, seed) {
     return [x1 + ex * along + nx * perp, y1 + ey * along + ny * perp];
   }
 
-  // Tab geometry — all proportional to edge length, varied slightly by seed
-  const neckPos    = len * 0.50;                       // neck centre along edge (always centred)
-  const neckHalfW  = len * (0.10 + seed * 0.04);      // half-width of neck: 10–14% of len
-  const neckH      = len * 0.10;                       // how far neck rises before head
-  const headR      = len * (0.14 + seed * 0.04);      // radius of round head: 14–18% of len
+  // Tab geometry — proportional to edge length, real jigsaw proportions
+  const neckPos    = len * 0.50;                       // always centred on the edge
+  const neckHalfW  = len * (0.07 + seed * 0.03);      // narrow neck: 7–10% of len
+  const neckH      = len * 0.06;                       // short neck before head
+  const headR      = len * (0.10 + seed * 0.03);      // small round head: 10–13% of len
 
   const nL = neckPos - neckHalfW;   // neck left edge along
   const nR = neckPos + neckHalfW;   // neck right edge along

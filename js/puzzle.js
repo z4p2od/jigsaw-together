@@ -230,12 +230,14 @@ async function onMouseUp(e) {
   // Check if any piece in the dragged group is close enough to snap to a neighbour
   const snap = findNeighbourSnap(indices);
   if (snap) {
-    // snap = { dragIndex, neighbourIndex, dx, dy }
-    // Shift the entire group so dragIndex aligns perfectly with its neighbour
+    // Place dragIndex at exact position relative to its neighbour,
+    // then offset all other pieces in the group by the same delta.
+    const dxGroup = snap.targetX - pieceStates[snap.dragIndex].x;
+    const dyGroup = snap.targetY - pieceStates[snap.dragIndex].y;
     const updates = {};
     indices.forEach(i => {
-      const x = pieceStates[i].x + snap.dx;
-      const y = pieceStates[i].y + snap.dy;
+      const x = pieceStates[i].x + dxGroup;
+      const y = pieceStates[i].y + dyGroup;
       pieceStates[i] = { ...pieceStates[i], x, y, lockedBy: null };
       movePieceEl(i, x, y);
       updates[i] = { x, y };
@@ -315,15 +317,15 @@ function findNeighbourSnap(dragIndices) {
       console.log(`piece ${i} → neighbour ${nIdx}: edgeID=${eI[myEdge]}, dist=${dist.toFixed(1)}, threshold=${threshold.toFixed(1)}`);
 
       if (dist <= threshold) {
-        // Shift piece i (and its group) so it aligns perfectly with nIdx
-        const snapDx = expectedDx - actualDx;
-        const snapDy = expectedDy - actualDy;
+        // Exact target position for piece i based on neighbour's current position
+        const targetX = pieceStates[nIdx].x + expectedDx;
+        const targetY = pieceStates[nIdx].y + expectedDy;
         console.log(`✅ SNAP: piece ${i} → ${nIdx}`);
         return {
           dragIndex:      i,
           neighbourIndex: nIdx,
-          dx:             snapDx,
-          dy:             snapDy,
+          targetX,
+          targetY,
         };
       }
     }
