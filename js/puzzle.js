@@ -230,24 +230,35 @@ async function onMouseUp(e) {
   // Check if any piece in the dragged group is close enough to snap to a neighbour
   const snap = findNeighbourSnap(indices);
   if (snap) {
-    // Place dragIndex at exact position relative to its neighbour,
-    // then offset all other pieces in the group by the same delta.
-    const dxGroup = snap.targetX - pieceStates[snap.dragIndex].x;
-    const dyGroup = snap.targetY - pieceStates[snap.dragIndex].y;
+    const { cols, _displayW: dW, _displayH: dH } = meta;
+
+    // Collect every piece index in the newly merged group
+    const neighbourGroupIndices = pieceGroup[snap.neighbourIndex]
+      ? [...groups[pieceGroup[snap.neighbourIndex]]]
+      : [snap.neighbourIndex];
+    const allIndices = [...new Set([...indices, ...neighbourGroupIndices])];
+
+    // Anchor = the stationary neighbour piece. Compute every piece's exact position
+    // from grid coordinates relative to the anchor. This prevents any accumulated error.
+    const anchorIdx = snap.neighbourIndex;
+    const anchorCol = anchorIdx % cols;
+    const anchorRow = Math.floor(anchorIdx / cols);
+    const anchorX   = pieceStates[anchorIdx].x;
+    const anchorY   = pieceStates[anchorIdx].y;
+
     const updates = {};
-    indices.forEach(i => {
-      const x = pieceStates[i].x + dxGroup;
-      const y = pieceStates[i].y + dyGroup;
+    allIndices.forEach(i => {
+      const iCol = i % cols;
+      const iRow = Math.floor(i / cols);
+      const x = anchorX + (iCol - anchorCol) * dW;
+      const y = anchorY + (iRow - anchorRow) * dH;
       pieceStates[i] = { ...pieceStates[i], x, y, lockedBy: null };
       movePieceEl(i, x, y);
       updates[i] = { x, y };
     });
-    // Update Firebase positions (not solved yet — just merged)
+
     await unlockGroup(puzzleId, indices);
-    // Merge groups locally
-    mergeGroups([...indices, snap.neighbourIndex,
-      ...(pieceGroup[snap.neighbourIndex] ? [...groups[pieceGroup[snap.neighbourIndex]]] : [])
-    ]);
+    mergeGroups(allIndices);
     // Check if fully solved (all pieces in one group at correct positions)
     checkSolvedState();
     updateProgress();
