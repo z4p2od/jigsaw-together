@@ -75,17 +75,9 @@ function calculateGrid(pieceCount, imgWidth, imgHeight) {
 
 // ── Scatter pieces ────────────────────────────────────────────────────────────
 
-function scatterPieces(count, cols, rows, imgW, imgH) {
+function scatterPieces(count, dispW, dispH) {
   const boardW = 900;
   const boardH = 650;
-
-  // Calculate the same scale puzzle.js will use so scatter positions are meaningful
-  const scaleX   = (boardW * 0.55) / imgW;
-  const scaleY   = (boardH * 0.55) / imgH;
-  const scale    = Math.min(scaleX, scaleY, 1);
-  const dispW    = Math.floor((imgW / cols) * scale);
-  const dispH    = Math.floor((imgH / rows) * scale);
-
   return Array.from({ length: count }, () => ({
     x: Math.random() * (boardW - dispW),
     y: Math.random() * (boardH - dispH),
@@ -110,10 +102,18 @@ async function handleCreatePuzzle() {
 
     const pieceW = Math.floor(img.naturalWidth  / cols);
     const pieceH = Math.floor(img.naturalHeight / rows);
-    const edges  = generateEdges(cols, rows);
-    const pieces = scatterPieces(actualCount, cols, rows, img.naturalWidth, img.naturalHeight);
 
-    const meta = { imageData: imageBase64, cols, rows, pieceW, pieceH, edges };
+    // Compute display size once here — stored in Firebase so every client
+    // uses the exact same pixel values for rendering and snap alignment.
+    const boardW = 900, boardH = 650;
+    const scale    = Math.min((boardW * 0.55) / img.naturalWidth, (boardH * 0.55) / img.naturalHeight, 1);
+    const displayW = Math.floor(pieceW * scale);
+    const displayH = Math.floor(pieceH * scale);
+
+    const edges  = generateEdges(cols, rows);
+    const pieces = scatterPieces(actualCount, cols, rows, displayW, displayH);
+
+    const meta = { imageData: imageBase64, cols, rows, pieceW, pieceH, displayW, displayH, edges };
 
     setStatus(`Creating ${actualCount}-piece puzzle...`);
     const puzzleId = await createPuzzle(meta, pieces);

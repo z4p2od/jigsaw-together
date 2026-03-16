@@ -84,22 +84,13 @@ function setupBoard() {
 
 async function renderAllPieces() {
   const img = await loadImage('data:image/jpeg;base64,' + meta.imageData);
-  const { cols, rows, pieceW, pieceH, edges } = meta;
+  const { cols, rows, pieceW, pieceH, edges, displayW, displayH } = meta;
+  const pad = getPad(displayW, displayH);
 
-  const scaleX = (BOARD_W * 0.55) / img.naturalWidth;
-  const scaleY = (BOARD_H * 0.55) / img.naturalHeight;
-  const scale  = Math.min(scaleX, scaleY, 1);
-
-  const displayW = Math.floor(pieceW * scale);
-  const displayH = Math.floor(pieceH * scale);
-  const pad      = getPad(displayW, displayH);
-
+  // Store on meta for use by snap/move logic
   meta._displayW = displayW;
   meta._displayH = displayH;
   meta._pad      = pad;
-
-  console.log(`Board: ${BOARD_W}×${BOARD_H}, piece display: ${displayW}×${displayH}, pad: ${pad}`);
-  console.log('Piece positions:', pieceStates.map((p,i) => `${i}:(${p.x.toFixed(0)},${p.y.toFixed(0)})`).join(' '));
 
   const BATCH = 50;
   for (let start = 0; start < totalPieces; start += BATCH) {
