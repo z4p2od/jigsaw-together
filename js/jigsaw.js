@@ -6,11 +6,13 @@
  * Adjacent pieces always have complementary edges.
  */
 export function generateEdges(cols, rows) {
+  // hEdges[r][c] = shared horizontal edge between row r-1 bottom and row r top
   const hEdges = Array.from({ length: rows + 1 }, (_, r) =>
     Array.from({ length: cols }, () =>
       r === 0 || r === rows ? 0 : (Math.random() < 0.5 ? 1 : -1)
     )
   );
+  // vEdges[r][c] = shared vertical edge between col c-1 right and col c left
   const vEdges = Array.from({ length: rows }, () =>
     Array.from({ length: cols + 1 }, (_, c) =>
       c === 0 || c === cols ? 0 : (Math.random() < 0.5 ? 1 : -1)
@@ -22,9 +24,9 @@ export function generateEdges(cols, rows) {
     for (let col = 0; col < cols; col++) {
       edges.push({
         top:    hEdges[row][col],
-        bottom: -hEdges[row + 1][col],
+        bottom:  hEdges[row + 1][col],  // same value; neighbour uses opposite sign
         left:   vEdges[row][col],
-        right:  -vEdges[row][col + 1],
+        right:   vEdges[row][col + 1],  // same value; neighbour uses opposite sign
       });
     }
   }
@@ -32,47 +34,94 @@ export function generateEdges(cols, rows) {
 }
 
 /**
- * Draw a jigsaw clip path on ctx for a piece of size (w x h) with given edges.
+ * Draw a jigsaw piece outline as a clip path.
+ *
+ * Coordinate system: piece inner rect is at (pad, pad) with size (w x h).
+ * Tabs protrude outward into the pad area; slots indent inward.
+ *
+ * edge direction convention:
+ *   top/bottom edges: +1 means tab points UP (out of piece top), -1 means slot dips DOWN (into piece)
+ *   BUT we store the raw shared value and apply the correct sign per-side below.
+ *
+ * For each piece at (col, row):
+ *   top edge    sign = +hEdges[row][col]     → positive = tab outward (upward)
+ *   bottom edge sign = -hEdges[row+1][col]   → flip: neighbour below has same raw value but we want opposite direction
+ *   left edge   sign = +vEdges[row][col]     → positive = tab outward (leftward)
+ *   right edge  sign = -vEdges[row][col+1]   → flip
+ *
+ * Tab shape: two cubic bezier curves forming a smooth rounded bump.
+ * The bump is centred on the edge midpoint and extends `t` pixels outward.
+ * The neck width is ~40% of the edge length.
  */
-export function drawJigsawPath(ctx, w, h, edges, tabSize, pad) {
-  const t = tabSize;
+export function drawJigsawPath(ctx, w, h, edges, t, pad) {
+  // Draw one edge from (x1,y1) to (x2,y2).
+  // sign: +1 = tab protrudes in the "outward" direction, -1 = slot, 0 = flat
+  // The outward normal direction is given by (nx, ny) (unit vector, already pointing outward)
+  function edge(x1, y1, x2, y2, sign, nx, ny) {
+    if (sign === 0) {
+      ctx.lineTo(x2, y2);
+      return;
+    }
 
-  function jigsawEdge(x1, y1, x2, y2, dir, flip) {
-    const mx  = (x1 + x2) / 2;
-    const my  = (y1 + y2) / 2;
-    const nx  = -(y2 - y1);
-    const ny  =  (x2 - x1);
-    const len = Math.hypot(nx, ny);
-    const unx = nx / len;
-    const uny = ny / len;
-    const sign = flip * dir;
+    const mx = (x1 + x2) / 2;
+    const my = (y1 + y2) / 2;
 
-    if (dir === 0) { ctx.lineTo(x2, y2); return; }
+    // Edge direction unit vector
+    const ex = x2 - x1;
+    const ey = y2 - y1;
+    const len = Math.hypot(ex, ey);
+    const edx = ex / len;
+    const edy = ey / len;
 
-    const bx = mx + unx * t * sign;
-    const by = my + uny * t * sign;
-    const neckFrac = 0.3;
-    const n1x = mx + (x1 - mx) * neckFrac * 2 + unx * t * sign * 0.4;
-    const n1y = my + (y1 - my) * neckFrac * 2 + uny * t * sign * 0.4;
-    const n2x = mx + (x2 - mx) * neckFrac * 2 + unx * t * sign * 0.4;
-    const n2y = my + (y2 - my) * neckFrac * 2 + uny * t * sign * 0.4;
-    const q1x = mx + (x1 - mx) * neckFrac;
-    const q1y = my + (y1 - my) * neckFrac;
-    const q2x = mx + (x2 - mx) * neckFrac;
-    const q2y = my + (y2 - my) * neckFrac;
+    // Neck half-width: how wide the base of the tab is
+    const neck = len * 0.18;
 
-    ctx.lineTo(q1x, q1y);
-    ctx.bezierCurveTo(n1x, n1y, bx + unx * t * sign * 0.5, by + uny * t * sign * 0.5, bx, by);
-    ctx.bezierCurveTo(bx + unx * t * sign * 0.5, by + uny * t * sign * 0.5, n2x, n2y, q2x, q2y);
+    // The 4 key points of the tab shape along the edge
+    const p1x = mx - edx * neck;   // left base
+    const p1y = my - edy * neck;
+    const p2x = mx + edx * neck;   // right base
+    const p2y = my + edy * neck;
+
+    // Tab tip — protrudes outward by t * sign
+    const tipX = mx + nx * t * sign;
+    const tipY = my + ny * t * sign;
+
+    // Control points for smooth bezier curves
+    // Curve goes: edge → p1 → (control) → tip → (control) → p2 → edge
+    const ctrl1x = p1x + nx * t * sign * 0.8;
+    const ctrl1y = p1y + ny * t * sign * 0.8;
+    const ctrl2x = p2x + nx * t * sign * 0.8;
+    const ctrl2y = p2y + ny * t * sign * 0.8;
+
+    ctx.lineTo(p1x, p1y);
+    ctx.bezierCurveTo(ctrl1x, ctrl1y, tipX - edx * neck, tipY - edy * neck, tipX, tipY);
+    ctx.bezierCurveTo(tipX + edx * neck, tipY + edy * neck, ctrl2x, ctrl2y, p2x, p2y);
     ctx.lineTo(x2, y2);
   }
 
+  const x0 = pad;
+  const y0 = pad;
+  const x1 = pad + w;
+  const y1 = pad + h;
+
   ctx.beginPath();
-  ctx.moveTo(pad, pad);
-  jigsawEdge(pad,     pad,     pad + w, pad,     edges.top,    -1);
-  jigsawEdge(pad + w, pad,     pad + w, pad + h, edges.right,   1);
-  jigsawEdge(pad + w, pad + h, pad,     pad + h, edges.bottom,  1);
-  jigsawEdge(pad,     pad + h, pad,     pad,     edges.left,   -1);
+  ctx.moveTo(x0, y0);
+
+  // Top: left→right, outward normal is (0, -1) upward
+  // tab when edges.top > 0 means protrude upward
+  edge(x0, y0, x1, y0,  edges.top,    0, -1);
+
+  // Right: top→bottom, outward normal is (1, 0) rightward
+  // edges.right raw value: positive = protrude right, but we flip for the right side
+  edge(x1, y0, x1, y1, -edges.right,  1,  0);
+
+  // Bottom: right→left, outward normal is (0, 1) downward
+  // flip bottom
+  edge(x1, y1, x0, y1, -edges.bottom, 0,  1);
+
+  // Left: bottom→top, outward normal is (-1, 0) leftward
+  edge(x0, y1, x0, y0,  edges.left,  -1,  0);
+
   ctx.closePath();
 }
 
@@ -81,25 +130,29 @@ export function drawJigsawPath(ctx, w, h, edges, tabSize, pad) {
  * Returns a base64 PNG data URL.
  */
 export function cutPiece(img, col, row, pieceW, pieceH, displayW, displayH, edges) {
-  const tabSize = Math.round(Math.min(displayW, displayH) * 0.22);
-  const pad     = tabSize;
-  const canvas  = document.createElement('canvas');
+  const t      = Math.round(Math.min(displayW, displayH) * 0.22);
+  const pad    = t + 2; // a little extra so the stroke isn't clipped
+  const canvas = document.createElement('canvas');
   canvas.width  = displayW + pad * 2;
   canvas.height = displayH + pad * 2;
-  const ctx     = canvas.getContext('2d');
+  const ctx    = canvas.getContext('2d');
 
-  drawJigsawPath(ctx, displayW, displayH, edges, tabSize, pad);
+  // Clip to jigsaw shape and draw image
+  drawJigsawPath(ctx, displayW, displayH, edges, t, pad);
   ctx.save();
   ctx.clip();
-  ctx.drawImage(img, col * pieceW, row * pieceH, pieceW, pieceH, pad, pad, displayW, displayH);
+  ctx.drawImage(
+    img,
+    col * pieceW, row * pieceH, pieceW, pieceH,
+    pad, pad, displayW, displayH
+  );
   ctx.restore();
 
-  ctx.save();
-  drawJigsawPath(ctx, displayW, displayH, edges, tabSize, pad);
-  ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+  // Draw border on top
+  drawJigsawPath(ctx, displayW, displayH, edges, t, pad);
+  ctx.strokeStyle = 'rgba(0,0,0,0.35)';
   ctx.lineWidth   = 1.5;
   ctx.stroke();
-  ctx.restore();
 
   return canvas.toDataURL('image/png');
 }
