@@ -126,31 +126,49 @@ export function drawJigsawPath(ctx, w, h, edges, pad) {
 /**
  * Cut a single piece from the source image with jigsaw tab shapes.
  * Returns a base64 PNG data URL.
+ *
+ * The key fix for tab content: we draw the image with a source rect that is
+ * LARGER than the piece's own grid cell — it extends by `pad` pixels in each
+ * direction (in source image space). This means the tab protrusions, which
+ * extend into the pad area, show real image pixels from the neighbouring cells
+ * rather than transparent holes.
  */
 export function cutPiece(img, col, row, pieceW, pieceH, displayW, displayH, edges) {
-  // Tab height is ~35% of piece length, so pad needs to accommodate that
   const tabH = Math.round(Math.min(displayW, displayH) * 0.38);
   const pad  = tabH + 2;
 
+  const canvasW = displayW + pad * 2;
+  const canvasH = displayH + pad * 2;
+
   const canvas = document.createElement('canvas');
-  canvas.width  = displayW + pad * 2;
-  canvas.height = displayH + pad * 2;
+  canvas.width  = canvasW;
+  canvas.height = canvasH;
   const ctx = canvas.getContext('2d');
 
-  // Clip to jigsaw shape
+  // Source rect in the original image — expanded by pad on all sides
+  // so that the tab areas have real image content behind them
+  const padSrcX = pad * (pieceW / displayW);  // pad converted back to source pixels
+  const padSrcY = pad * (pieceH / displayH);
+  const srcX = col * pieceW - padSrcX;
+  const srcY = row * pieceH - padSrcY;
+  const srcW = pieceW + padSrcX * 2;
+  const srcH = pieceH + padSrcY * 2;
+
+  // Clip to jigsaw shape first
   drawJigsawPath(ctx, displayW, displayH, edges, pad);
   ctx.save();
   ctx.clip();
 
-  // Draw image slice
+  // Draw the expanded image region — fills the full canvas including tab areas
   ctx.drawImage(
     img,
-    col * pieceW, row * pieceH, pieceW, pieceH,
-    pad, pad, displayW, displayH
+    srcX, srcY, srcW, srcH,    // source: expanded rect (may go outside image bounds — OK, canvas clips)
+    0, 0, canvasW, canvasH     // dest: full canvas
   );
+
   ctx.restore();
 
-  // Draw border
+  // Draw border on top
   drawJigsawPath(ctx, displayW, displayH, edges, pad);
   ctx.strokeStyle = 'rgba(0,0,0,0.4)';
   ctx.lineWidth   = 1.5;
