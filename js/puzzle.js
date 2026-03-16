@@ -97,6 +97,9 @@ async function renderAllPieces() {
   meta._displayH = displayH;
   meta._pad      = pad;
 
+  console.log(`Board: ${BOARD_W}×${BOARD_H}, piece display: ${displayW}×${displayH}, pad: ${pad}, threshold: ${Math.max(60, displayW * 0.6).toFixed(1)}`);
+  console.log('Piece positions:', pieceStates.map((p,i) => `${i}:(${p.x.toFixed(0)},${p.y.toFixed(0)})`).join(' '));
+
   const BATCH = 50;
   for (let start = 0; start < totalPieces; start += BATCH) {
     await new Promise(r => setTimeout(r, 0));
@@ -268,7 +271,7 @@ async function onMouseUp(e) {
  */
 function findNeighbourSnap(dragIndices) {
   const { cols, rows, _displayW: dW, _displayH: dH, edges } = meta;
-  const threshold = Math.max(25, dW * 0.4);
+  const threshold = Math.max(60, dW * 0.6);  // generous — half a piece width
   const dragSet   = new Set(dragIndices);
 
   // For each direction: which edge ID of piece i must match which edge ID of neighbour
