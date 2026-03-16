@@ -151,13 +151,18 @@ body {
 .btn:active { transform: scale(0.98); }
 .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
 
+.piece-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .field-label {
   font-size: 0.8rem;
   font-weight: 600;
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  margin-bottom: -16px;
 }
 
 /* Status/error */
