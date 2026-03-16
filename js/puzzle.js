@@ -215,6 +215,15 @@ async function onMouseUp(e) {
   const anchorX   = e.clientX - boardRect.left - offsetX;
   const anchorY   = e.clientY - boardRect.top  - offsetY;
 
+  // Update local positions first
+  indices.forEach(i => {
+    const x = anchorX + relOffsets[i].dx;
+    const y = anchorY + relOffsets[i].dy;
+    pieceStates[i].x = x;
+    pieceStates[i].y = y;
+    movePieceEl(i, x, y);
+  });
+
   const snapped = checkSnap(anchorIndex, anchorX, anchorY);
   if (snapped) {
     const updates = {};
@@ -229,28 +238,43 @@ async function onMouseUp(e) {
       updates[i] = { x, y };
     });
     solvedCount += newlySolved;
-
     await solveGroup(puzzleId, updates);
+    // Merge with any solved neighbours
     indices.forEach(i => checkAndMerge(i));
     updateProgress();
     checkCompletion();
   } else {
-    await unlockGroup(puzzleId, indices);
-    indices.forEach(i => { pieceStates[i].lockedBy = null; });
+    // Even if not snapping to grid, check if close enough to snap to a neighbour group
+    const neighbourSnap = checkSnapToNeighbour(anchorIndex, anchorX, anchorY);
+    if (neighbourSnap) {
+      const updates = {};
+      let newlySolved = 0;
+      indices.forEach(i => {
+        const x = neighbourSnap.x + relOffsets[i].dx;
+        const y = neighbourSnap.y + relOffsets[i].dy;
+        if (!pieceStates[i].solved) newlySolved++;
+        pieceStates[i] = { ...pieceStates[i], x, y, solved: true, lockedBy: null };
+        movePieceEl(i, x, y);
+        pieceEls[i]?.classList.add('solved');
+        updates[i] = { x, y };
+      });
+      solvedCount += newlySolved;
+      await solveGroup(puzzleId, updates);
+      indices.forEach(i => checkAndMerge(i));
+      updateProgress();
+      checkCompletion();
+    } else {
+      await unlockGroup(puzzleId, indices);
+      indices.forEach(i => { pieceStates[i].lockedBy = null; });
+    }
   }
 }
 
 // ── Snap ──────────────────────────────────────────────────────────────────────
 
-/**
- * Check if a piece (or group anchor) should snap.
- * Two cases:
- *  1. Close enough to its absolute correct grid position (snap to board)
- *  2. Close enough to a solved neighbour (snap to neighbour → triggers merge)
- * Returns { x, y } of the correct anchor position if snap, else null.
- */
+/** Snap to absolute correct grid position. */
 function checkSnap(index, x, y) {
-  const { cols, rows, _displayW: dW, _displayH: dH } = meta;
+  const { cols, _displayW: dW, _displayH: dH } = meta;
   const col      = index % cols;
   const row      = Math.floor(index / cols);
   const originX  = (BOARD_W - dW * meta.cols) / 2;
@@ -258,34 +282,49 @@ function checkSnap(index, x, y) {
   const correctX = originX + col * dW;
   const correctY = originY + row * dH;
   const threshold = Math.max(20, dW * 0.3);
-
-  // Case 1: close to absolute correct position
   const dist = Math.hypot(x - correctX, y - correctY);
-  if (dist <= threshold) return { x: correctX, y: correctY };
+  return dist <= threshold ? { x: correctX, y: correctY } : null;
+}
 
-  // Case 2: close to a solved neighbour
-  // Check each neighbour — if the dragged piece is where it should be
-  // relative to that neighbour, snap to it
+/**
+ * Snap to a solved neighbour piece.
+ * If the dragged piece is within threshold of where it should sit
+ * relative to any solved neighbour, snap it to the correct grid position.
+ */
+function checkSnapToNeighbour(index, x, y) {
+  const { cols, rows, _displayW: dW, _displayH: dH } = meta;
+  const col     = index % cols;
+  const row     = Math.floor(index / cols);
+  const originX = (BOARD_W - dW * meta.cols) / 2;
+  const originY = (BOARD_H - dH * meta.rows) / 2;
+  const threshold = Math.max(20, dW * 0.35);
+
   const neighbours = [
-    { idx: index - cols, dc: 0,  dr: -1 },  // above
-    { idx: index + cols, dc: 0,  dr:  1 },  // below
-    { idx: index - 1,    dc: -1, dr:  0 },  // left
-    { idx: index + 1,    dc:  1, dr:  0 },  // right
+    { dc:  0, dr: -1 },
+    { dc:  0, dr:  1 },
+    { dc: -1, dr:  0 },
+    { dc:  1, dr:  0 },
   ];
 
-  for (const { idx, dc, dr } of neighbours) {
+  for (const { dc, dr } of neighbours) {
     const nCol = col + dc;
     const nRow = row + dr;
     if (nCol < 0 || nCol >= cols || nRow < 0 || nRow >= rows) continue;
-    if (!pieceStates[idx]?.solved) continue;
+    const nIdx = nRow * cols + nCol;
+    if (!pieceStates[nIdx]?.solved) continue;
 
-    // Where should our piece be if placed correctly next to this neighbour?
-    const expectedX = pieceStates[idx].x - dc * dW;
-    const expectedY = pieceStates[idx].y - dr * dH;
+    // Where should our piece sit if correctly placed next to this neighbour?
+    const expectedX = pieceStates[nIdx].x - dc * dW;
+    const expectedY = pieceStates[nIdx].y - dr * dH;
     const d = Math.hypot(x - expectedX, y - expectedY);
-    if (d <= threshold) return { x: correctX, y: correctY };
+    if (d <= threshold) {
+      // Return the correct absolute grid position for our piece
+      return {
+        x: originX + col * dW,
+        y: originY + row * dH,
+      };
+    }
   }
-
   return null;
 }
 

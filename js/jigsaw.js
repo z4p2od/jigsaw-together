@@ -6,25 +6,39 @@
  * Adjacent pieces always have complementary edges.
  */
 export function generateEdges(cols, rows) {
+  // Each internal edge gets a direction (+1/-1) and a random seed for shape variation
+  // Seeds are shared between neighbouring pieces so both sides render identically
   const hEdges = Array.from({ length: rows + 1 }, (_, r) =>
     Array.from({ length: cols }, () =>
-      r === 0 || r === rows ? 0 : (Math.random() < 0.5 ? 1 : -1)
+      r === 0 || r === rows
+        ? { dir: 0, seed: 0 }
+        : { dir: Math.random() < 0.5 ? 1 : -1, seed: Math.random() * 1000 }
     )
   );
   const vEdges = Array.from({ length: rows }, () =>
     Array.from({ length: cols + 1 }, (_, c) =>
-      c === 0 || c === cols ? 0 : (Math.random() < 0.5 ? 1 : -1)
+      c === 0 || c === cols
+        ? { dir: 0, seed: 0 }
+        : { dir: Math.random() < 0.5 ? 1 : -1, seed: Math.random() * 1000 }
     )
   );
 
   const edges = [];
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < cols; col++) {
+      const t = hEdges[row][col];
+      const b = hEdges[row + 1][col];
+      const l = vEdges[row][col];
+      const r = vEdges[row][col + 1];
       edges.push({
-        top:    hEdges[row][col],
-        bottom: hEdges[row + 1][col],
-        left:   vEdges[row][col],
-        right:  vEdges[row][col + 1],
+        top:       t.dir,
+        bottom:    b.dir,
+        left:      l.dir,
+        right:     r.dir,
+        seedTop:    t.seed,
+        seedBottom: b.seed,
+        seedLeft:   l.seed,
+        seedRight:  r.seed,
       });
     }
   }
@@ -43,7 +57,13 @@ export function generateEdges(cols, rows) {
  * @param x2,y2   End point in world space
  * @param dir     +1 = tab protrudes outward, -1 = slot, 0 = flat
  */
-function drawEdge(ctx, x1, y1, x2, y2, dir) {
+// Seeded random — deterministic per edge so both sides match
+function seededRand(seed) {
+  const x = Math.sin(seed + 1) * 43758.5453;
+  return x - Math.floor(x);
+}
+
+function drawEdge(ctx, x1, y1, x2, y2, dir, seed) {
   if (dir === 0) {
     ctx.lineTo(x2, y2);
     return;
@@ -52,53 +72,50 @@ function drawEdge(ctx, x1, y1, x2, y2, dir) {
   const len = Math.hypot(x2 - x1, y2 - y1);
   const ex  = (x2 - x1) / len;
   const ey  = (y2 - y1) / len;
-  // Outward normal — flipped by dir so +1=out, -1=in
   const nx  = -ey * dir;
   const ny  =  ex * dir;
 
-  // Helper: world-space point from (along-edge, perpendicular) local coords
   function pt(a, p) {
     return [x1 + ex * a + nx * p, y1 + ey * a + ny * p];
   }
 
-  // Classic rounded tab: flat sides, semicircular top
-  // Proportions: neck at 38–62% of edge, height = 28% of edge length
-  const neckL  = len * 0.38;   // left neck x
-  const neckR  = len * 0.62;   // right neck x
-  const neckH  = len * 0.10;   // small fillet where neck meets edge
-  const tabH   = len * 0.28;   // how far the tab protrudes
-  const tabW   = (neckR - neckL);  // tab width
-  const r      = tabW / 2;     // radius of the semicircular cap
+  // Randomise proportions using seed so both sides of an edge always match
+  const r0 = seededRand(seed);
+  const r1 = seededRand(seed + 1);
+  const r2 = seededRand(seed + 2);
 
-  // Key points
-  const pNL  = pt(neckL, 0);           // left neck base
-  const pNLt = pt(neckL, tabH - r);    // left neck top (where arc starts)
-  const pNRt = pt(neckR, tabH - r);    // right neck top (where arc ends)
-  const pNR  = pt(neckR, 0);           // right neck base
+  // Neck centre offset: ±8% of edge length from centre
+  const neckCentre = len * (0.50 + (r0 - 0.5) * 0.16);
+  // Neck width: 18–28% of edge length
+  const halfNeck   = len * (0.09 + r1 * 0.05);
+  const neckL      = neckCentre - halfNeck;
+  const neckR      = neckCentre + halfNeck;
+  // Tab height: 24–34% of edge length
+  const tabH       = len * (0.24 + r2 * 0.10);
+  const tabW       = neckR - neckL;
+  const r          = tabW / 2;
+  const neckH      = len * 0.08;
 
-  // Centre of the semicircular cap
-  const cMx  = pt(len * 0.50, tabH - r);
+  const pNL  = pt(neckL, 0);
+  const pNLt = pt(neckL, tabH - r);
+  const pNRt = pt(neckR, tabH - r);
+  const pNR  = pt(neckR, 0);
+  const mid  = pt(neckCentre, tabH);
 
-  // Use bezier curves to draw: flat → left neck (straight) → semicircle → right neck → flat
-  // Left fillet
   ctx.lineTo(...pNL);
-  // Left side going up (straight, using bezier for smooth join)
   ctx.bezierCurveTo(...pt(neckL, neckH), ...pt(neckL, tabH - r), ...pNLt);
-  // Semicircular cap via two bezier arcs (each quarter circle)
-  // A quarter-circle bezier approximation uses k = 0.5523
-  const k   = 0.5523;
-  const mid = pt(len * 0.50, tabH);    // very tip
+
+  const k = 0.5523;
   ctx.bezierCurveTo(
-    ...pt(neckL,        tabH - r + r * k),
-    ...pt(len * 0.50 - r * k, tabH),
+    ...pt(neckL,             tabH - r + r * k),
+    ...pt(neckCentre - r * k, tabH),
     ...mid
   );
   ctx.bezierCurveTo(
-    ...pt(len * 0.50 + r * k, tabH),
-    ...pt(neckR,        tabH - r + r * k),
+    ...pt(neckCentre + r * k, tabH),
+    ...pt(neckR,             tabH - r + r * k),
     ...pNRt
   );
-  // Right side going down
   ctx.bezierCurveTo(...pt(neckR, tabH - r), ...pt(neckR, neckH), ...pNR);
   ctx.lineTo(x2, y2);
 }
@@ -120,17 +137,10 @@ export function drawJigsawPath(ctx, w, h, edges, pad) {
   ctx.beginPath();
   ctx.moveTo(x0, y0);
 
-  // Top: left → right, tab protrudes upward (−Y), so outward dir = edges.top
-  drawEdge(ctx, x0, y0, x1, y0, edges.top);
-
-  // Right: top → bottom, tab protrudes rightward (+X), flip sign
-  drawEdge(ctx, x1, y0, x1, y1, -edges.right);
-
-  // Bottom: right → left, tab protrudes downward (+Y), flip sign
-  drawEdge(ctx, x1, y1, x0, y1, -edges.bottom);
-
-  // Left: bottom → top, tab protrudes leftward (−X), dir = edges.left
-  drawEdge(ctx, x0, y1, x0, y0, edges.left);
+  drawEdge(ctx, x0, y0, x1, y0,  edges.top,     edges.seedTop);
+  drawEdge(ctx, x1, y0, x1, y1, -edges.right,   edges.seedRight);
+  drawEdge(ctx, x1, y1, x0, y1, -edges.bottom,  edges.seedBottom);
+  drawEdge(ctx, x0, y1, x0, y0,  edges.left,    edges.seedLeft);
 
   ctx.closePath();
 }
