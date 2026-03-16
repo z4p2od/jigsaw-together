@@ -114,9 +114,12 @@ async function initPuzzle() {
     // Heartbeat every 15s
     setInterval(() => updatePlayerPresence(puzzleId, playerId, playerName), 15000);
 
-    // Timer — resume if already started
+    // Timer — resume if already started; update display immediately so
+    // late-joining players see the current elapsed time without a 1s delay.
     if (meta.startedAt) {
       startedAt = meta.startedAt;
+      const secs = Math.floor((Date.now() - startedAt) / 1000);
+      timerEl.textContent = formatTime(secs);
       startTimer();
     }
 
