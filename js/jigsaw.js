@@ -126,16 +126,13 @@ export function drawJigsawPath(ctx, w, h, edges, pad) {
   const x0 = pad, y0 = pad;
   const x1 = pad + w, y1 = pad + h;
 
-  // Slots drawn flat — tab from neighbour overlaps on top, no black void
-  const tab = d => Math.max(0, d);
-
   ctx.beginPath();
   ctx.moveTo(x0, y0);
 
-  drawEdge(ctx, x0, y0, x1, y0, tab(-edges.top),    edges.seedTop    ?? 0.5);
-  drawEdge(ctx, x1, y0, x1, y1, tab(-edges.right),  edges.seedRight  ?? 0.5);
-  drawEdge(ctx, x1, y1, x0, y1, tab(-edges.bottom), edges.seedBottom ?? 0.5);
-  drawEdge(ctx, x0, y1, x0, y0, tab(-edges.left),   edges.seedLeft   ?? 0.5);
+  drawEdge(ctx, x0, y0, x1, y0, -edges.top,    edges.seedTop    ?? 0.5);
+  drawEdge(ctx, x1, y0, x1, y1, -edges.right,  edges.seedRight  ?? 0.5);
+  drawEdge(ctx, x1, y1, x0, y1, -edges.bottom, edges.seedBottom ?? 0.5);
+  drawEdge(ctx, x0, y1, x0, y0, -edges.left,   edges.seedLeft   ?? 0.5);
 
   ctx.closePath();
 }

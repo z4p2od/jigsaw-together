@@ -130,18 +130,24 @@ function movePieceEl(index, x, y, el) {
   e.style.top  = (y - pad) + 'px';
 }
 
-// Set z-index so tab edges render on top of neighbouring slot edges.
-// A piece whose right edge is a tab must be above its right neighbour (slot left).
-// A piece whose bottom edge is a tab must be above its bottom neighbour (slot top).
-// Simple rule: pieces with more tabs get higher z.
+// Set z-index so tab edges render on top of the slot pieces they protrude into.
+// A right-tab on piece (col,row) protrudes into (col+1,row) → needs z > that piece.
+// A bottom-tab protrudes into (col,row+1) → needs z > that piece.
+// Solution: z = (cols-col) + (rows-row)*cols so pieces with smaller col/row
+// get higher z when they have tabs pointing toward higher col/row neighbours.
 function updatePieceZIndex(index) {
   const e = pieceEls[index];
   if (!e || e.classList.contains('dragging')) return;
   const edges = meta?.edges?.[index];
-  if (!edges) return;
-  // Count outward tabs (+1 dir) on right and bottom edges (the ones that overlap neighbours)
-  const tabScore = (edges.right > 0 ? 1 : 0) + (edges.bottom > 0 ? 1 : 0);
-  e.style.zIndex = 2 + tabScore;
+  if (!edges || !meta.cols || !meta.rows) return;
+  const col = index % meta.cols;
+  const row = Math.floor(index / meta.cols);
+  // Base z from grid position (lower col/row = higher z by default)
+  let z = (meta.cols - col) + (meta.rows - row);
+  // Boost if this piece has tabs pointing right or down (into higher-index neighbours)
+  if (edges.right > 0) z += meta.rows;
+  if (edges.bottom > 0) z += meta.cols;
+  e.style.zIndex = z;
 }
 
 // ── Drag ──────────────────────────────────────────────────────────────────────
