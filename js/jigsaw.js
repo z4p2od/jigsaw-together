@@ -47,7 +47,8 @@ export function generateEdges(cols, rows) {
 }
 
 export function getPad(displayW, displayH) {
-  return Math.ceil(Math.min(displayW, displayH) * 0.32);
+  // Must be larger than max tab protrusion (42% of min side)
+  return Math.ceil(Math.min(displayW, displayH) * 0.45);
 }
 
 /**
@@ -72,8 +73,8 @@ function drawEdge(ctx, x1, y1, x2, y2, dir, seed) {
   const nx  = -ey * dir;
   const ny  =  ex * dir;
 
-  // Tab height: 28–42% of edge length, varied by seed
-  const h = len * (0.28 + seed * 0.14);
+  // Tab height: 25–33% of edge length, varied by seed
+  const h = len * (0.25 + seed * 0.08);
 
   function pt(along, perp) {
     return [x1 + ex * along + nx * perp, y1 + ey * along + ny * perp];
