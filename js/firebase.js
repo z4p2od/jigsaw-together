@@ -9,14 +9,9 @@ import {
   off,
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
 
-// Firebase config — replaced by Vercel env vars at build time via vercel.json rewrites
-// For local dev, fill in your own config here temporarily
-const firebaseConfig = {
-  apiKey:            window.__ENV__?.FIREBASE_API_KEY            ?? '',
-  authDomain:        window.__ENV__?.FIREBASE_AUTH_DOMAIN        ?? '',
-  databaseURL:       window.__ENV__?.FIREBASE_DB_URL             ?? '',
-  projectId:         window.__ENV__?.FIREBASE_PROJECT_ID         ?? '',
-};
+// Fetch Firebase config from Vercel serverless function (which reads env vars)
+const configRes = await fetch('/api/config');
+const firebaseConfig = await configRes.json();
 
 const app = initializeApp(firebaseConfig);
 const db  = getDatabase(app);
