@@ -16,8 +16,10 @@ import { cutPiece, getPad } from './jigsaw.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const BOARD_W = 900;
-const BOARD_H = 650;
+const BOARD_W   = 900;
+const BOARD_H   = 650;
+const SCALE_MIN = 0.3;
+const SCALE_MAX = 3.0;
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
@@ -36,6 +38,8 @@ const pieceGroup = [];  // pieceGroup[i] = groupId | null
 
 let dragging    = null; // { indices, anchorIndex, offsetX, offsetY, relOffsets }
 let unsubscribe = null;
+let scale       = 1;   // current zoom level applied to #puzzle-board
+let pinch       = null; // { dist0, scale0 } — active pinch gesture state
 
 // Player presence
 let playerName  = sessionStorage.getItem('playerName') || null;
@@ -132,8 +136,9 @@ async function initPuzzle() {
 }
 
 function setupBoard() {
-  board.style.width  = BOARD_W + 'px';
-  board.style.height = BOARD_H + 'px';
+  board.style.width          = BOARD_W + 'px';
+  board.style.height         = BOARD_H + 'px';
+  board.style.transformOrigin = 'top left';
 }
 
 // ── Rendering ─────────────────────────────────────────────────────────────────
@@ -212,9 +217,11 @@ function attachDragListeners() {
   board.addEventListener('mousedown', onMouseDown);
   window.addEventListener('mousemove', onMouseMove);
   window.addEventListener('mouseup',   onMouseUp);
-  board.addEventListener('touchstart', onTouchStart, { passive: false });
-  window.addEventListener('touchmove',  onTouchMove,  { passive: false });
-  window.addEventListener('touchend',   onTouchEnd);
+  // Use the wrap for touch so pinch-to-zoom works even when fingers start outside board
+  const wrap = board.parentElement;
+  wrap.addEventListener('touchstart', onTouchStart, { passive: false });
+  wrap.addEventListener('touchmove',  onTouchMove,  { passive: false });
+  wrap.addEventListener('touchend',   onTouchEnd);
 }
 
 async function onMouseDown(e) {
@@ -242,8 +249,9 @@ async function onMouseDown(e) {
   const boardRect = board.getBoundingClientRect();
   const anchorX   = pieceStates[index].x;
   const anchorY   = pieceStates[index].y;
-  const offsetX   = e.clientX - boardRect.left - anchorX;
-  const offsetY   = e.clientY - boardRect.top  - anchorY;
+  // Divide by scale to convert screen pixels to board (unscaled) coordinates
+  const offsetX   = (e.clientX - boardRect.left) / scale - anchorX;
+  const offsetY   = (e.clientY - boardRect.top)  / scale - anchorY;
 
   const relOffsets = {};
   indices.forEach(i => {
@@ -266,8 +274,8 @@ function onMouseMove(e) {
   const { indices, offsetX, offsetY, relOffsets } = dragging;
   const boardRect = board.getBoundingClientRect();
 
-  const anchorX = e.clientX - boardRect.left - offsetX;
-  const anchorY = e.clientY - boardRect.top  - offsetY;
+  const anchorX = (e.clientX - boardRect.left) / scale - offsetX;
+  const anchorY = (e.clientY - boardRect.top)  / scale - offsetY;
 
   const positions = [];
   indices.forEach(i => {
@@ -293,8 +301,8 @@ async function onMouseUp(e) {
   });
 
   const boardRect = board.getBoundingClientRect();
-  const anchorX   = e.clientX - boardRect.left - offsetX;
-  const anchorY   = e.clientY - boardRect.top  - offsetY;
+  const anchorX   = (e.clientX - boardRect.left) / scale - offsetX;
+  const anchorY   = (e.clientY - boardRect.top)  / scale - offsetY;
 
   // Apply final positions locally
   indices.forEach(i => {
@@ -351,6 +359,23 @@ async function onMouseUp(e) {
 }
 
 function onTouchStart(e) {
+  if (e.touches.length === 2) {
+    // Two fingers — start pinch zoom; cancel any ongoing drag
+    if (dragging) {
+      unlockGroup(puzzleId, dragging.indices);
+      dragging.indices.forEach(i => {
+        pieceEls[i]?.classList.remove('dragging');
+        if (pieceEls[i]) pieceEls[i].style.zIndex = '';
+      });
+      dragging = null;
+    }
+    pinch = { dist0: touchDist(e.touches), scale0: scale };
+    e.preventDefault();
+    return;
+  }
+
+  if (pinch) return; // ignore single-finger start during active pinch
+
   const touch = e.touches[0];
   onMouseDown({ clientX: touch.clientX, clientY: touch.clientY,
                 target: document.elementFromPoint(touch.clientX, touch.clientY) })
@@ -358,6 +383,14 @@ function onTouchStart(e) {
 }
 
 function onTouchMove(e) {
+  if (e.touches.length === 2 && pinch) {
+    e.preventDefault();
+    const newDist = touchDist(e.touches);
+    const raw     = pinch.scale0 * (newDist / pinch.dist0);
+    applyScale(Math.min(SCALE_MAX, Math.max(SCALE_MIN, raw)));
+    return;
+  }
+
   if (!dragging) return;
   e.preventDefault();
   const touch = e.touches[0];
@@ -365,9 +398,31 @@ function onTouchMove(e) {
 }
 
 function onTouchEnd(e) {
+  if (pinch && e.touches.length < 2) {
+    pinch = null;
+    return;
+  }
+
   if (!dragging) return;
   const touch = e.changedTouches[0];
   onMouseUp({ clientX: touch.clientX, clientY: touch.clientY });
+}
+
+function touchDist(touches) {
+  const dx = touches[0].clientX - touches[1].clientX;
+  const dy = touches[0].clientY - touches[1].clientY;
+  return Math.hypot(dx, dy);
+}
+
+function applyScale(s) {
+  scale = s;
+  board.style.transform = scale === 1 ? '' : `scale(${scale})`;
+  // CSS transform doesn't affect layout, so manually size a margin-bottom/right
+  // on the board so the wrap's scrollbars track the scaled dimensions.
+  const extraW = BOARD_W * (scale - 1);
+  const extraH = BOARD_H * (scale - 1);
+  board.style.marginRight  = extraW > 0 ? extraW + 'px' : '';
+  board.style.marginBottom = extraH > 0 ? extraH + 'px' : '';
 }
 
 // ── Snap / merge ──────────────────────────────────────────────────────────────
