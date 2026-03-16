@@ -91,8 +91,7 @@ async function renderAllPieces() {
 
   const displayW = Math.floor(pieceW * scale);
   const displayH = Math.floor(pieceH * scale);
-  const tabSize  = Math.round(Math.min(displayW, displayH) * 0.22);
-  const pad      = tabSize;
+  const pad      = Math.round(Math.min(displayW, displayH) * 0.38) + 2;
 
   meta._displayW = displayW;
   meta._displayH = displayH;
