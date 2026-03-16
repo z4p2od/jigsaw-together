@@ -45,7 +45,7 @@ export function generateEdges(cols, rows) {
 
 export function getPad(displayW, displayH) {
   // Must exceed max tab protrusion: neckH + 2*headR = 0.29*len, use 0.35 for margin
-  return Math.ceil(Math.min(displayW, displayH) * 0.35);
+  return Math.ceil(Math.min(displayW, displayH) * 0.40);
 }
 
 /**
@@ -75,12 +75,12 @@ function drawEdge(ctx, x1, y1, x2, y2, dir, seed) {
   }
 
   // Classic jigsaw tab: narrow neck widening into a round head.
-  // Neck spans ~18% of edge centred at 50%.
-  const tabW  = len * 0.18;
-  const nL    = len * 0.50 - tabW / 2;  // neck left  = 41%
-  const nR    = len * 0.50 + tabW / 2;  // neck right = 59%
-  const neckH = len * 0.07;
-  const headR = len * 0.11;
+  // seed (0–1) varies proportions slightly — same seed = same shape on both sides.
+  const tabW  = len * (0.15 + seed * 0.08);         // neck width: 15–23% of len
+  const nL    = len * 0.50 - tabW / 2;
+  const nR    = len * 0.50 + tabW / 2;
+  const neckH = len * (0.06 + seed * 0.04);         // neck height: 6–10%
+  const headR = len * (0.09 + seed * 0.04);         // head radius: 9–13%
   const headY = neckH + headR;
 
   const k = 0.5523; // bezier circle approximation constant
