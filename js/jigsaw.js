@@ -153,9 +153,12 @@ export function drawJigsawPath(ctx, w, h, edges, pad) {
  * extend into the pad area, show real image pixels from the neighbouring cells
  * rather than transparent holes.
  */
+export function getPad(displayW, displayH) {
+  return Math.round(Math.min(displayW, displayH) * 0.38) + 2;
+}
+
 export function cutPiece(img, col, row, pieceW, pieceH, displayW, displayH, edges) {
-  const tabH = Math.round(Math.min(displayW, displayH) * 0.38);
-  const pad  = tabH + 2;
+  const pad  = getPad(displayW, displayH);
 
   const canvasW = displayW + pad * 2;
   const canvasH = displayH + pad * 2;

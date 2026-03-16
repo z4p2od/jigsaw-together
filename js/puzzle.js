@@ -6,7 +6,7 @@ import {
   solveGroup,
   onPiecesChanged,
 } from './firebase.js';
-import { cutPiece } from './jigsaw.js';
+import { cutPiece, getPad } from './jigsaw.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -91,7 +91,7 @@ async function renderAllPieces() {
 
   const displayW = Math.floor(pieceW * scale);
   const displayH = Math.floor(pieceH * scale);
-  const pad      = Math.round(Math.min(displayW, displayH) * 0.38) + 2;
+  const pad      = getPad(displayW, displayH);
 
   meta._displayW = displayW;
   meta._displayH = displayH;
