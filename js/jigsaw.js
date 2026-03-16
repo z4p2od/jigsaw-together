@@ -44,8 +44,8 @@ export function generateEdges(cols, rows) {
 }
 
 export function getPad(displayW, displayH) {
-  // Must exceed max tab protrusion: neckH + 2*headR = 0.36*len, use 0.42 for margin
-  return Math.ceil(Math.min(displayW, displayH) * 0.42);
+  // Must exceed max tab protrusion: neckH + 2*headR = 0.29*len, use 0.35 for margin
+  return Math.ceil(Math.min(displayW, displayH) * 0.35);
 }
 
 /**
@@ -75,13 +75,13 @@ function drawEdge(ctx, x1, y1, x2, y2, dir, seed) {
   }
 
   // Classic jigsaw tab: narrow neck widening into a round head.
-  // Neck sits at 35%–65% of edge length, head is a circle on top.
-  const tabW  = len * 0.28;          // total tab width (neck span)
-  const nL    = len * 0.50 - tabW / 2;  // neck left  = 36%
-  const nR    = len * 0.50 + tabW / 2;  // neck right = 64%
-  const neckH = len * 0.08;             // how far up the neck rises
-  const headR = len * 0.14;             // radius of round head
-  const headY = neckH + headR;          // centre of head
+  // Neck spans ~18% of edge centred at 50%.
+  const tabW  = len * 0.18;
+  const nL    = len * 0.50 - tabW / 2;  // neck left  = 41%
+  const nR    = len * 0.50 + tabW / 2;  // neck right = 59%
+  const neckH = len * 0.07;
+  const headR = len * 0.11;
+  const headY = neckH + headR;
 
   const k = 0.5523; // bezier circle approximation constant
 
@@ -126,18 +126,16 @@ export function drawJigsawPath(ctx, w, h, edges, pad) {
   const x0 = pad, y0 = pad;
   const x1 = pad + w, y1 = pad + h;
 
+  // Slots drawn flat — tab from neighbour overlaps on top, no black void
+  const tab = d => Math.max(0, d);
+
   ctx.beginPath();
   ctx.moveTo(x0, y0);
 
-  // For slots (dir < 0): draw flat — the neighbouring tab overlaps on top.
-  // For tabs (dir > 0): draw protruding outward.
-  // This avoids transparent holes that show the dark board background.
-  const tabOnly = d => d > 0 ? d : 0;
-
-  drawEdge(ctx, x0, y0, x1, y0, tabOnly(-edges.top),    edges.seedTop    ?? 0.5);
-  drawEdge(ctx, x1, y0, x1, y1, tabOnly(-edges.right),  edges.seedRight  ?? 0.5);
-  drawEdge(ctx, x1, y1, x0, y1, tabOnly(-edges.bottom), edges.seedBottom ?? 0.5);
-  drawEdge(ctx, x0, y1, x0, y0, tabOnly(-edges.left),   edges.seedLeft   ?? 0.5);
+  drawEdge(ctx, x0, y0, x1, y0, tab(-edges.top),    edges.seedTop    ?? 0.5);
+  drawEdge(ctx, x1, y0, x1, y1, tab(-edges.right),  edges.seedRight  ?? 0.5);
+  drawEdge(ctx, x1, y1, x0, y1, tab(-edges.bottom), edges.seedBottom ?? 0.5);
+  drawEdge(ctx, x0, y1, x0, y0, tab(-edges.left),   edges.seedLeft   ?? 0.5);
 
   ctx.closePath();
 }
