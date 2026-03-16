@@ -175,6 +175,52 @@ body {
 
 .status.error { color: var(--accent); }
 
+/* ── Name modal ── */
+
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.7);
+  z-index: 10000;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-overlay[style*="flex"] { display: flex; }
+
+.modal {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 32px;
+  width: 100%;
+  max-width: 340px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  text-align: center;
+}
+
+.modal h3 {
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.name-input {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 2px solid var(--surface2);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 1rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.name-input:focus { border-color: var(--accent); }
+
 /* ── Puzzle page ── */
 
 .puzzle-page {
@@ -234,6 +280,45 @@ body {
 }
 
 .share-box button:hover { opacity: 0.85; }
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.players-list {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.player-dot {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #fff;
+  border: 2px solid transparent;
+  flex-shrink: 0;
+}
+
+.player-dot.me {
+  border-color: #fff;
+}
+
+.timer {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 
 .progress-text {
   font-size: 0.82rem;

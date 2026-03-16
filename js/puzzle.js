@@ -6,6 +6,11 @@ import {
   writeSnappedPositions,
   solveGroup,
   onPiecesChanged,
+  updatePlayerPresence,
+  removePlayer,
+  onPlayersChanged,
+  getPlayerColor,
+  setStartedAt,
 } from './firebase.js';
 import { cutPiece, getPad } from './jigsaw.js';
 
@@ -32,22 +37,58 @@ const pieceGroup = [];  // pieceGroup[i] = groupId | null
 let dragging    = null; // { indices, anchorIndex, offsetX, offsetY, relOffsets }
 let unsubscribe = null;
 
+// Player presence
+let playerName  = sessionStorage.getItem('playerName') || null;
+let unsubPlayers = null;
+
+// Timer
+let timerInterval = null;
+let startedAt     = null;
+
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 
-const board       = document.getElementById('puzzle-board');
-const loadingEl   = document.getElementById('loading-overlay');
-const loadingText = document.getElementById('loading-text');
-const celebration = document.getElementById('celebration');
-const progressEl  = document.getElementById('progress-text');
-const shareUrlEl  = document.getElementById('share-url');
-const copyBtn     = document.getElementById('copy-btn');
+const board           = document.getElementById('puzzle-board');
+const loadingEl       = document.getElementById('loading-overlay');
+const loadingText     = document.getElementById('loading-text');
+const celebration     = document.getElementById('celebration');
+const celebrationTime = document.getElementById('celebration-time');
+const progressEl      = document.getElementById('progress-text');
+const shareUrlEl      = document.getElementById('share-url');
+const copyBtn         = document.getElementById('copy-btn');
+const playersListEl   = document.getElementById('players-list');
+const timerEl         = document.getElementById('timer-display');
+const nameModal       = document.getElementById('name-modal');
+const nameInput       = document.getElementById('name-input');
+const nameSubmit      = document.getElementById('name-submit');
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
 if (!puzzleId) {
   location.href = '/';
 } else {
+  askNameThenInit();
+}
+
+async function askNameThenInit() {
+  if (!playerName) {
+    playerName = await showNameModal();
+    sessionStorage.setItem('playerName', playerName);
+  }
+  nameModal.style.display = 'none';
   initPuzzle();
+}
+
+function showNameModal() {
+  return new Promise(resolve => {
+    nameModal.style.display = 'flex';
+    nameInput.focus();
+    const submit = () => {
+      const name = nameInput.value.trim() || 'Anonymous';
+      resolve(name);
+    };
+    nameSubmit.addEventListener('click', submit);
+    nameInput.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+  });
 }
 
 async function initPuzzle() {
@@ -66,6 +107,18 @@ async function initPuzzle() {
     attachDragListeners();
 
     unsubscribe = onPiecesChanged(puzzleId, applyRemoteUpdate);
+    unsubPlayers = onPlayersChanged(puzzleId, renderPlayers);
+
+    // Register this player
+    await updatePlayerPresence(puzzleId, playerId, playerName);
+    // Heartbeat every 15s
+    setInterval(() => updatePlayerPresence(puzzleId, playerId, playerName), 15000);
+
+    // Timer — resume if already started
+    if (meta.startedAt) {
+      startedAt = meta.startedAt;
+      startTimer();
+    }
 
     loadingEl.style.display = 'none';
     updateProgress();
@@ -176,6 +229,12 @@ async function onMouseDown(e) {
   if (indices.some(i => pieceStates[i].lockedBy && pieceStates[i].lockedBy !== playerId)) return;
 
   await lockGroup(puzzleId, indices, playerId);
+
+  // Start timer on first move
+  if (!startedAt) {
+    startedAt = await setStartedAt(puzzleId);
+    startTimer();
+  }
 
   const boardRect = board.getBoundingClientRect();
   const anchorX   = pieceStates[index].x;
@@ -507,16 +566,17 @@ function updateProgress() {
 }
 
 function checkCompletion() {
-  if (solvedCount >= totalPieces) {
-    if (unsubscribe) unsubscribe();
-    celebration.classList.add('show');
+  const done = solvedCount >= totalPieces ||
+    (() => { const gids = new Set(pieceGroup.filter(Boolean)); return gids.size === 1 && groups[[...gids][0]]?.size === totalPieces; })();
+  if (!done) return;
+
+  if (unsubscribe) { unsubscribe(); unsubscribe = null; }
+  stopTimer();
+  if (startedAt) {
+    const secs = Math.floor((Date.now() - startedAt) / 1000);
+    celebrationTime.textContent = `Solved in ${formatTime(secs)}`;
   }
-  // Also check if all pieces are in one group
-  const gids = new Set(pieceGroup.filter(Boolean));
-  if (gids.size === 1 && groups[[...gids][0]]?.size === totalPieces) {
-    if (unsubscribe) unsubscribe();
-    celebration.classList.add('show');
-  }
+  celebration.classList.add('show');
 }
 
 function setupShareLink() {
@@ -527,6 +587,44 @@ function setupShareLink() {
       setTimeout(() => (copyBtn.textContent = 'Copy Link'), 2000);
     });
   });
+}
+
+// ── Players ───────────────────────────────────────────────────────────────────
+
+function renderPlayers(players) {
+  // Remove players inactive > 30s
+  const now = Date.now();
+  playersListEl.innerHTML = '';
+  Object.entries(players).forEach(([id, p]) => {
+    if (now - p.lastSeen > 30000) return;
+    const dot = document.createElement('div');
+    dot.className = 'player-dot';
+    dot.style.background = p.color;
+    dot.title = p.name;
+    dot.textContent = p.name[0].toUpperCase();
+    if (id === playerId) dot.classList.add('me');
+    playersListEl.appendChild(dot);
+  });
+}
+
+// ── Timer ─────────────────────────────────────────────────────────────────────
+
+function startTimer() {
+  if (timerInterval) return;
+  timerInterval = setInterval(() => {
+    const secs = Math.floor((Date.now() - startedAt) / 1000);
+    timerEl.textContent = formatTime(secs);
+  }, 1000);
+}
+
+function stopTimer() {
+  if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+}
+
+function formatTime(secs) {
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
 }
 
 function loadImage(src) {
@@ -546,5 +644,7 @@ function getOrCreatePlayerId() {
 
 window.addEventListener('beforeunload', () => {
   if (unsubscribe) unsubscribe();
+  if (unsubPlayers) unsubPlayers();
   if (dragging) unlockGroup(puzzleId, dragging.indices);
+  removePlayer(puzzleId, playerId);
 });

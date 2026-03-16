@@ -12,9 +12,18 @@
     <p id="loading-text">Loading puzzle...</p>
   </div>
 
+  <!-- Name modal -->
+  <div id="name-modal" class="modal-overlay">
+    <div class="modal">
+      <h3>What's your name?</h3>
+      <input id="name-input" type="text" class="name-input" placeholder="Your name" maxlength="20" />
+      <button id="name-submit" class="btn">Join Puzzle</button>
+    </div>
+  </div>
+
   <div id="celebration">
     <h2>🎉 Puzzle Complete!</h2>
-    <p>You solved it together!</p>
+    <p id="celebration-time"></p>
     <a href="/" class="btn">Start a new puzzle</a>
   </div>
 
@@ -25,7 +34,11 @@
         <span id="share-url"></span>
         <button id="copy-btn">Copy Link</button>
       </div>
-      <span class="progress-text" id="progress-text">0 / 0 pieces</span>
+      <div class="header-right">
+        <div id="players-list" class="players-list"></div>
+        <span id="timer-display" class="timer">0:00</span>
+        <span class="progress-text" id="progress-text">0 / 0 pieces</span>
+      </div>
     </header>
 
     <div class="puzzle-board-wrap">

@@ -152,6 +152,44 @@ export function writeSnappedPositions(puzzleId, positions, groupId) {
   return update(ref(db, `puzzles/${puzzleId}/pieces`), flat);
 }
 
+// ── Player presence ───────────────────────────────────────────────────────────
+
+const PLAYER_COLORS = ['#e94560','#f5a623','#4ecdc4','#a78bfa','#34d399','#60a5fa','#f472b6','#fb923c'];
+
+export function getPlayerColor(playerId) {
+  // Deterministic color from playerId
+  let hash = 0;
+  for (const c of playerId) hash = (hash * 31 + c.charCodeAt(0)) & 0xffff;
+  return PLAYER_COLORS[hash % PLAYER_COLORS.length];
+}
+
+export function updatePlayerPresence(puzzleId, playerId, name) {
+  return update(ref(db, `puzzles/${puzzleId}/players/${playerId}`), {
+    name,
+    color: getPlayerColor(playerId),
+    lastSeen: Date.now(),
+  });
+}
+
+export function removePlayer(puzzleId, playerId) {
+  return set(ref(db, `puzzles/${puzzleId}/players/${playerId}`), null);
+}
+
+export function onPlayersChanged(puzzleId, callback) {
+  const r = ref(db, `puzzles/${puzzleId}/players`);
+  const handler = snap => callback(snap.val() || {});
+  onValue(r, handler);
+  return () => off(r, 'value', handler);
+}
+
+/** Set startedAt only if not already set. */
+export async function setStartedAt(puzzleId) {
+  const r = ref(db, `puzzles/${puzzleId}/meta/startedAt`);
+  const snap = await get(r);
+  if (!snap.exists()) await set(r, Date.now());
+  return (await get(r)).val();
+}
+
 /**
  * Subscribe to all piece changes for a puzzle.
  * @param {(pieceIndex: number, data: object) => void} callback
