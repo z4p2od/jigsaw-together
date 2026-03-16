@@ -118,6 +118,7 @@ function renderPiece(index, dataUrl, x, y, solved, elW, elH) {
   movePieceEl(index, x, y, el);
   board.appendChild(el);
   pieceEls[index] = el;
+  updatePieceZIndex(index);
 }
 
 // x,y are inner-rect coords; subtract pad for DOM position
@@ -127,6 +128,20 @@ function movePieceEl(index, x, y, el) {
   if (!e) return;
   e.style.left = (x - pad) + 'px';
   e.style.top  = (y - pad) + 'px';
+}
+
+// Set z-index so tab edges render on top of neighbouring slot edges.
+// A piece whose right edge is a tab must be above its right neighbour (slot left).
+// A piece whose bottom edge is a tab must be above its bottom neighbour (slot top).
+// Simple rule: pieces with more tabs get higher z.
+function updatePieceZIndex(index) {
+  const e = pieceEls[index];
+  if (!e || e.classList.contains('dragging')) return;
+  const edges = meta?.edges?.[index];
+  if (!edges) return;
+  // Count outward tabs (+1 dir) on right and bottom edges (the ones that overlap neighbours)
+  const tabScore = (edges.right > 0 ? 1 : 0) + (edges.bottom > 0 ? 1 : 0);
+  e.style.zIndex = 2 + tabScore;
 }
 
 // ── Drag ──────────────────────────────────────────────────────────────────────
