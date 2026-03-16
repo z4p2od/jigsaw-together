@@ -129,10 +129,15 @@ export function drawJigsawPath(ctx, w, h, edges, pad) {
   ctx.beginPath();
   ctx.moveTo(x0, y0);
 
-  drawEdge(ctx, x0, y0, x1, y0, -edges.top,    edges.seedTop    ?? 0.5);
-  drawEdge(ctx, x1, y0, x1, y1, -edges.right,  edges.seedRight  ?? 0.5);
-  drawEdge(ctx, x1, y1, x0, y1, -edges.bottom, edges.seedBottom ?? 0.5);
-  drawEdge(ctx, x0, y1, x0, y0, -edges.left,   edges.seedLeft   ?? 0.5);
+  // For slots (dir < 0): draw flat — the neighbouring tab overlaps on top.
+  // For tabs (dir > 0): draw protruding outward.
+  // This avoids transparent holes that show the dark board background.
+  const tabOnly = d => d > 0 ? d : 0;
+
+  drawEdge(ctx, x0, y0, x1, y0, tabOnly(-edges.top),    edges.seedTop    ?? 0.5);
+  drawEdge(ctx, x1, y0, x1, y1, tabOnly(-edges.right),  edges.seedRight  ?? 0.5);
+  drawEdge(ctx, x1, y1, x0, y1, tabOnly(-edges.bottom), edges.seedBottom ?? 0.5);
+  drawEdge(ctx, x0, y1, x0, y0, tabOnly(-edges.left),   edges.seedLeft   ?? 0.5);
 
   ctx.closePath();
 }
