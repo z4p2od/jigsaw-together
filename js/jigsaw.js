@@ -30,9 +30,6 @@ export function generateEdges(cols, rows) {
       const b = hEdges[row + 1][col];
       const l = vEdges[row][col];
       const r = vEdges[row][col + 1];
-      // Store dirs from THIS piece's outward perspective.
-      // Shared edge: top piece stores b.dir as its bottom; bottom piece stores -b.dir as its top.
-      // Similarly: left piece stores r.dir as its right; right piece stores -r.dir as its left.
       edges.push({
         top:        -t.dir,  bottom:      b.dir,
         left:       -l.dir,  right:       r.dir,
@@ -47,19 +44,18 @@ export function generateEdges(cols, rows) {
 }
 
 export function getPad(displayW, displayH) {
-  // Must be larger than max tab protrusion (42% of min side)
-  return Math.ceil(Math.min(displayW, displayH) * 0.45);
+  // Must exceed max tab protrusion: tab is 30% of edge, pad needs to be > that
+  return Math.ceil(Math.min(displayW, displayH) * 0.35);
 }
 
 /**
- * Draw one jigsaw edge from (x1,y1) to (x2,y2).
+ * Draw one jigsaw edge — classic single round-head tab shape.
  *
- * Uses the classic 4-bezier piecemaker approach.
- * dir: +1 = tab protrudes outward, -1 = slot, 0 = flat.
- * seed: 0–1, varies tab height slightly for organic feel.
+ * The tab has a narrow neck that widens into a circular head, exactly like
+ * a real jigsaw puzzle piece. No double-bumps.
  *
- * Normal convention: nx = -ey * dir, ny = ex * dir.
- * Caller must negate dir so that outward = away from piece centre.
+ * dir: +1 = tab protrudes in normal direction, -1 = slot, 0 = flat
+ * seed: 0–1, varies the tab size slightly per edge
  */
 function drawEdge(ctx, x1, y1, x2, y2, dir, seed) {
   if (dir === 0) {
@@ -70,35 +66,55 @@ function drawEdge(ctx, x1, y1, x2, y2, dir, seed) {
   const len = Math.hypot(x2 - x1, y2 - y1);
   const ex  = (x2 - x1) / len;
   const ey  = (y2 - y1) / len;
+  // Normal points outward when dir=+1 (after caller negates edge dir)
   const nx  = -ey * dir;
   const ny  =  ex * dir;
-
-  // Tab height: 25–33% of edge length, varied by seed
-  const h = len * (0.25 + seed * 0.08);
 
   function pt(along, perp) {
     return [x1 + ex * along + nx * perp, y1 + ey * along + ny * perp];
   }
 
-  // 4-bezier classic jigsaw shape (piecemaker proportions)
-  const aL  = pt(len * 0.37, 0);
-  const aLt = pt(len * 0.37, h * 0.6);
-  const aT  = pt(len * 0.50, h);
-  const aRt = pt(len * 0.63, h * 0.6);
-  const aR  = pt(len * 0.63, 0);
+  // Tab geometry — all proportional to edge length, varied slightly by seed
+  const neckPos    = len * 0.50;                       // neck centre along edge (always centred)
+  const neckHalfW  = len * (0.10 + seed * 0.04);      // half-width of neck: 10–14% of len
+  const neckH      = len * 0.10;                       // how far neck rises before head
+  const headR      = len * (0.14 + seed * 0.04);      // radius of round head: 14–18% of len
 
-  const c1 = pt(len * 0.20, 0);
-  const c2 = pt(len * 0.30, h * 0.6);
-  const c3 = pt(len * 0.37, h * 1.1);
-  const c4 = pt(len * 0.63, h * 1.1);
-  const c5 = pt(len * 0.70, h * 0.6);
-  const c6 = pt(len * 0.80, 0);
+  const nL = neckPos - neckHalfW;   // neck left edge along
+  const nR = neckPos + neckHalfW;   // neck right edge along
+  const headCY = neckH + headR;     // head centre perp distance from base
 
-  ctx.lineTo(...aL);
-  ctx.bezierCurveTo(...c1, ...c2, ...aLt);
-  ctx.bezierCurveTo(...c3, ...c4, ...aT);
-  ctx.bezierCurveTo(...c4, ...c5, ...aRt);
-  ctx.bezierCurveTo(...c6, ...aR, ...aR);
+  // Bezier constant for approximating a circle (4/3 * tan(π/8) ≈ 0.5523)
+  const k = 0.5523;
+
+  // Path: straight to neck left, up neck, around circular head, down neck, back to edge
+  ctx.lineTo(...pt(nL, 0));
+  // Up left side of neck
+  ctx.bezierCurveTo(...pt(nL, 0), ...pt(nL, neckH), ...pt(nL, neckH));
+  // Around left half of circle
+  ctx.bezierCurveTo(
+    ...pt(nL,               neckH + headR * k),
+    ...pt(neckPos - headR,  headCY),
+    ...pt(neckPos - headR,  headCY)
+  );
+  ctx.bezierCurveTo(
+    ...pt(neckPos - headR,  headCY + headR * k),
+    ...pt(neckPos - headR * k, headCY + headR),
+    ...pt(neckPos,          headCY + headR)
+  );
+  // Around right half of circle
+  ctx.bezierCurveTo(
+    ...pt(neckPos + headR * k, headCY + headR),
+    ...pt(neckPos + headR,  headCY + headR * k),
+    ...pt(neckPos + headR,  headCY)
+  );
+  ctx.bezierCurveTo(
+    ...pt(neckPos + headR,  neckH + headR * k),
+    ...pt(nR,               neckH),
+    ...pt(nR,               neckH)
+  );
+  // Down right side of neck
+  ctx.bezierCurveTo(...pt(nR, neckH), ...pt(nR, 0), ...pt(nR, 0));
   ctx.lineTo(x2, y2);
 }
 
@@ -106,12 +122,8 @@ function drawEdge(ctx, x1, y1, x2, y2, dir, seed) {
  * Trace the full jigsaw piece outline.
  * Inner rect sits at (pad, pad), size w×h.
  *
- * All edges are negated because drawEdge's normal (-ey*dir, ex*dir) points
- * inward for a CW path. Negating makes +1 = tab protrudes outward:
- *   Top    (L→R): ex=1,ey=0  → normal=(0,+dir)  → negate → tab goes up   ✓
- *   Right  (T→B): ex=0,ey=1  → normal=(-dir,0)  → negate → tab goes right ✓
- *   Bottom (R→L): ex=-1,ey=0 → normal=(0,-dir)  → negate → tab goes down  ✓
- *   Left   (B→T): ex=0,ey=-1 → normal=(+dir,0)  → negate → tab goes left  ✓
+ * All edge dirs are negated because drawEdge's normal (-ey*dir, ex*dir)
+ * points inward for a CW path. Negating flips to outward so +1 = tab out.
  */
 export function drawJigsawPath(ctx, w, h, edges, pad) {
   const x0 = pad, y0 = pad;
@@ -130,8 +142,6 @@ export function drawJigsawPath(ctx, w, h, edges, pad) {
 
 /**
  * Cut a single piece from the source image.
- * The canvas is larger than the piece grid cell to accommodate tab protrusions.
- * The source rect is also expanded so tab areas show real neighbouring pixels.
  */
 export function cutPiece(img, col, row, pieceW, pieceH, displayW, displayH, edges) {
   const pad    = getPad(displayW, displayH);
