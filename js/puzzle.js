@@ -307,7 +307,10 @@ function findNeighbourSnap(dragIndices) {
         pieceStates[i].y - expectedY
       );
 
+      console.log(`piece ${i} → neighbour ${nIdx}: edgeID match=${eI[myEdge]}, dist=${dist.toFixed(1)}, threshold=${threshold.toFixed(1)}`);
+
       if (dist <= threshold) {
+        console.log(`✅ SNAP: piece ${i} snaps to piece ${nIdx}`);
         return {
           dragIndex:      i,
           neighbourIndex: nIdx,
