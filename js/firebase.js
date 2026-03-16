@@ -86,6 +86,58 @@ export function solvePiece(puzzleId, pieceIndex, x, y) {
 }
 
 /**
+ * Batch-solve multiple pieces at once (for group snapping).
+ * updates = { [pieceIndex]: { x, y } }
+ */
+export function solveGroup(puzzleId, updates) {
+  const flat = {};
+  Object.entries(updates).forEach(([index, { x, y }]) => {
+    flat[`${index}/x`]       = x;
+    flat[`${index}/y`]       = y;
+    flat[`${index}/solved`]  = true;
+    flat[`${index}/lockedBy`] = null;
+  });
+  return update(ref(db, `puzzles/${puzzleId}/pieces`), flat);
+}
+
+/**
+ * Throttled batch position update for dragging a group.
+ * positions = [{ index, x, y }, ...]
+ */
+let lastGroupWrite = 0;
+export function updateGroupPosition(puzzleId, positions) {
+  const now = Date.now();
+  if (now - lastGroupWrite < 50) return;
+  lastGroupWrite = now;
+  const flat = {};
+  positions.forEach(({ index, x, y }) => {
+    flat[`${index}/x`] = x;
+    flat[`${index}/y`] = y;
+  });
+  update(ref(db, `puzzles/${puzzleId}/pieces`), flat);
+}
+
+/**
+ * Lock multiple pieces for a player (group drag start).
+ */
+export async function lockGroup(puzzleId, indices, playerId) {
+  const flat = {};
+  for (const index of indices) {
+    flat[`${index}/lockedBy`] = playerId;
+  }
+  await update(ref(db, `puzzles/${puzzleId}/pieces`), flat);
+}
+
+/**
+ * Unlock multiple pieces (group drag end without snap).
+ */
+export function unlockGroup(puzzleId, indices) {
+  const flat = {};
+  indices.forEach(i => { flat[`${i}/lockedBy`] = null; });
+  return update(ref(db, `puzzles/${puzzleId}/pieces`), flat);
+}
+
+/**
  * Subscribe to all piece changes for a puzzle.
  * @param {(pieceIndex: number, data: object) => void} callback
  * @returns {() => void} unsubscribe function
