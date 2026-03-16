@@ -69,18 +69,22 @@ function drawEdge(ctx, x1, y1, x2, y2, type, seed) {
   const len = Math.hypot(x2 - x1, y2 - y1);
   const ex  = (x2 - x1) / len;
   const ey  = (y2 - y1) / len;
-  // Outward normal (perpendicular, pointing "out" of the piece for this edge)
-  const nx  = -ey;
-  const ny  =  ex;
 
-  // Vary tab size per edge using seed for organic look (18%–28% of edge length)
-  const tabSize = len * (0.18 + seed * 0.10) * type;  // negative for blank
+  // Outward normal: perpendicular to edge direction, pointing AWAY from piece centre.
+  // For a path drawn clockwise (top→right→bottom→left), the outward normal is to the LEFT
+  // of the direction of travel, which is (-ey, ex) rotated: actually for CW path it's (ey, -ex).
+  // We flip with `type` so +1=tab protrudes out, -1=blank dips in.
+  const nx  =  ey * type;
+  const ny  = -ex * type;
+
+  // Vary tab size per edge using seed (18%–26% of edge length)
+  const tabSize = len * (0.18 + seed * 0.08);
 
   function p(along, perp) {
     return [x1 + ex * along + nx * perp, y1 + ey * along + ny * perp];
   }
 
-  // Two cubic beziers — neck then head, matching Gemini's formula
+  // Two cubic beziers forming neck + round head
   ctx.bezierCurveTo(
     ...p(len * 0.30, tabSize),
     ...p(len * 0.40, tabSize * 2.5),
@@ -110,13 +114,15 @@ export function drawJigsawPath(ctx, w, h, edges, pad) {
   ctx.beginPath();
   ctx.moveTo(x0, y0);
 
-  // Top: left→right, outward = up (-Y), normal already points up when we go left→right
+  // Path goes clockwise. For each edge, type +1 means tab protrudes OUTWARD.
+  // The normal in drawEdge is (ey*type, -ex*type) where (ex,ey) is the edge direction.
+  // Top:    direction (1,0),  so normal = (0,-1)*type → up   for type=+1 ✓
+  // Right:  direction (0,1),  so normal = (1, 0)*type → right for type=+1 ✓
+  // Bottom: direction (-1,0), so normal = (0, 1)*type → down  for type=+1 ✓
+  // Left:   direction (0,-1), so normal = (-1,0)*type → left  for type=+1 ✓
   drawEdge(ctx, x0, y0, x1, y0,  edges.top,    edges.seedTop);
-  // Right: top→bottom, outward = right (+X)
   drawEdge(ctx, x1, y0, x1, y1,  edges.right,  edges.seedRight);
-  // Bottom: right→left, outward = down (+Y)
   drawEdge(ctx, x1, y1, x0, y1,  edges.bottom, edges.seedBottom);
-  // Left: bottom→top, outward = left (-X)
   drawEdge(ctx, x0, y1, x0, y0,  edges.left,   edges.seedLeft);
 
   ctx.closePath();
@@ -141,30 +147,28 @@ export function cutPiece(img, col, row, pieceW, pieceH, displayW, displayH, edge
   const srcPadX = pad * pieceW / displayW;
   const srcPadY = pad * pieceH / displayH;
 
+  // 1. Clip to jigsaw shape FIRST
+  drawJigsawPath(ctx, displayW, displayH, edges, pad);
+  ctx.save();
+  ctx.clip();
+
+  // 2. Draw the expanded source region inside the clip
   ctx.drawImage(
     img,
-    col * pieceW - srcPadX,              // srcX (may be negative — canvas handles it)
-    row * pieceH - srcPadY,              // srcY
-    pieceW + srcPadX * 2,               // srcW
-    pieceH + srcPadY * 2,               // srcH
-    0, 0,                                // destX, destY
-    canvas.width, canvas.height          // destW, destH
+    col * pieceW - srcPadX,
+    row * pieceH - srcPadY,
+    pieceW + srcPadX * 2,
+    pieceH + srcPadY * 2,
+    0, 0,
+    canvas.width, canvas.height
   );
-
-  // Clip to jigsaw shape
-  drawJigsawPath(ctx, displayW, displayH, edges, pad);
-  ctx.save();
-  ctx.globalCompositeOperation = 'destination-in';
-  ctx.fill();
   ctx.restore();
 
-  // Subtle inner shadow for depth
-  ctx.save();
+  // 3. Draw border on top
   drawJigsawPath(ctx, displayW, displayH, edges, pad);
-  ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+  ctx.strokeStyle = 'rgba(0,0,0,0.35)';
   ctx.lineWidth   = 1.5;
   ctx.stroke();
-  ctx.restore();
 
   return canvas.toDataURL('image/png');
 }
