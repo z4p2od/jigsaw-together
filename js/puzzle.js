@@ -272,9 +272,10 @@ async function onMouseUp(e) {
 
     // Write snapped positions + clear locks in one batch so Firebase is
     // authoritative and the remote listener won't overwrite our positions.
-    await writeSnappedPositions(puzzleId, positions);
     mergeGroups(allIndices);
-    // Check if fully solved (all pieces in one group at correct positions)
+    // Persist groupId so late-joining players reconstruct the same groups
+    const gid = pieceGroup[allIndices[0]];
+    await writeSnappedPositions(puzzleId, positions, gid);
     checkSolvedState();
     updateProgress();
     checkCompletion();
@@ -360,46 +361,25 @@ function findNeighbourSnap(dragIndices) {
 }
 
 /**
- * Check if all pieces are now in the same group and at correct relative positions.
- * Mark them all solved if so.
+ * Check if all pieces are in one group → puzzle complete.
  */
 function checkSolvedState() {
-  const { cols, _displayW: dW, _displayH: dH } = meta;
-  const originX = (BOARD_W - dW * meta.cols) / 2;
-  const originY = (BOARD_H - dH * meta.rows) / 2;
-
-  // Find a reference piece that we can use to check if group is at correct absolute position
   for (let i = 0; i < totalPieces; i++) {
     const gid = pieceGroup[i];
     if (!gid) continue;
-    const g = groups[gid];
-    if (g.size !== totalPieces) continue;
-
-    // All pieces in one group — check if position is correct
-    const col = i % cols;
-    const row = Math.floor(i / cols);
-    const correctX = originX + col * dW;
-    const correctY = originY + row * dH;
-    const dist = Math.hypot(pieceStates[i].x - correctX, pieceStates[i].y - correctY);
-    if (dist < dW * 0.5) {
-      // Mark all solved
+    if (groups[gid]?.size === totalPieces) {
+      // All pieces joined — mark solved in Firebase
       const updates = {};
-      let newlySolved = 0;
-      g.forEach(j => {
-        if (!pieceStates[j].solved) newlySolved++;
-        const jCol = j % cols;
-        const jRow = Math.floor(j / cols);
-        const x = originX + jCol * dW;
-        const y = originY + jRow * dH;
-        pieceStates[j] = { ...pieceStates[j], x, y, solved: true, lockedBy: null };
-        movePieceEl(j, x, y);
+      groups[gid].forEach(j => {
+        pieceStates[j] = { ...pieceStates[j], solved: true, lockedBy: null };
         pieceEls[j]?.classList.add('solved');
-        updates[j] = { x, y };
+        updates[j] = { x: pieceStates[j].x, y: pieceStates[j].y };
       });
       solvedCount = totalPieces;
       solveGroup(puzzleId, updates);
+      return;
     }
-    return;
+    return; // only need to check first grouped piece
   }
 }
 
@@ -448,8 +428,13 @@ function mergeGroups(indices) {
 }
 
 function reconstructGroups() {
+  // Rebuild groups from groupId stored in Firebase (set when pieces snap together)
   pieceStates.forEach((p, i) => {
-    if (p.solved) checkAndMerge(i);
+    if (p.groupId) {
+      if (!groups[p.groupId]) groups[p.groupId] = new Set();
+      groups[p.groupId].add(i);
+      pieceGroup[i] = p.groupId;
+    }
   });
 }
 
@@ -458,16 +443,26 @@ function reconstructGroups() {
 function applyRemoteUpdate(index, data) {
   if (dragging && dragging.indices.includes(index)) return;
 
-  const wasSolved = pieceStates[index]?.solved;
+  const wasSolved  = pieceStates[index]?.solved;
+  const wasGroupId = pieceStates[index]?.groupId;
   pieceStates[index] = { ...pieceStates[index], ...data };
 
   movePieceEl(index, data.x, data.y);
+
+  // If this piece just joined a group (from another player's snap), merge locally
+  if (data.groupId && data.groupId !== wasGroupId) {
+    // Find all pieces with this groupId and merge them
+    const groupMembers = pieceStates
+      .map((p, i) => p.groupId === data.groupId ? i : -1)
+      .filter(i => i >= 0);
+    if (groupMembers.length > 1) mergeGroups(groupMembers);
+    updateProgress();
+  }
 
   if (data.solved && !wasSolved) {
     pieceEls[index]?.classList.add('solved');
     pieceEls[index]?.classList.remove('locked-by-other');
     solvedCount++;
-    checkAndMerge(index);
     updateProgress();
     checkCompletion();
     return;
