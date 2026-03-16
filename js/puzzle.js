@@ -97,7 +97,7 @@ async function renderAllPieces() {
   meta._displayH = displayH;
   meta._pad      = pad;
 
-  console.log(`Board: ${BOARD_W}×${BOARD_H}, piece display: ${displayW}×${displayH}, pad: ${pad}, threshold: ${Math.max(60, displayW * 0.6).toFixed(1)}`);
+  console.log(`Board: ${BOARD_W}×${BOARD_H}, piece display: ${displayW}×${displayH}, pad: ${pad}`);
   console.log('Piece positions:', pieceStates.map((p,i) => `${i}:(${p.x.toFixed(0)},${p.y.toFixed(0)})`).join(' '));
 
   const BATCH = 50;
@@ -271,7 +271,7 @@ async function onMouseUp(e) {
  */
 function findNeighbourSnap(dragIndices) {
   const { cols, rows, _displayW: dW, _displayH: dH, edges } = meta;
-  const threshold = Math.max(80, Math.min(dW, dH));  // up to one full piece dimension
+  const threshold = Math.max(40, Math.min(dW, dH) * 0.4);  // 40% of smaller piece side
   const dragSet   = new Set(dragIndices);
 
   // For each direction: which edge ID of piece i must match which edge ID of neighbour
@@ -301,13 +301,14 @@ function findNeighbourSnap(dragIndices) {
       // Border edges have id=0 — skip those
       if (eI[myEdge] === 0 || eI[myEdge] !== eN[neighbourEdge]) continue;
 
-      // Actual relative offset between piece i and its neighbour
+      // Actual relative offset: piece i minus its neighbour
       const actualDx = pieceStates[i].x - pieceStates[nIdx].x;
       const actualDy = pieceStates[i].y - pieceStates[nIdx].y;
 
-      // Expected relative offset if perfectly aligned
-      const expectedDx = dc * dW;
-      const expectedDy = dr * dH;
+      // Expected relative offset: neighbour is at (col+dc, row+dr) so piece i
+      // is dc steps LEFT and dr steps UP from neighbour → expected = (-dc*dW, -dr*dH)
+      const expectedDx = -dc * dW;
+      const expectedDy = -dr * dH;
 
       const dist = Math.hypot(actualDx - expectedDx, actualDy - expectedDy);
 
