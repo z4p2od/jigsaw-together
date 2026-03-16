@@ -6,7 +6,7 @@ import {
   solveGroup,
   onPiecesChanged,
 } from './firebase.js';
-import { cutPiece } from './app.js';
+import { cutPiece } from './jigsaw.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
