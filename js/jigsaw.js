@@ -44,8 +44,8 @@ export function generateEdges(cols, rows) {
 }
 
 export function getPad(displayW, displayH) {
-  // Must exceed tab protrusion of 22% of min side, with margin
-  return Math.ceil(Math.min(displayW, displayH) * 0.28);
+  // Must exceed max tab protrusion: neckH + 2*headR = 0.36*len, use 0.42 for margin
+  return Math.ceil(Math.min(displayW, displayH) * 0.42);
 }
 
 /**
@@ -74,21 +74,45 @@ function drawEdge(ctx, x1, y1, x2, y2, dir, seed) {
     return [x1 + ex * along + nx * perp, y1 + ey * along + ny * perp];
   }
 
-  // Smooth round bump — two cubic beziers forming a symmetric arch.
-  // Control points pulled outward at 30% and 70% along, peak at 50%.
-  // tabH = how far the bump protrudes (22% of edge length).
-  const tabH = len * 0.22;
+  // Classic jigsaw tab: narrow neck widening into a round head.
+  // Neck sits at 35%–65% of edge length, head is a circle on top.
+  const tabW  = len * 0.28;          // total tab width (neck span)
+  const nL    = len * 0.50 - tabW / 2;  // neck left  = 36%
+  const nR    = len * 0.50 + tabW / 2;  // neck right = 64%
+  const neckH = len * 0.08;             // how far up the neck rises
+  const headR = len * 0.14;             // radius of round head
+  const headY = neckH + headR;          // centre of head
 
+  const k = 0.5523; // bezier circle approximation constant
+
+  // Ease into neck left with a curved shoulder
+  ctx.bezierCurveTo(...pt(nL, 0),     ...pt(nL, neckH),  ...pt(nL, neckH));
+  // Left side of circle
   ctx.bezierCurveTo(
-    ...pt(len * 0.30, 0),
-    ...pt(len * 0.30, tabH),
-    ...pt(len * 0.50, tabH)
+    ...pt(nL,           neckH + headR * k),
+    ...pt(len*0.5 - headR, headY),
+    ...pt(len*0.5 - headR, headY)
   );
+  // Top of circle (left half)
   ctx.bezierCurveTo(
-    ...pt(len * 0.70, tabH),
-    ...pt(len * 0.70, 0),
-    ...pt(len,        0)
+    ...pt(len*0.5 - headR, headY + headR * k),
+    ...pt(len*0.5 - headR * k, headY + headR),
+    ...pt(len*0.5,         headY + headR)
   );
+  // Top of circle (right half)
+  ctx.bezierCurveTo(
+    ...pt(len*0.5 + headR * k, headY + headR),
+    ...pt(len*0.5 + headR, headY + headR * k),
+    ...pt(len*0.5 + headR, headY)
+  );
+  // Right side of circle
+  ctx.bezierCurveTo(
+    ...pt(nR,           neckH + headR * k),
+    ...pt(nR,           neckH),
+    ...pt(nR,           neckH)
+  );
+  // Ease out of neck right with a curved shoulder
+  ctx.bezierCurveTo(...pt(nR, neckH), ...pt(nR, 0), ...pt(len, 0));
 }
 
 /**
