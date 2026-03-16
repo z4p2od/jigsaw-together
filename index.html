@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Jigsaw Together</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <main class="landing">
+    <div>
+      <h1>Jigsaw <span>Together</span></h1>
+      <p class="subtitle">Upload a photo, share a link, solve it together.</p>
+    </div>
+
+    <div class="card">
+      <div class="upload-zone" id="upload-zone">
+        <input type="file" id="file-input" accept="image/*" />
+        <div id="upload-placeholder">
+          <div class="icon">🖼️</div>
+          <p><strong>Click or drag a photo here</strong></p>
+          <p>JPEG, PNG, WebP — up to 10MB</p>
+        </div>
+        <img class="preview" id="preview" alt="Preview" />
+      </div>
+
+      <div>
+        <p class="field-label">Pieces</p>
+        <div class="piece-options">
+          <label><input type="radio" name="pieces" value="24" /> <span>24</span></label>
+          <label><input type="radio" name="pieces" value="100" checked /> <span>100</span></label>
+          <label><input type="radio" name="pieces" value="250" /> <span>250</span></label>
+          <label><input type="radio" name="pieces" value="500" /> <span>500</span></label>
+          <label><input type="radio" name="pieces" value="1000" /> <span>1000</span></label>
+        </div>
+      </div>
+
+      <button class="btn" id="create-btn" disabled>Create Puzzle</button>
+      <p class="status" id="status"></p>
+    </div>
+  </main>
+
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>

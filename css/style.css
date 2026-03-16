@@ -1,0 +1,340 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #1a1a2e;
+  --surface: #16213e;
+  --surface2: #0f3460;
+  --accent: #e94560;
+  --accent2: #f5a623;
+  --text: #eaeaea;
+  --text-muted: #888;
+  --radius: 12px;
+  --shadow: 0 4px 24px rgba(0,0,0,0.4);
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+/* ── Landing page ── */
+
+.landing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 40px 20px;
+  gap: 40px;
+}
+
+.landing h1 {
+  font-size: 2.8rem;
+  font-weight: 800;
+  letter-spacing: -1px;
+  text-align: center;
+}
+
+.landing h1 span { color: var(--accent); }
+
+.landing p.subtitle {
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  text-align: center;
+  margin-top: -28px;
+}
+
+.card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 36px;
+  width: 100%;
+  max-width: 480px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* Upload zone */
+.upload-zone {
+  border: 2px dashed var(--surface2);
+  border-radius: var(--radius);
+  padding: 48px 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  position: relative;
+}
+
+.upload-zone:hover, .upload-zone.drag-over {
+  border-color: var(--accent);
+  background: rgba(233,69,96,0.05);
+}
+
+.upload-zone input[type="file"] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.upload-zone .icon {
+  font-size: 2.5rem;
+  margin-bottom: 12px;
+}
+
+.upload-zone p { color: var(--text-muted); font-size: 0.9rem; }
+.upload-zone p strong { color: var(--text); }
+
+.upload-zone .preview {
+  width: 100%;
+  max-height: 200px;
+  object-fit: contain;
+  border-radius: 8px;
+  display: none;
+}
+
+/* Piece count selector */
+.piece-options {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.piece-options label {
+  flex: 1;
+  min-width: 60px;
+  text-align: center;
+}
+
+.piece-options input[type="radio"] { display: none; }
+
+.piece-options span {
+  display: block;
+  padding: 10px 4px;
+  border-radius: 8px;
+  border: 2px solid var(--surface2);
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  transition: all 0.15s;
+}
+
+.piece-options input:checked + span {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(233,69,96,0.1);
+}
+
+.piece-options span:hover { border-color: var(--text-muted); color: var(--text); }
+
+/* Button */
+.btn {
+  display: block;
+  width: 100%;
+  padding: 14px;
+  border-radius: 8px;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+}
+
+.btn:hover { opacity: 0.9; }
+.btn:active { transform: scale(0.98); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+.field-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: -16px;
+}
+
+/* Status/error */
+.status {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  text-align: center;
+  min-height: 20px;
+}
+
+.status.error { color: var(--accent); }
+
+/* ── Puzzle page ── */
+
+.puzzle-page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.puzzle-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--surface2);
+  flex-shrink: 0;
+  gap: 12px;
+}
+
+.puzzle-header h2 {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.share-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg);
+  border-radius: 8px;
+  padding: 6px 12px;
+  flex: 1;
+  max-width: 360px;
+}
+
+.share-box span {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
+.share-box button {
+  background: var(--accent);
+  border: none;
+  color: #fff;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.15s;
+}
+
+.share-box button:hover { opacity: 0.85; }
+
+.progress-text {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* Board area */
+.puzzle-board-wrap {
+  flex: 1;
+  overflow: auto;
+  position: relative;
+  background: var(--bg);
+}
+
+#puzzle-board {
+  position: relative;
+  margin: 20px auto;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--surface2);
+  border-radius: 4px;
+  /* width/height set by JS */
+}
+
+/* Individual piece */
+.piece {
+  position: absolute;
+  cursor: grab;
+  transition: box-shadow 0.1s;
+  user-select: none;
+  border-radius: 2px;
+  will-change: transform;
+}
+
+.piece:hover { z-index: 10; }
+.piece.dragging {
+  cursor: grabbing;
+  z-index: 1000;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+}
+
+.piece.locked-by-other {
+  cursor: not-allowed;
+  outline: 2px solid var(--accent2);
+}
+
+.piece.solved {
+  cursor: default;
+  z-index: 1;
+}
+
+/* Loading overlay */
+#loading-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  z-index: 9999;
+}
+
+#loading-overlay p {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--surface2);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Celebration */
+#celebration {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.85);
+  z-index: 9998;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+}
+
+#celebration.show { display: flex; }
+
+#celebration h2 {
+  font-size: 3rem;
+  font-weight: 900;
+  color: var(--accent2);
+  text-align: center;
+}
+
+#celebration p {
+  color: var(--text-muted);
+  font-size: 1.1rem;
+}
+
+#celebration .btn { max-width: 240px; }
