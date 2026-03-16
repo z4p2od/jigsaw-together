@@ -215,7 +215,7 @@ async function onMouseUp(e) {
   const anchorX   = e.clientX - boardRect.left - offsetX;
   const anchorY   = e.clientY - boardRect.top  - offsetY;
 
-  // Update local positions first
+  // Apply final positions locally
   indices.forEach(i => {
     const x = anchorX + relOffsets[i].dx;
     const y = anchorY + relOffsets[i].dy;
@@ -224,108 +224,132 @@ async function onMouseUp(e) {
     movePieceEl(i, x, y);
   });
 
-  const snapped = checkSnap(anchorIndex, anchorX, anchorY);
-  if (snapped) {
+  // Check if any piece in the dragged group is close enough to snap to a neighbour
+  const snap = findNeighbourSnap(indices);
+  if (snap) {
+    // snap = { dragIndex, neighbourIndex, dx, dy }
+    // Shift the entire group so dragIndex aligns perfectly with its neighbour
     const updates = {};
-    let newlySolved = 0;
     indices.forEach(i => {
-      const x = snapped.x + relOffsets[i].dx;
-      const y = snapped.y + relOffsets[i].dy;
-      if (!pieceStates[i].solved) newlySolved++;
-      pieceStates[i] = { ...pieceStates[i], x, y, solved: true, lockedBy: null };
+      const x = pieceStates[i].x + snap.dx;
+      const y = pieceStates[i].y + snap.dy;
+      pieceStates[i] = { ...pieceStates[i], x, y, lockedBy: null };
       movePieceEl(i, x, y);
-      pieceEls[i]?.classList.add('solved');
       updates[i] = { x, y };
     });
-    solvedCount += newlySolved;
-    await solveGroup(puzzleId, updates);
-    // Merge with any solved neighbours
-    indices.forEach(i => checkAndMerge(i));
+    // Update Firebase positions (not solved yet — just merged)
+    await unlockGroup(puzzleId, indices);
+    // Merge groups locally
+    mergeGroups([...indices, snap.neighbourIndex,
+      ...(pieceGroup[snap.neighbourIndex] ? [...groups[pieceGroup[snap.neighbourIndex]]] : [])
+    ]);
+    // Check if fully solved (all pieces in one group at correct positions)
+    checkSolvedState();
     updateProgress();
     checkCompletion();
   } else {
-    // Even if not snapping to grid, check if close enough to snap to a neighbour group
-    const neighbourSnap = checkSnapToNeighbour(anchorIndex, anchorX, anchorY);
-    if (neighbourSnap) {
-      const updates = {};
-      let newlySolved = 0;
-      indices.forEach(i => {
-        const x = neighbourSnap.x + relOffsets[i].dx;
-        const y = neighbourSnap.y + relOffsets[i].dy;
-        if (!pieceStates[i].solved) newlySolved++;
-        pieceStates[i] = { ...pieceStates[i], x, y, solved: true, lockedBy: null };
-        movePieceEl(i, x, y);
-        pieceEls[i]?.classList.add('solved');
-        updates[i] = { x, y };
-      });
-      solvedCount += newlySolved;
-      await solveGroup(puzzleId, updates);
-      indices.forEach(i => checkAndMerge(i));
-      updateProgress();
-      checkCompletion();
-    } else {
-      await unlockGroup(puzzleId, indices);
-      indices.forEach(i => { pieceStates[i].lockedBy = null; });
-    }
+    await unlockGroup(puzzleId, indices);
+    indices.forEach(i => { pieceStates[i].lockedBy = null; });
   }
 }
 
-// ── Snap ──────────────────────────────────────────────────────────────────────
-
-/** Snap to absolute correct grid position. */
-function checkSnap(index, x, y) {
-  const { cols, _displayW: dW, _displayH: dH } = meta;
-  const col      = index % cols;
-  const row      = Math.floor(index / cols);
-  const originX  = (BOARD_W - dW * meta.cols) / 2;
-  const originY  = (BOARD_H - dH * meta.rows) / 2;
-  const correctX = originX + col * dW;
-  const correctY = originY + row * dH;
-  const threshold = Math.max(20, dW * 0.3);
-  const dist = Math.hypot(x - correctX, y - correctY);
-  return dist <= threshold ? { x: correctX, y: correctY } : null;
-}
+// ── Snap / merge ──────────────────────────────────────────────────────────────
 
 /**
- * Snap to a solved neighbour piece.
- * If the dragged piece is within threshold of where it should sit
- * relative to any solved neighbour, snap it to the correct grid position.
+ * Check if any piece in the dragged group is close enough to snap
+ * to a neighbouring piece that is NOT in the same group.
+ *
+ * Returns { dragIndex, neighbourIndex, dx, dy } — the correction offset
+ * to apply to the whole group so dragIndex sits exactly next to neighbourIndex.
+ * Returns null if no snap found.
  */
-function checkSnapToNeighbour(index, x, y) {
+function findNeighbourSnap(dragIndices) {
   const { cols, rows, _displayW: dW, _displayH: dH } = meta;
-  const col     = index % cols;
-  const row     = Math.floor(index / cols);
-  const originX = (BOARD_W - dW * meta.cols) / 2;
-  const originY = (BOARD_H - dH * meta.rows) / 2;
-  const threshold = Math.max(20, dW * 0.35);
+  const threshold = Math.max(25, dW * 0.35);
+  const dragSet = new Set(dragIndices);
 
-  const neighbours = [
-    { dc:  0, dr: -1 },
-    { dc:  0, dr:  1 },
-    { dc: -1, dr:  0 },
-    { dc:  1, dr:  0 },
-  ];
+  for (const i of dragIndices) {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
 
-  for (const { dc, dr } of neighbours) {
-    const nCol = col + dc;
-    const nRow = row + dr;
-    if (nCol < 0 || nCol >= cols || nRow < 0 || nRow >= rows) continue;
-    const nIdx = nRow * cols + nCol;
-    if (!pieceStates[nIdx]?.solved) continue;
+    const neighbours = [
+      { dc:  0, dr: -1 },
+      { dc:  0, dr:  1 },
+      { dc: -1, dr:  0 },
+      { dc:  1, dr:  0 },
+    ];
 
-    // Where should our piece sit if correctly placed next to this neighbour?
-    const expectedX = pieceStates[nIdx].x - dc * dW;
-    const expectedY = pieceStates[nIdx].y - dr * dH;
-    const d = Math.hypot(x - expectedX, y - expectedY);
-    if (d <= threshold) {
-      // Return the correct absolute grid position for our piece
-      return {
-        x: originX + col * dW,
-        y: originY + row * dH,
-      };
+    for (const { dc, dr } of neighbours) {
+      const nCol = col + dc;
+      const nRow = row + dr;
+      if (nCol < 0 || nCol >= cols || nRow < 0 || nRow >= rows) continue;
+      const nIdx = nRow * cols + nCol;
+      if (dragSet.has(nIdx)) continue; // same group, skip
+
+      // Where should piece i sit relative to neighbour nIdx?
+      const expectedX = pieceStates[nIdx].x + dc * dW;
+      const expectedY = pieceStates[nIdx].y + dr * dH;
+
+      const dist = Math.hypot(
+        pieceStates[i].x - expectedX,
+        pieceStates[i].y - expectedY
+      );
+
+      if (dist <= threshold) {
+        return {
+          dragIndex:       i,
+          neighbourIndex:  nIdx,
+          dx:              expectedX - pieceStates[i].x,
+          dy:              expectedY - pieceStates[i].y,
+        };
+      }
     }
   }
   return null;
+}
+
+/**
+ * Check if all pieces are now in the same group and at correct relative positions.
+ * Mark them all solved if so.
+ */
+function checkSolvedState() {
+  const { cols, _displayW: dW, _displayH: dH } = meta;
+  const originX = (BOARD_W - dW * meta.cols) / 2;
+  const originY = (BOARD_H - dH * meta.rows) / 2;
+
+  // Find a reference piece that we can use to check if group is at correct absolute position
+  for (let i = 0; i < totalPieces; i++) {
+    const gid = pieceGroup[i];
+    if (!gid) continue;
+    const g = groups[gid];
+    if (g.size !== totalPieces) continue;
+
+    // All pieces in one group — check if position is correct
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const correctX = originX + col * dW;
+    const correctY = originY + row * dH;
+    const dist = Math.hypot(pieceStates[i].x - correctX, pieceStates[i].y - correctY);
+    if (dist < dW * 0.5) {
+      // Mark all solved
+      const updates = {};
+      let newlySolved = 0;
+      g.forEach(j => {
+        if (!pieceStates[j].solved) newlySolved++;
+        const jCol = j % cols;
+        const jRow = Math.floor(j / cols);
+        const x = originX + jCol * dW;
+        const y = originY + jRow * dH;
+        pieceStates[j] = { ...pieceStates[j], x, y, solved: true, lockedBy: null };
+        movePieceEl(j, x, y);
+        pieceEls[j]?.classList.add('solved');
+        updates[j] = { x, y };
+      });
+      solvedCount = totalPieces;
+      solveGroup(puzzleId, updates);
+    }
+    return;
+  }
 }
 
 // ── Group merging ─────────────────────────────────────────────────────────────
@@ -408,11 +432,19 @@ function applyRemoteUpdate(index, data) {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function updateProgress() {
-  progressEl.textContent = `${solvedCount} / ${totalPieces} pieces`;
+  // Count pieces that are in a group (merged) as "placed"
+  const placed = pieceStates.filter((p, i) => pieceGroup[i] || p.solved).length;
+  progressEl.textContent = `${placed} / ${totalPieces} pieces`;
 }
 
 function checkCompletion() {
   if (solvedCount >= totalPieces) {
+    if (unsubscribe) unsubscribe();
+    celebration.classList.add('show');
+  }
+  // Also check if all pieces are in one group
+  const gids = new Set(pieceGroup.filter(Boolean));
+  if (gids.size === 1 && groups[[...gids][0]]?.size === totalPieces) {
     if (unsubscribe) unsubscribe();
     celebration.classList.add('show');
   }
