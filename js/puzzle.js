@@ -257,36 +257,48 @@ async function onMouseUp(e) {
 
 /**
  * Check if any piece in the dragged group is close enough to snap
- * to a neighbouring piece that is NOT in the same group.
+ * to a neighbouring piece outside the group.
  *
- * Returns { dragIndex, neighbourIndex, dx, dy } — the correction offset
- * to apply to the whole group so dragIndex sits exactly next to neighbourIndex.
- * Returns null if no snap found.
+ * Uses edge IDs to ensure only truly adjacent pieces snap together.
+ * Each shared edge has a unique ID — piece A's right edge ID must equal
+ * piece B's left edge ID (they are the same physical edge).
+ *
+ * Returns { dragIndex, neighbourIndex, dx, dy } — exact correction offset
+ * to perfectly align the two pieces. Returns null if no snap found.
  */
 function findNeighbourSnap(dragIndices) {
-  const { cols, rows, _displayW: dW, _displayH: dH } = meta;
-  const threshold = Math.max(25, dW * 0.35);
-  const dragSet = new Set(dragIndices);
+  const { cols, rows, _displayW: dW, _displayH: dH, edges } = meta;
+  const threshold = Math.max(25, dW * 0.4);
+  const dragSet   = new Set(dragIndices);
+
+  // For each direction: which edge ID of piece i must match which edge ID of neighbour
+  const checks = [
+    { dc:  0, dr: -1, myEdge: 'idTop',    neighbourEdge: 'idBottom' }, // neighbour above
+    { dc:  0, dr:  1, myEdge: 'idBottom', neighbourEdge: 'idTop'    }, // neighbour below
+    { dc: -1, dr:  0, myEdge: 'idLeft',   neighbourEdge: 'idRight'  }, // neighbour left
+    { dc:  1, dr:  0, myEdge: 'idRight',  neighbourEdge: 'idLeft'   }, // neighbour right
+  ];
 
   for (const i of dragIndices) {
-    const col = i % cols;
-    const row = Math.floor(i / cols);
+    const col    = i % cols;
+    const row    = Math.floor(i / cols);
+    const eI     = edges[i];
 
-    const neighbours = [
-      { dc:  0, dr: -1 },
-      { dc:  0, dr:  1 },
-      { dc: -1, dr:  0 },
-      { dc:  1, dr:  0 },
-    ];
-
-    for (const { dc, dr } of neighbours) {
+    for (const { dc, dr, myEdge, neighbourEdge } of checks) {
       const nCol = col + dc;
       const nRow = row + dr;
       if (nCol < 0 || nCol >= cols || nRow < 0 || nRow >= rows) continue;
-      const nIdx = nRow * cols + nCol;
-      if (dragSet.has(nIdx)) continue; // same group, skip
 
-      // Where should piece i sit relative to neighbour nIdx?
+      const nIdx = nRow * cols + nCol;
+      if (dragSet.has(nIdx)) continue; // same dragged group
+
+      const eN = edges[nIdx];
+
+      // Edge IDs must match (they share the same physical edge)
+      // Border edges have id=0 — skip those
+      if (eI[myEdge] === 0 || eI[myEdge] !== eN[neighbourEdge]) continue;
+
+      // Where piece i should be to perfectly align with nIdx
       const expectedX = pieceStates[nIdx].x + dc * dW;
       const expectedY = pieceStates[nIdx].y + dr * dH;
 
@@ -297,10 +309,10 @@ function findNeighbourSnap(dragIndices) {
 
       if (dist <= threshold) {
         return {
-          dragIndex:       i,
-          neighbourIndex:  nIdx,
-          dx:              expectedX - pieceStates[i].x,
-          dy:              expectedY - pieceStates[i].y,
+          dragIndex:      i,
+          neighbourIndex: nIdx,
+          dx:             expectedX - pieceStates[i].x,
+          dy:             expectedY - pieceStates[i].y,
         };
       }
     }

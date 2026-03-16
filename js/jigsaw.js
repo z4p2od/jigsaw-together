@@ -6,20 +6,20 @@
  * Adjacent pieces always have complementary edges.
  */
 export function generateEdges(cols, rows) {
-  // Each internal edge gets a direction (+1/-1) and a random seed for shape variation
-  // Seeds are shared between neighbouring pieces so both sides render identically
+  let nextId = 1; // unique ID counter for each shared internal edge
+
   const hEdges = Array.from({ length: rows + 1 }, (_, r) =>
     Array.from({ length: cols }, () =>
       r === 0 || r === rows
-        ? { dir: 0, seed: 0 }
-        : { dir: Math.random() < 0.5 ? 1 : -1, seed: Math.random() * 1000 }
+        ? { dir: 0, seed: 0, id: 0 }
+        : { dir: Math.random() < 0.5 ? 1 : -1, seed: Math.random() * 1000, id: nextId++ }
     )
   );
   const vEdges = Array.from({ length: rows }, () =>
     Array.from({ length: cols + 1 }, (_, c) =>
       c === 0 || c === cols
-        ? { dir: 0, seed: 0 }
-        : { dir: Math.random() < 0.5 ? 1 : -1, seed: Math.random() * 1000 }
+        ? { dir: 0, seed: 0, id: 0 }
+        : { dir: Math.random() < 0.5 ? 1 : -1, seed: Math.random() * 1000, id: nextId++ }
     )
   );
 
@@ -31,14 +31,12 @@ export function generateEdges(cols, rows) {
       const l = vEdges[row][col];
       const r = vEdges[row][col + 1];
       edges.push({
-        top:       t.dir,
-        bottom:    b.dir,
-        left:      l.dir,
-        right:     r.dir,
-        seedTop:    t.seed,
-        seedBottom: b.seed,
-        seedLeft:   l.seed,
-        seedRight:  r.seed,
+        top:        t.dir,  bottom:     b.dir,
+        left:       l.dir,  right:      r.dir,
+        seedTop:    t.seed, seedBottom: b.seed,
+        seedLeft:   l.seed, seedRight:  r.seed,
+        idTop:      t.id,   idBottom:   b.id,
+        idLeft:     l.id,   idRight:    r.id,
       });
     }
   }
