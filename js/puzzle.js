@@ -271,7 +271,7 @@ async function onMouseUp(e) {
  */
 function findNeighbourSnap(dragIndices) {
   const { cols, rows, _displayW: dW, _displayH: dH, edges } = meta;
-  const threshold = Math.max(60, dW * 0.6);  // generous — half a piece width
+  const threshold = Math.max(80, Math.min(dW, dH));  // up to one full piece dimension
   const dragSet   = new Set(dragIndices);
 
   // For each direction: which edge ID of piece i must match which edge ID of neighbour
