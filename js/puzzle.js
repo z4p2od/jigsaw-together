@@ -301,24 +301,28 @@ function findNeighbourSnap(dragIndices) {
       // Border edges have id=0 — skip those
       if (eI[myEdge] === 0 || eI[myEdge] !== eN[neighbourEdge]) continue;
 
-      // Where piece i should be to perfectly align with nIdx
-      const expectedX = pieceStates[nIdx].x + dc * dW;
-      const expectedY = pieceStates[nIdx].y + dr * dH;
+      // Actual relative offset between piece i and its neighbour
+      const actualDx = pieceStates[i].x - pieceStates[nIdx].x;
+      const actualDy = pieceStates[i].y - pieceStates[nIdx].y;
 
-      const dist = Math.hypot(
-        pieceStates[i].x - expectedX,
-        pieceStates[i].y - expectedY
-      );
+      // Expected relative offset if perfectly aligned
+      const expectedDx = dc * dW;
+      const expectedDy = dr * dH;
 
-      console.log(`piece ${i} → neighbour ${nIdx}: edgeID match=${eI[myEdge]}, dist=${dist.toFixed(1)}, threshold=${threshold.toFixed(1)}`);
+      const dist = Math.hypot(actualDx - expectedDx, actualDy - expectedDy);
+
+      console.log(`piece ${i} → neighbour ${nIdx}: edgeID=${eI[myEdge]}, dist=${dist.toFixed(1)}, threshold=${threshold.toFixed(1)}`);
 
       if (dist <= threshold) {
-        console.log(`✅ SNAP: piece ${i} snaps to piece ${nIdx}`);
+        // Shift piece i (and its group) so it aligns perfectly with nIdx
+        const snapDx = expectedDx - actualDx;
+        const snapDy = expectedDy - actualDy;
+        console.log(`✅ SNAP: piece ${i} → ${nIdx}`);
         return {
           dragIndex:      i,
           neighbourIndex: nIdx,
-          dx:             expectedX - pieceStates[i].x,
-          dy:             expectedY - pieceStates[i].y,
+          dx:             snapDx,
+          dy:             snapDy,
         };
       }
     }
