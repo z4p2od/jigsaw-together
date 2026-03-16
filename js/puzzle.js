@@ -242,17 +242,51 @@ async function onMouseUp(e) {
 
 // ── Snap ──────────────────────────────────────────────────────────────────────
 
+/**
+ * Check if a piece (or group anchor) should snap.
+ * Two cases:
+ *  1. Close enough to its absolute correct grid position (snap to board)
+ *  2. Close enough to a solved neighbour (snap to neighbour → triggers merge)
+ * Returns { x, y } of the correct anchor position if snap, else null.
+ */
 function checkSnap(index, x, y) {
-  const { cols, _displayW: dW, _displayH: dH } = meta;
+  const { cols, rows, _displayW: dW, _displayH: dH } = meta;
   const col      = index % cols;
   const row      = Math.floor(index / cols);
   const originX  = (BOARD_W - dW * meta.cols) / 2;
   const originY  = (BOARD_H - dH * meta.rows) / 2;
   const correctX = originX + col * dW;
   const correctY = originY + row * dH;
-  const threshold = Math.max(15, dW * 0.25);
-  const dist = Math.hypot(x + dW / 2 - (correctX + dW / 2), y + dH / 2 - (correctY + dH / 2));
-  return dist <= threshold ? { x: correctX, y: correctY } : null;
+  const threshold = Math.max(20, dW * 0.3);
+
+  // Case 1: close to absolute correct position
+  const dist = Math.hypot(x - correctX, y - correctY);
+  if (dist <= threshold) return { x: correctX, y: correctY };
+
+  // Case 2: close to a solved neighbour
+  // Check each neighbour — if the dragged piece is where it should be
+  // relative to that neighbour, snap to it
+  const neighbours = [
+    { idx: index - cols, dc: 0,  dr: -1 },  // above
+    { idx: index + cols, dc: 0,  dr:  1 },  // below
+    { idx: index - 1,    dc: -1, dr:  0 },  // left
+    { idx: index + 1,    dc:  1, dr:  0 },  // right
+  ];
+
+  for (const { idx, dc, dr } of neighbours) {
+    const nCol = col + dc;
+    const nRow = row + dr;
+    if (nCol < 0 || nCol >= cols || nRow < 0 || nRow >= rows) continue;
+    if (!pieceStates[idx]?.solved) continue;
+
+    // Where should our piece be if placed correctly next to this neighbour?
+    const expectedX = pieceStates[idx].x - dc * dW;
+    const expectedY = pieceStates[idx].y - dr * dH;
+    const d = Math.hypot(x - expectedX, y - expectedY);
+    if (d <= threshold) return { x: correctX, y: correctY };
+  }
+
+  return null;
 }
 
 // ── Group merging ─────────────────────────────────────────────────────────────

@@ -50,44 +50,56 @@ function drawEdge(ctx, x1, y1, x2, y2, dir) {
   }
 
   const len = Math.hypot(x2 - x1, y2 - y1);
+  const ex  = (x2 - x1) / len;
+  const ey  = (y2 - y1) / len;
+  // Outward normal — flipped by dir so +1=out, -1=in
+  const nx  = -ey * dir;
+  const ny  =  ex * dir;
 
-  // Unit vectors along and perpendicular to the edge
-  const ex = (x2 - x1) / len;   // along edge
-  const ey = (y2 - y1) / len;
-  const nx = -ey * dir;          // normal, pointing outward (sign = dir)
-  const ny =  ex * dir;
-
-  // Tab height as fraction of edge length — classic jigsaw proportions
-  const h = len * 0.35;
-
-  // Helper: convert local (along, perp) coords to world space
-  function pt(along, perp) {
-    return [
-      x1 + ex * along + nx * perp,
-      y1 + ey * along + ny * perp,
-    ];
+  // Helper: world-space point from (along-edge, perpendicular) local coords
+  function pt(a, p) {
+    return [x1 + ex * a + nx * p, y1 + ey * a + ny * p];
   }
 
-  // Anchor points (along the edge path, based on piecemaker proportions)
-  const aL  = pt(len * 0.37, 0);          // left base of tab
-  const aLt = pt(len * 0.37, h * 0.6);   // left shoulder
-  const aT  = pt(len * 0.50, h);          // tab tip
-  const aRt = pt(len * 0.63, h * 0.6);   // right shoulder
-  const aR  = pt(len * 0.63, 0);          // right base of tab
+  // Classic rounded tab: flat sides, semicircular top
+  // Proportions: neck at 38–62% of edge, height = 28% of edge length
+  const neckL  = len * 0.38;   // left neck x
+  const neckR  = len * 0.62;   // right neck x
+  const neckH  = len * 0.10;   // small fillet where neck meets edge
+  const tabH   = len * 0.28;   // how far the tab protrudes
+  const tabW   = (neckR - neckL);  // tab width
+  const r      = tabW / 2;     // radius of the semicircular cap
 
-  // Control points
-  const c1 = pt(len * 0.20, 0);           // ease into left base
-  const c2 = pt(len * 0.30, h * 0.6);    // pull up to left shoulder
-  const c3 = pt(len * 0.37, h * 1.1);    // overshoot to tip (rounded top)
-  const c4 = pt(len * 0.63, h * 1.1);    // overshoot from tip
-  const c5 = pt(len * 0.70, h * 0.6);    // pull down to right shoulder
-  const c6 = pt(len * 0.80, 0);           // ease into right base
+  // Key points
+  const pNL  = pt(neckL, 0);           // left neck base
+  const pNLt = pt(neckL, tabH - r);    // left neck top (where arc starts)
+  const pNRt = pt(neckR, tabH - r);    // right neck top (where arc ends)
+  const pNR  = pt(neckR, 0);           // right neck base
 
-  ctx.lineTo(...aL);
-  ctx.bezierCurveTo(...c1, ...c2, ...aLt);
-  ctx.bezierCurveTo(...c3, ...c4, ...aT);
-  ctx.bezierCurveTo(...c4, ...c5, ...aRt);
-  ctx.bezierCurveTo(...c6, ...aR, ...aR);
+  // Centre of the semicircular cap
+  const cMx  = pt(len * 0.50, tabH - r);
+
+  // Use bezier curves to draw: flat → left neck (straight) → semicircle → right neck → flat
+  // Left fillet
+  ctx.lineTo(...pNL);
+  // Left side going up (straight, using bezier for smooth join)
+  ctx.bezierCurveTo(...pt(neckL, neckH), ...pt(neckL, tabH - r), ...pNLt);
+  // Semicircular cap via two bezier arcs (each quarter circle)
+  // A quarter-circle bezier approximation uses k = 0.5523
+  const k   = 0.5523;
+  const mid = pt(len * 0.50, tabH);    // very tip
+  ctx.bezierCurveTo(
+    ...pt(neckL,        tabH - r + r * k),
+    ...pt(len * 0.50 - r * k, tabH),
+    ...mid
+  );
+  ctx.bezierCurveTo(
+    ...pt(len * 0.50 + r * k, tabH),
+    ...pt(neckR,        tabH - r + r * k),
+    ...pNRt
+  );
+  // Right side going down
+  ctx.bezierCurveTo(...pt(neckR, tabH - r), ...pt(neckR, neckH), ...pNR);
   ctx.lineTo(x2, y2);
 }
 
