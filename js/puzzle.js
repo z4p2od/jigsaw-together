@@ -3,6 +3,7 @@ import {
   lockGroup,
   unlockGroup,
   updateGroupPosition,
+  writeSnappedPositions,
   solveGroup,
   onPiecesChanged,
 } from './firebase.js';
@@ -246,7 +247,7 @@ async function onMouseUp(e) {
     const anchorX   = pieceStates[anchorIdx].x;
     const anchorY   = pieceStates[anchorIdx].y;
 
-    const updates = {};
+    const positions = [];
     allIndices.forEach(i => {
       const iCol = i % cols;
       const iRow = Math.floor(i / cols);
@@ -254,10 +255,12 @@ async function onMouseUp(e) {
       const y = anchorY + (iRow - anchorRow) * dH;
       pieceStates[i] = { ...pieceStates[i], x, y, lockedBy: null };
       movePieceEl(i, x, y);
-      updates[i] = { x, y };
+      positions.push({ index: i, x, y });
     });
 
-    await unlockGroup(puzzleId, indices);
+    // Write snapped positions + clear locks in one batch so Firebase is
+    // authoritative and the remote listener won't overwrite our positions.
+    await writeSnappedPositions(puzzleId, positions);
     mergeGroups(allIndices);
     // Check if fully solved (all pieces in one group at correct positions)
     checkSolvedState();

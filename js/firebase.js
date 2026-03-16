@@ -138,6 +138,20 @@ export function unlockGroup(puzzleId, indices) {
 }
 
 /**
+ * Write snapped positions and clear locks in one atomic batch.
+ * positions = [{ index, x, y }, ...]
+ */
+export function writeSnappedPositions(puzzleId, positions) {
+  const flat = {};
+  positions.forEach(({ index, x, y }) => {
+    flat[`${index}/x`]        = x;
+    flat[`${index}/y`]        = y;
+    flat[`${index}/lockedBy`] = null;
+  });
+  return update(ref(db, `puzzles/${puzzleId}/pieces`), flat);
+}
+
+/**
  * Subscribe to all piece changes for a puzzle.
  * @param {(pieceIndex: number, data: object) => void} callback
  * @returns {() => void} unsubscribe function
