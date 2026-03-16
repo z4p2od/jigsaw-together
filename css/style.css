@@ -28,7 +28,7 @@ body {
   justify-content: center;
   min-height: 100vh;
   padding: 40px 20px;
-  gap: 40px;
+  gap: 24px;
 }
 
 .landing h1 {
@@ -36,6 +36,7 @@ body {
   font-weight: 800;
   letter-spacing: -1px;
   text-align: center;
+  margin-bottom: 8px;
 }
 
 .landing h1 span { color: var(--accent); }
@@ -44,7 +45,6 @@ body {
   color: var(--text-muted);
   font-size: 1.1rem;
   text-align: center;
-  margin-top: -28px;
 }
 
 .card {
@@ -101,14 +101,13 @@ body {
 /* Piece count selector */
 .piece-options {
   display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .piece-options label {
   flex: 1;
-  min-width: 60px;
   text-align: center;
+  min-width: 0;
 }
 
 .piece-options input[type="radio"] { display: none; }
