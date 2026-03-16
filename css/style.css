@@ -247,6 +247,7 @@ body {
   overflow: auto;
   position: relative;
   background: var(--bg);
+  touch-action: pan-x pan-y;
 }
 
 #puzzle-board {
@@ -266,6 +267,7 @@ body {
   user-select: none;
   border-radius: 2px;
   will-change: transform;
+  touch-action: none;
 }
 
 .piece:hover { z-index: 10; }
@@ -349,4 +351,11 @@ body {
   width: auto;
   padding: 8px 20px;
   font-size: 0.9rem;
+}
+
+@media (max-width: 960px) {
+  .puzzle-board-wrap {
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+  }
 }

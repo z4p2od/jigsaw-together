@@ -156,6 +156,9 @@ function attachDragListeners() {
   board.addEventListener('mousedown', onMouseDown);
   window.addEventListener('mousemove', onMouseMove);
   window.addEventListener('mouseup',   onMouseUp);
+  board.addEventListener('touchstart', onTouchStart, { passive: false });
+  window.addEventListener('touchmove',  onTouchMove,  { passive: false });
+  window.addEventListener('touchend',   onTouchEnd);
 }
 
 async function onMouseDown(e) {
@@ -283,6 +286,26 @@ async function onMouseUp(e) {
     await unlockGroup(puzzleId, indices);
     indices.forEach(i => { pieceStates[i].lockedBy = null; });
   }
+}
+
+function onTouchStart(e) {
+  const touch = e.touches[0];
+  onMouseDown({ clientX: touch.clientX, clientY: touch.clientY,
+                target: document.elementFromPoint(touch.clientX, touch.clientY) })
+    .then(() => { if (dragging) e.preventDefault(); });
+}
+
+function onTouchMove(e) {
+  if (!dragging) return;
+  e.preventDefault();
+  const touch = e.touches[0];
+  onMouseMove({ clientX: touch.clientX, clientY: touch.clientY });
+}
+
+function onTouchEnd(e) {
+  if (!dragging) return;
+  const touch = e.changedTouches[0];
+  onMouseUp({ clientX: touch.clientX, clientY: touch.clientY });
 }
 
 // ── Snap / merge ──────────────────────────────────────────────────────────────
