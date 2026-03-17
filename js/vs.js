@@ -1124,26 +1124,23 @@ function appendChatMessage(msg) {
 }
 
 function spawnBoardEmoji(msg) {
-  // Use fixed positioning relative to each board's visible rect,
-  // appended to body so overflow:auto on the wrap doesn't clip them
-  [board, oppBoard].forEach(target => {
-    if (!target) return;
-    const rect = target.getBoundingClientRect();
-    if (rect.width === 0) return;
-    for (let i = 0; i < 10; i++) {
-      const x = rect.left + 40 + Math.random() * (rect.width  - 80);
-      const y = rect.top  + 40 + Math.random() * (rect.height - 80);
-      const el = document.createElement('div');
-      el.className = 'board-emoji';
-      el.textContent = msg.text;
-      el.style.position = 'fixed';
-      el.style.left = x + 'px';
-      el.style.top  = y + 'px';
-      el.style.animationDelay = (i * 60) + 'ms';
-      document.body.appendChild(el);
-      el.addEventListener('animationend', () => el.remove());
-    }
-  });
+  // Sender sees emoji on opponent's board; receiver sees it on their own board
+  const target = (msg.playerId === playerId) ? oppBoard : board;
+  if (!target) return;
+  const rect = target.getBoundingClientRect();
+  if (rect.width === 0) return;
+  for (let i = 0; i < 10; i++) {
+    const x = rect.left + 40 + Math.random() * (rect.width  - 80);
+    const y = rect.top  + 40 + Math.random() * (rect.height - 80);
+    const el = document.createElement('div');
+    el.className = 'board-emoji';
+    el.textContent = msg.text;
+    el.style.left = x + 'px';
+    el.style.top  = y + 'px';
+    el.style.animationDelay = (i * 60) + 'ms';
+    document.body.appendChild(el);
+    el.addEventListener('animationend', () => el.remove());
+  }
 }
 
 function isSingleEmoji(text) {
