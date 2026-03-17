@@ -13,6 +13,7 @@ import {
   setStartedAt,
   updatePieceRotation,
   updateGroupRotation,
+  updateGroupRotationAndPositions,
 } from './firebase.js';
 import { cutPiece, getPad } from './jigsaw.js';
 
@@ -481,15 +482,39 @@ function rotateAtIndex(index) {
   const gid     = pieceGroup[index];
   const indices = gid ? [...groups[gid]] : [index];
   const newRot  = ((pieceStates[index].rotation ?? 0) + 90) % 360;
-  indices.forEach(i => {
-    pieceStates[i].rotation = newRot;
-    rotatePieceEl(i, newRot);
-  });
-  if (indices.length > 1) {
-    updateGroupRotation(puzzleId, indices, newRot);
-  } else {
+  const { _displayW: dW, _displayH: dH } = meta;
+
+  if (indices.length === 1) {
+    // Single piece — update rotation only, position unchanged
+    pieceStates[index].rotation = newRot;
+    rotatePieceEl(index, newRot);
     updatePieceRotation(puzzleId, index, newRot);
+    return;
   }
+
+  // Group — rotate all piece positions 90° CW around the group's bounding-box centre.
+  // Each piece's logical position is its top-left inner-rect corner (x, y).
+  // The piece centre is at (x + dW/2, y + dH/2).
+  const cx = indices.reduce((s, i) => s + pieceStates[i].x + dW / 2, 0) / indices.length;
+  const cy = indices.reduce((s, i) => s + pieceStates[i].y + dH / 2, 0) / indices.length;
+
+  const positions = [];
+  indices.forEach(i => {
+    // Rotate piece centre 90° CW around (cx, cy): newX = cx+(py-cy), newY = cy-(px-cx)
+    const px   = pieceStates[i].x + dW / 2;
+    const py   = pieceStates[i].y + dH / 2;
+    const newX = cx + (py - cy) - dW / 2;
+    const newY = cy - (px - cx) - dH / 2;
+    pieceStates[i].x        = newX;
+    pieceStates[i].y        = newY;
+    pieceStates[i].rotation = newRot;
+    movePieceEl(i, newX, newY);
+    rotatePieceEl(i, newRot);
+    positions.push({ index: i, x: newX, y: newY });
+  });
+
+  // Batch write new positions + rotation in one call
+  updateGroupRotationAndPositions(puzzleId, positions, newRot);
 }
 
 function touchDist(touches) {

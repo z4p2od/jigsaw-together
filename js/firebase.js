@@ -29,7 +29,7 @@ export async function createPuzzle(meta, pieces) {
   const puzzleId = crypto.randomUUID();
   const piecesObj = {};
   pieces.forEach((p, i) => {
-    piecesObj[i] = { x: p.x, y: p.y, solved: false, lockedBy: null };
+    piecesObj[i] = { x: p.x, y: p.y, rotation: p.rotation ?? 0, solved: false, lockedBy: null };
   });
 
   await set(ref(db, `puzzles/${puzzleId}`), {
@@ -161,6 +161,17 @@ export function updatePieceRotation(puzzleId, pieceIndex, rotation) {
 export function updateGroupRotation(puzzleId, indices, rotation) {
   const flat = {};
   indices.forEach(i => { flat[`${i}/rotation`] = rotation; });
+  return update(ref(db, `puzzles/${puzzleId}/pieces`), flat);
+}
+
+/** Batch-update rotation + positions for a group rotate (single write). */
+export function updateGroupRotationAndPositions(puzzleId, positions, rotation) {
+  const flat = {};
+  positions.forEach(({ index, x, y }) => {
+    flat[`${index}/x`]        = x;
+    flat[`${index}/y`]        = y;
+    flat[`${index}/rotation`] = rotation;
+  });
   return update(ref(db, `puzzles/${puzzleId}/pieces`), flat);
 }
 
