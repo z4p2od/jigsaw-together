@@ -861,3 +861,210 @@ body {
   0%   { opacity: 1; transform: translateY(0) scale(1); }
   100% { opacity: 0; transform: translateY(-90px) scale(1.5); }
 }
+
+/* ── VS Mode ── */
+
+.vs-lobby {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.85);
+  z-index: 500;
+}
+
+.vs-lobby-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 32px 28px;
+  max-width: 480px;
+  width: 94%;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.vs-lobby-card h2 { margin: 0; font-size: 1.6rem; }
+
+.vs-lobby-sub {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.vs-players-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+
+.vs-player-slot {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.vs-player-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--surface2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.vs-player-name {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.vs-ready-badge {
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.vs-divider {
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.vs-share-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.vs-share-label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.vs-lobby-status {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+/* Countdown overlay */
+.vs-countdown {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.88);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 600;
+}
+
+#vs-countdown-num {
+  font-size: 10rem;
+  font-weight: 900;
+  color: var(--accent);
+  text-shadow: 0 0 40px var(--accent);
+  animation: countPulse 0.7s ease-out;
+}
+
+@keyframes countPulse {
+  0%   { transform: scale(1.5); opacity: 0; }
+  60%  { transform: scale(1.0); opacity: 1; }
+  100% { transform: scale(1.0); opacity: 1; }
+}
+
+/* Result overlay */
+.vs-result {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.75);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 700;
+}
+
+.vs-result-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 36px 32px;
+  max-width: 380px;
+  width: 90%;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.vs-result-card h2 { margin: 0; font-size: 2rem; }
+
+#vs-result-times {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+/* Progress bar (top of game screen) */
+.vs-progress-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.vs-progress-player {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.vs-progress-opponent {
+  flex-direction: row-reverse;
+  text-align: right;
+}
+
+.vs-prog-name {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.vs-prog-track {
+  flex: 1;
+  height: 8px;
+  background: var(--surface2);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.vs-prog-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 4px;
+  width: 0%;
+  transition: width 0.4s ease;
+}
+
+.vs-prog-pct {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  min-width: 30px;
+}
+
+.vs-prog-sep {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}

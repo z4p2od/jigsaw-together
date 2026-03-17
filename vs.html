@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VS Mode — Jigsaw Together</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <!-- Loading -->
+  <div id="loading-overlay">
+    <div class="spinner"></div>
+    <p id="loading-text">Loading room…</p>
+  </div>
+
+  <!-- Name modal -->
+  <div id="name-modal" class="modal-overlay">
+    <div class="modal">
+      <h3>What's your name?</h3>
+      <input id="name-input" type="text" class="name-input" placeholder="Your name" maxlength="20" />
+      <button id="name-submit" class="btn">Join</button>
+    </div>
+  </div>
+
+  <!-- Help modal -->
+  <div id="help-modal" class="modal-overlay">
+    <div class="modal">
+      <h3>How to play</h3>
+      <ul class="help-list" id="help-list"></ul>
+      <button id="help-close" class="btn">Got it</button>
+    </div>
+  </div>
+
+  <!-- Box cover overlay -->
+  <div id="box-cover">
+    <img id="box-cover-img" alt="Puzzle image" />
+    <p class="box-cover-hint">Click anywhere to close</p>
+  </div>
+
+  <!-- Lobby overlay -->
+  <div id="vs-lobby" class="vs-lobby">
+    <div class="vs-lobby-card">
+      <h2>⚡ VS Mode</h2>
+      <p class="vs-lobby-sub">Race a friend — same puzzle, first to finish wins!</p>
+      <div class="vs-players-row" id="vs-players-row">
+        <div class="vs-player-slot" id="vs-slot-0">
+          <div class="vs-player-avatar" id="vs-avatar-0">?</div>
+          <span class="vs-player-name" id="vs-name-0">Waiting…</span>
+          <span class="vs-ready-badge" id="vs-ready-0"></span>
+        </div>
+        <div class="vs-divider">VS</div>
+        <div class="vs-player-slot" id="vs-slot-1">
+          <div class="vs-player-avatar" id="vs-avatar-1">?</div>
+          <span class="vs-player-name" id="vs-name-1">Waiting…</span>
+          <span class="vs-ready-badge" id="vs-ready-1"></span>
+        </div>
+      </div>
+      <button id="vs-ready-btn" class="btn" disabled>Ready</button>
+      <div class="vs-share-row">
+        <p class="vs-share-label">Invite a friend:</p>
+        <div class="share-box">
+          <span id="vs-share-url"></span>
+          <button id="vs-copy-btn">Copy Link</button>
+        </div>
+      </div>
+      <p id="vs-lobby-status" class="vs-lobby-status">Waiting for opponent to join…</p>
+    </div>
+  </div>
+
+  <!-- Countdown overlay -->
+  <div id="vs-countdown" class="vs-countdown" style="display:none">
+    <span id="vs-countdown-num"></span>
+  </div>
+
+  <!-- Result overlay -->
+  <div id="vs-result" class="vs-result" style="display:none">
+    <div class="vs-result-card">
+      <h2 id="vs-result-title"></h2>
+      <p id="vs-result-times"></p>
+      <a href="/" class="btn" style="margin-top:8px">Back to Home</a>
+      <a id="vs-rematch-btn" href="#" class="btn" style="background:var(--surface2);margin-top:4px">New Match</a>
+    </div>
+  </div>
+
+  <div class="puzzle-page" id="vs-game" style="display:none">
+    <!-- Progress bars -->
+    <div id="vs-progress-bar" class="vs-progress-bar">
+      <div class="vs-progress-player" id="vsp-me">
+        <span class="vs-prog-name" id="vsp-me-name">You</span>
+        <div class="vs-prog-track"><div class="vs-prog-fill" id="vsp-me-fill"></div></div>
+        <span class="vs-prog-pct" id="vsp-me-pct">0%</span>
+      </div>
+      <span class="vs-prog-sep">⚡</span>
+      <div class="vs-progress-player vs-progress-opponent" id="vsp-opp">
+        <span class="vs-prog-name" id="vsp-opp-name">Opponent</span>
+        <div class="vs-prog-track"><div class="vs-prog-fill" id="vsp-opp-fill" style="background:var(--accent2)"></div></div>
+        <span class="vs-prog-pct" id="vsp-opp-pct">0%</span>
+      </div>
+    </div>
+
+    <header class="puzzle-header">
+      <a href="/" class="icon-btn home-btn" title="Back to home">&#8592;</a>
+      <h2>⚡ VS Mode</h2>
+      <div class="header-right">
+        <span id="timer-display" class="timer">0:00</span>
+        <button id="peek-btn" class="icon-btn" title="See the full image">🖼️</button>
+        <button id="help-btn" class="icon-btn" title="Controls">?</button>
+      </div>
+    </header>
+
+    <div class="puzzle-board-wrap">
+      <div id="puzzle-board"></div>
+    </div>
+  </div>
+
+  <script type="module" src="/js/vs.js"></script>
+</body>
+</html>

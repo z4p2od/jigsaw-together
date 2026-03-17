@@ -60,5 +60,19 @@ export default async function handler(req, res) {
     deleted++;
   }));
 
-  res.json({ deleted, checked: Object.keys(puzzleIds).length });
+  // Also clean up VS rooms older than 24h
+  const vsListRes = await fetch(`${dbUrl}/vs.json?shallow=true&auth=${secret}`);
+  const vsRoomIds = await vsListRes.json();
+  let vsDeleted = 0;
+  if (vsRoomIds) {
+    await Promise.all(Object.keys(vsRoomIds).map(async (id) => {
+      const metaRes   = await fetch(`${dbUrl}/vs/${id}/meta/createdAt.json?auth=${secret}`);
+      const createdAt = await metaRes.json();
+      if (!createdAt || createdAt >= cutoff) return;
+      await fetch(`${dbUrl}/vs/${id}.json?auth=${secret}`, { method: 'DELETE' });
+      vsDeleted++;
+    }));
+  }
+
+  res.json({ deleted, checked: Object.keys(puzzleIds).length, vsDeleted });
 }

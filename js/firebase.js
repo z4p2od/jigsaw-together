@@ -261,6 +261,115 @@ export function onChatMessages(puzzleId, callback) {
   return () => off(r, 'child_added', handler);
 }
 
+// ── VS Mode ───────────────────────────────────────────────────────────────────
+
+export async function loadVSRoom(roomId) {
+  const snap = await get(ref(db, `vs/${roomId}`));
+  if (!snap.exists()) throw new Error('Room not found');
+  return snap.val();
+}
+
+export function joinVSRoom(roomId, playerId, name, color) {
+  return update(ref(db, `vs/${roomId}/players/${playerId}`), { name, color, ready: false, finishedAt: null });
+}
+
+export function setVSReady(roomId, playerId) {
+  return set(ref(db, `vs/${roomId}/players/${playerId}/ready`), true);
+}
+
+export function onVSRoom(roomId, callback) {
+  const r = ref(db, `vs/${roomId}`);
+  const handler = snap => callback(snap.val());
+  onValue(r, handler);
+  return () => off(r, 'value', handler);
+}
+
+export function initVSPieces(roomId, playerId, pieces) {
+  const flat = {};
+  pieces.forEach((p, i) => { flat[i] = { x: p.x, y: p.y, rotation: 0, solved: false }; });
+  return set(ref(db, `vs/${roomId}/pieces/${playerId}`), flat);
+}
+
+export function onVSPieces(roomId, playerId, callback) {
+  const r = ref(db, `vs/${roomId}/pieces/${playerId}`);
+  const handler = snap => callback(Number(snap.key), snap.val());
+  onChildChanged(r, handler);
+  return () => off(r, 'child_changed', handler);
+}
+
+export function onVSOpponentPieces(roomId, playerId, callback) {
+  const r = ref(db, `vs/${roomId}/pieces/${playerId}`);
+  const handler = snap => callback(snap.val() || {});
+  onValue(r, handler);
+  return () => off(r, 'value', handler);
+}
+
+let lastVSGroupWrite = 0;
+export function updateVSGroupPosition(roomId, playerId, positions) {
+  const now = Date.now();
+  if (now - lastVSGroupWrite < 50) return;
+  lastVSGroupWrite = now;
+  const flat = {};
+  positions.forEach(({ index, x, y }) => { flat[`${index}/x`] = x; flat[`${index}/y`] = y; });
+  update(ref(db, `vs/${roomId}/pieces/${playerId}`), flat);
+}
+
+export function lockVSGroup(roomId, playerId, indices, lockerId) {
+  const flat = {};
+  indices.forEach(i => { flat[`${i}/lockedBy`] = lockerId; });
+  return update(ref(db, `vs/${roomId}/pieces/${playerId}`), flat);
+}
+
+export function unlockVSGroup(roomId, playerId, indices) {
+  const flat = {};
+  indices.forEach(i => { flat[`${i}/lockedBy`] = null; });
+  return update(ref(db, `vs/${roomId}/pieces/${playerId}`), flat);
+}
+
+export function writeVSSnap(roomId, playerId, positions, groupId) {
+  const flat = {};
+  positions.forEach(({ index, x, y }) => {
+    flat[`${index}/x`]        = x;
+    flat[`${index}/y`]        = y;
+    flat[`${index}/lockedBy`] = null;
+    flat[`${index}/groupId`]  = groupId;
+  });
+  return update(ref(db, `vs/${roomId}/pieces/${playerId}`), flat);
+}
+
+export function updateVSPieceRotation(roomId, playerId, index, rotation) {
+  return update(ref(db, `vs/${roomId}/pieces/${playerId}/${index}`), { rotation });
+}
+
+export function updateVSGroupRotationAndPositions(roomId, playerId, positions, rotation) {
+  const flat = {};
+  positions.forEach(({ index, x, y }) => {
+    flat[`${index}/x`] = x; flat[`${index}/y`] = y; flat[`${index}/rotation`] = rotation;
+  });
+  return update(ref(db, `vs/${roomId}/pieces/${playerId}`), flat);
+}
+
+export function solveVSGroup(roomId, playerId, updates) {
+  const flat = {};
+  Object.entries(updates).forEach(([index, { x, y }]) => {
+    flat[`${index}/x`] = x; flat[`${index}/y`] = y;
+    flat[`${index}/solved`] = true; flat[`${index}/lockedBy`] = null;
+  });
+  return update(ref(db, `vs/${roomId}/pieces/${playerId}`), flat);
+}
+
+export function setVSPlaying(roomId) {
+  return update(ref(db, `vs/${roomId}/meta`), { status: 'playing', startedAt: Date.now() });
+}
+
+export function setVSWinner(roomId, playerId, secs) {
+  return update(ref(db, `vs/${roomId}/meta`), { status: 'done', winner: playerId, winnerSecs: secs });
+}
+
+export function setVSFinished(roomId, playerId, finishedAt) {
+  return set(ref(db, `vs/${roomId}/players/${playerId}/finishedAt`), finishedAt);
+}
+
 /** Write a POTD completion score. Keyed by puzzleId so each game is one entry. */
 export function recordPOTDScore(puzzleId, difficulty, names, secs) {
   const date = new Date().toLocaleDateString('sv', { timeZone: 'Europe/Athens' });

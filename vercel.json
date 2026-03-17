@@ -8,7 +8,8 @@
     }
   ],
   "rewrites": [
-    { "source": "/puzzle", "destination": "/puzzle.html" }
+    { "source": "/puzzle", "destination": "/puzzle.html" },
+    { "source": "/vs",     "destination": "/vs.html"     }
   ],
   "crons": [
     { "path": "/api/cleanup", "schedule": "0 21 * * *" },
