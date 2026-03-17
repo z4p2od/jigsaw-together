@@ -6,6 +6,7 @@ import {
   get,
   update,
   onValue,
+  onChildChanged,
   off,
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
 
@@ -220,13 +221,7 @@ export async function setStartedAt(puzzleId) {
  */
 export function onPiecesChanged(puzzleId, callback) {
   const piecesRef = ref(db, `puzzles/${puzzleId}/pieces`);
-  const handler = (snap) => {
-    const pieces = snap.val();
-    if (!pieces) return;
-    Object.entries(pieces).forEach(([index, data]) => {
-      callback(Number(index), data);
-    });
-  };
-  onValue(piecesRef, handler);
-  return () => off(piecesRef, 'value', handler);
+  const handler = (snap) => callback(Number(snap.key), snap.val());
+  onChildChanged(piecesRef, handler);
+  return () => off(piecesRef, 'child_changed', handler);
 }
