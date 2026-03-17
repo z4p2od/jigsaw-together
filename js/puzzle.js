@@ -937,17 +937,22 @@ function appendChatMessage(msg) {
 }
 
 function spawnBoardEmoji(msg) {
-  const pos = msg.playerId === playerId
-    ? (dragging ? { x: pieceStates[dragging.anchorIndex]?.x ?? BOARD_W / 2, y: pieceStates[dragging.anchorIndex]?.y ?? BOARD_H / 2 } : lastPlayerPos[playerId] ?? { x: BOARD_W / 2, y: BOARD_H / 2 })
-    : (lastPlayerPos[msg.playerId] ?? { x: BOARD_W / 2, y: BOARD_H / 2 });
+  // Spawn 6 emojis scattered across the board at random positions
+  const count = 6;
+  for (let i = 0; i < count; i++) {
+    const x = 40 + Math.random() * (BOARD_W - 80);
+    const y = 40 + Math.random() * (BOARD_H - 80);
+    const delay = i * 80; // stagger slightly
 
-  const el = document.createElement('div');
-  el.className = 'board-emoji';
-  el.textContent = msg.text;
-  el.style.left = (pos.x + 20) + 'px';
-  el.style.top  = (pos.y - 10) + 'px';
-  board.appendChild(el);
-  el.addEventListener('animationend', () => el.remove());
+    const el = document.createElement('div');
+    el.className = 'board-emoji';
+    el.textContent = msg.text;
+    el.style.left = x + 'px';
+    el.style.top  = y + 'px';
+    el.style.animationDelay = delay + 'ms';
+    board.appendChild(el);
+    el.addEventListener('animationend', () => el.remove());
+  }
 }
 
 function isSingleEmoji(text) {

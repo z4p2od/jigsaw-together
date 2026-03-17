@@ -663,22 +663,58 @@ body {
 
 /* ── Chat panel ── */
 
+/* Chat launcher button — bottom left */
+#chat-launcher {
+  position: fixed;
+  bottom: 24px;
+  left: 24px;
+  z-index: 9001;
+}
+
+#chat-launcher button {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: none;
+  background: var(--accent);
+  font-size: 1.5rem;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.15s, background 0.15s;
+  position: relative;
+}
+
+#chat-launcher button:hover { transform: scale(1.1); }
+
+/* Chat popup — expands upward from bottom-left */
 .chat-panel {
   position: fixed;
-  right: 0;
-  top: 0;
-  bottom: 0;
+  bottom: 88px;
+  left: 24px;
   width: 300px;
+  height: 400px;
   background: var(--surface);
-  border-left: 1px solid var(--surface2);
+  border: 1px solid var(--surface2);
+  border-radius: var(--radius);
   display: flex;
   flex-direction: column;
-  transform: translateX(100%);
-  transition: transform 0.2s ease;
+  box-shadow: var(--shadow);
+  transform: scale(0.85) translateY(20px);
+  transform-origin: bottom left;
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.2s ease, opacity 0.2s ease;
   z-index: 9000;
 }
 
-.chat-panel.open { transform: translateX(0); }
+.chat-panel.open {
+  transform: scale(1) translateY(0);
+  opacity: 1;
+  pointer-events: all;
+}
 
 .chat-header {
   display: flex;
