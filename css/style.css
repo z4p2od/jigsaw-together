@@ -545,6 +545,16 @@ body {
   width: auto;
   padding: 8px 20px;
   font-size: 0.9rem;
+  flex-shrink: 0;
+}
+
+#celebration-lb {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 180px;
+  border-left: 1px solid var(--surface2);
+  padding-left: 20px;
 }
 
 /* ── Puzzle of the Day ── */

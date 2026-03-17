@@ -15,6 +15,7 @@ import {
   updateGroupRotation,
   updateGroupRotationAndPositions,
   recordPOTDScore,
+  onPOTDLeaderboard,
 } from './firebase.js';
 import { cutPiece, getPad } from './jigsaw.js';
 
@@ -64,6 +65,8 @@ const loadingEl       = document.getElementById('loading-overlay');
 const loadingText     = document.getElementById('loading-text');
 const celebration     = document.getElementById('celebration');
 const celebrationTime = document.getElementById('celebration-time');
+const celebrationLb   = document.getElementById('celebration-lb');
+const celebrationLbList = document.getElementById('celebration-lb-list');
 const progressEl      = document.getElementById('progress-text');
 const shareUrlEl      = document.getElementById('share-url');
 const copyBtn         = document.getElementById('copy-btn');
@@ -790,6 +793,19 @@ function checkCompletion() {
       const names = Object.values(playersMap).map(p => p.name);
       if (names.length === 0) names.push(playerName);
       recordPOTDScore(puzzleId, meta.potdDifficulty, names, secs);
+      // Show live leaderboard in celebration banner
+      const today = new Date().toISOString().split('T')[0];
+      celebrationLb.style.display = '';
+      onPOTDLeaderboard(meta.potdDifficulty, today, entries => {
+        const sorted = Object.values(entries).sort((a, b) => a.secs - b.secs).slice(0, 5);
+        celebrationLbList.innerHTML = sorted.length === 0
+          ? '<li class="lb-empty">No completions yet</li>'
+          : sorted.map((e, i) => `<li>
+              <span class="lb-rank">${i + 1}.</span>
+              <span class="lb-names">${formatNames(e.names)}</span>
+              <span class="lb-time">${formatTime(e.secs)}</span>
+            </li>`).join('');
+      });
     }
   }
   celebration.classList.add('show');
@@ -915,6 +931,13 @@ function formatTime(secs) {
   const m = Math.floor(secs / 60);
   const s = secs % 60;
   return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function formatNames(names) {
+  if (!names || names.length === 0) return 'Unknown';
+  if (names.length === 1) return names[0];
+  if (names.length <= 3) return names.slice(0, -1).join(', ') + ' & ' + names[names.length - 1];
+  return `${names[0]}, ${names[1]} +${names.length - 2} more`;
 }
 
 function loadImage(src) {
