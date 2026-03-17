@@ -1124,19 +1124,23 @@ function appendChatMessage(msg) {
 }
 
 function spawnBoardEmoji(msg) {
-  // Spawn on own board and opponent board, 10 total each
+  // Use fixed positioning relative to each board's visible rect,
+  // appended to body so overflow:auto on the wrap doesn't clip them
   [board, oppBoard].forEach(target => {
     if (!target) return;
+    const rect = target.getBoundingClientRect();
+    if (rect.width === 0) return;
     for (let i = 0; i < 10; i++) {
-      const x = 40 + Math.random() * (BOARD_W - 80);
-      const y = 40 + Math.random() * (BOARD_H - 80);
+      const x = rect.left + 40 + Math.random() * (rect.width  - 80);
+      const y = rect.top  + 40 + Math.random() * (rect.height - 80);
       const el = document.createElement('div');
       el.className = 'board-emoji';
       el.textContent = msg.text;
+      el.style.position = 'fixed';
       el.style.left = x + 'px';
       el.style.top  = y + 'px';
       el.style.animationDelay = (i * 60) + 'ms';
-      target.appendChild(el);
+      document.body.appendChild(el);
       el.addEventListener('animationend', () => el.remove());
     }
   });

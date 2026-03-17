@@ -849,10 +849,10 @@ body {
 /* ── Board emoji float animation ── */
 
 .board-emoji {
-  position: absolute;
+  position: fixed;
   font-size: 2.2rem;
   pointer-events: none;
-  z-index: 2000;
+  z-index: 9999;
   animation: floatUp 2s ease-out forwards;
   transform-origin: center bottom;
 }
