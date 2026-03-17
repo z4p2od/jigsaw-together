@@ -64,8 +64,9 @@ export default async function handler(req, res) {
     piecesObj[i] = { x: p.x, y: p.y, rotation: p.rotation, solved: false };
   });
 
+  const { startedAt: _drop, ...templateMetaClean } = templateMeta;
   const newMeta = {
-    ...templateMeta,
+    ...templateMetaClean,
     isPOTD:         true,
     potdDifficulty: difficulty,
     createdAt:      Date.now(),
