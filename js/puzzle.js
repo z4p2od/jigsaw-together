@@ -377,12 +377,17 @@ async function onMouseUp(e) {
       const iRow = Math.floor(i / cols);
       const dcI  = iCol - anchorCol;
       const drI  = iRow - anchorRow;
-      // At 0°: offset = (dcI*dW, drI*dH). Rotate that offset by rot° CW.
+      // Use same formula as snap expectedDx/Dy but with dc=-dcI, dr=-drI
+      // (placement goes from anchor outward; snap formula goes from piece to anchor).
+      const pad = meta._pad;
+      const elW = dW + pad * 2;
+      const elH = dH + pad * 2;
+      const dc_ = -dcI, dr_ = -drI;  // direction from anchor to piece i
       let ox, oy;
-      if (rot === 0)        { ox =  dcI * dW;  oy =  drI * dH; }
-      else if (rot === 90)  { ox = -drI * dH;  oy =  dcI * dW; }
-      else if (rot === 180) { ox = -dcI * dW;  oy = -drI * dH; }
-      else                  { ox =  drI * dH;  oy = -dcI * dW; }
+      if (rot === 0)        { ox = -dc_ * dW;   oy = -dr_ * dH;  }
+      else if (rot === 90)  { ox =  dr_ * elH;  oy = -dc_ * elW; }
+      else if (rot === 180) { ox =  dc_ * dW;   oy =  dr_ * dH;  }
+      else                  { ox = -dr_ * elH;  oy =  dc_ * elW; }
       const x = anchorX + ox;
       const y = anchorY + oy;
       pieceStates[i] = { ...pieceStates[i], x, y, lockedBy: null };
@@ -595,24 +600,33 @@ function findNeighbourSnap(dragIndices) {
       const rot = pieceStates[i].rotation ?? 0;
       if (rot !== (pieceStates[nIdx].rotation ?? 0)) continue;
 
-      // Actual relative offset: piece i minus its neighbour (in DOM/x-y space)
+      // Actual relative offset between x/y (inner-rect top-left) positions
       const actualDx = pieceStates[i].x - pieceStates[nIdx].x;
       const actualDy = pieceStates[i].y - pieceStates[nIdx].y;
 
-      // Expected relative offset at 0° is (-dc*dW, -dr*dH).
-      // When both pieces are rotated by R degrees CW, the grid axes rotate too,
-      // so the expected DOM offset must be rotated by the same angle.
-      const base0x = -dc * dW;
-      const base0y = -dr * dH;
+      // Element size includes tab padding on all sides.
+      const pad  = meta._pad;
+      const elW  = dW + pad * 2;
+      const elH  = dH + pad * 2;
+
+      // At 0°: adjacent x/y top-lefts differ by (-dc*dW, -dr*dH).
+      // At 90° CW: element rotates, visual adjacency uses element dimensions.
+      // The x/y → DOM translate is (x-pad, y-pad). For two rotated pieces to
+      // look flush, their translate coords differ by element visual size (elW/elH).
+      // Mapping (dc,dr) → expected (dx,dy) of x/y coords:
+      //   0°:   dx=-dc*dW,  dy=-dr*dH
+      //   90°:  dx= dr*elH, dy=-dc*elW   (right→down using elW, up→right using elH)
+      //   180°: dx= dc*dW,  dy= dr*dH
+      //   270°: dx=-dr*elH, dy= dc*elW
       let expectedDx, expectedDy;
       if (rot === 0) {
-        expectedDx = base0x;           expectedDy = base0y;
+        expectedDx = -dc * dW;   expectedDy = -dr * dH;
       } else if (rot === 90) {
-        expectedDx = -base0y;          expectedDy =  base0x;
+        expectedDx =  dr * elH;  expectedDy = -dc * elW;
       } else if (rot === 180) {
-        expectedDx = -base0x;          expectedDy = -base0y;
+        expectedDx =  dc * dW;   expectedDy =  dr * dH;
       } else { // 270
-        expectedDx =  base0y;          expectedDy = -base0x;
+        expectedDx = -dr * elH;  expectedDy =  dc * elW;
       }
 
       const dist = Math.hypot(actualDx - expectedDx, actualDy - expectedDy);
@@ -620,7 +634,6 @@ function findNeighbourSnap(dragIndices) {
       console.log(`piece ${i} → neighbour ${nIdx}: edgeID=${eI[myEdge]}, dist=${dist.toFixed(1)}, threshold=${threshold.toFixed(1)}`);
 
       if (dist <= threshold) {
-        // Exact target position for piece i based on neighbour's current position
         const targetX = pieceStates[nIdx].x + expectedDx;
         const targetY = pieceStates[nIdx].y + expectedDy;
         console.log(`✅ SNAP: piece ${i} → ${nIdx}`);
