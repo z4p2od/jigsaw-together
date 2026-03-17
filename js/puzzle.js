@@ -50,6 +50,7 @@ let lastTap = { time: 0, el: null };
 // Player presence
 let playerName  = sessionStorage.getItem('playerName') || null;
 let unsubPlayers = null;
+let playersMap  = {}; // id → { name, color } — kept up to date by renderPlayers
 
 // Timer
 let timerInterval = null;
@@ -215,6 +216,7 @@ function movePieceEl(index, x, y, el) {
   e.style.transform = rot
     ? `translate(${x - pad}px, ${y - pad}px) rotate(${rot}deg)`
     : `translate(${x - pad}px, ${y - pad}px)`;
+  if (!el) updateAvatarPosition(index); // el is only passed during initial render
 }
 
 
@@ -745,6 +747,7 @@ function applyRemoteUpdate(index, data) {
   if (data.solved && !wasSolved) {
     pieceEls[index]?.classList.add('solved');
     pieceEls[index]?.classList.remove('locked-by-other');
+    setPieceAvatar(index, null);
     solvedCount++;
     updateProgress();
     checkCompletion();
@@ -754,8 +757,10 @@ function applyRemoteUpdate(index, data) {
   const currentLock = pieceStates[index].lockedBy;
   if (currentLock && currentLock !== playerId) {
     pieceEls[index]?.classList.add('locked-by-other');
+    setPieceAvatar(index, currentLock);
   } else {
     pieceEls[index]?.classList.remove('locked-by-other');
+    setPieceAvatar(index, null);
   }
 }
 
@@ -830,11 +835,12 @@ function setupShareLink() {
 // ── Players ───────────────────────────────────────────────────────────────────
 
 function renderPlayers(players) {
-  // Remove players inactive > 30s
   const now = Date.now();
+  playersMap = {};
   playersListEl.innerHTML = '';
   Object.entries(players).forEach(([id, p]) => {
     if (now - p.lastSeen > 30000) return;
+    playersMap[id] = p;
     const dot = document.createElement('div');
     dot.className = 'player-dot';
     dot.style.background = p.color;
@@ -843,6 +849,43 @@ function renderPlayers(players) {
     if (id === playerId) dot.classList.add('me');
     playersListEl.appendChild(dot);
   });
+}
+
+// avatarEls[index] = the avatar div for pieces locked by other players
+const avatarEls = [];
+
+function setPieceAvatar(index, lockOwner) {
+  // Remove existing avatar for this piece
+  avatarEls[index]?.remove();
+  avatarEls[index] = null;
+
+  if (!lockOwner || lockOwner === playerId) return;
+  const player = playersMap[lockOwner];
+  if (!player) return;
+
+  const avatar = document.createElement('div');
+  avatar.className = 'piece-avatar';
+  avatar.style.background = player.color;
+  avatar.textContent = player.name[0].toUpperCase();
+  avatar.title = player.name;
+  board.appendChild(avatar);
+  avatarEls[index] = avatar;
+  // Position it now
+  updateAvatarPosition(index);
+}
+
+function updateAvatarPosition(index) {
+  const avatar = avatarEls[index];
+  const el     = pieceEls[index];
+  if (!avatar || !el) return;
+  // Read the translate values from the element's transform
+  const pad = meta?._pad ?? 0;
+  const p   = pieceStates[index];
+  if (!p) return;
+  const x = p.x - pad + (meta._displayW + pad * 2) - 26;
+  const y = p.y - pad + 4;
+  avatar.style.left = x + 'px';
+  avatar.style.top  = y + 'px';
 }
 
 // ── Timer ─────────────────────────────────────────────────────────────────────
