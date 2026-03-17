@@ -61,7 +61,23 @@
     <div class="card" style="gap:16px;text-align:center">
       <p class="field-label">VS Mode</p>
       <p style="color:var(--text-muted);font-size:0.9rem;margin:0">Race a friend — same puzzle, first to finish wins</p>
-      <a href="/api/vs-create" class="btn">⚡ Start VS Match</a>
+      <div class="piece-section">
+        <p class="field-label">Pieces</p>
+        <div class="piece-options">
+          <label><input type="radio" name="vs-pieces" value="24" /> <span>24</span></label>
+          <label><input type="radio" name="vs-pieces" value="100" checked /> <span>100</span></label>
+          <label><input type="radio" name="vs-pieces" value="250" /> <span>250</span></label>
+        </div>
+      </div>
+      <div class="piece-section">
+        <p class="field-label">Mode</p>
+        <div class="piece-options">
+          <label><input type="radio" name="vs-mode" value="normal" checked /> <span>Normal</span></label>
+          <label><input type="radio" name="vs-mode" value="hard" /> <span>Hard 🔥</span></label>
+        </div>
+      </div>
+      <button class="btn" id="vs-create-btn">⚡ Start VS Match</button>
+      <a href="/vs-rooms" style="font-size:0.85rem;color:var(--text-muted)">Browse open rooms →</a>
     </div>
 
     <div class="card">

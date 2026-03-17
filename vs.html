@@ -82,7 +82,7 @@
     </div>
   </div>
 
-  <div class="puzzle-page" id="vs-game" style="display:none">
+  <div class="puzzle-page vs-page" id="vs-game" style="display:none">
     <!-- Progress bars -->
     <div id="vs-progress-bar" class="vs-progress-bar">
       <div class="vs-progress-player" id="vsp-me">
@@ -108,8 +108,21 @@
       </div>
     </header>
 
-    <div class="puzzle-board-wrap">
-      <div id="puzzle-board"></div>
+    <!-- Split boards -->
+    <div class="vs-boards-wrap">
+      <div class="vs-board-panel">
+        <div class="vs-board-label">You</div>
+        <div class="puzzle-board-wrap">
+          <div id="puzzle-board"></div>
+        </div>
+      </div>
+      <div class="vs-board-divider"></div>
+      <div class="vs-board-panel">
+        <div class="vs-board-label" id="opp-board-label">Opponent</div>
+        <div class="puzzle-board-wrap opp-wrap">
+          <div id="puzzle-board-opp"></div>
+        </div>
+      </div>
     </div>
   </div>
 

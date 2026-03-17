@@ -9,9 +9,9 @@
  */
 import crypto from 'crypto';
 
-const BOARD_W    = 900;
-const BOARD_H    = 650;
-const PIECE_COUNT = 100;
+const BOARD_W = 900;
+const BOARD_H = 650;
+const ALLOWED_PIECES = [4, 24, 100, 250, 500, 1000];
 
 function calculateGrid(pieceCount, imgWidth, imgHeight) {
   const aspect = imgWidth / imgHeight;
@@ -86,7 +86,20 @@ function fbPut(path, value) {
   });
 }
 
+function fbPatch(path, value) {
+  const { FIREBASE_DB_URL: url, FIREBASE_DB_SECRET: s } = process.env;
+  return fetch(`${url}/${path}.json?auth=${s}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(value),
+  });
+}
+
 export default async function handler(req, res) {
+  const rawPieces  = parseInt(req.query.pieces, 10);
+  const PIECE_COUNT = ALLOWED_PIECES.includes(rawPieces) ? rawPieces : 100;
+  const hardMode   = req.query.hard === 'true';
+
   const images = await listPoolImages();
   if (images.length === 0) return res.status(500).json({ error: 'No images available' });
 
@@ -105,18 +118,31 @@ export default async function handler(req, res) {
   const seed   = (Math.random() * 1e9) | 0; // shared scatter seed
   const roomId = crypto.randomUUID();
 
+  const createdAt = Date.now();
+
   await fbPut(`vs/${roomId}`, {
     meta: {
       imageUrl: image.secure_url,
       cols, rows, pieceW, pieceH, displayW, displayH,
       edges, seed,
+      pieces: PIECE_COUNT,
+      hardMode,
       status: 'waiting',
       winner: null,
       winnerSecs: null,
-      createdAt: Date.now(),
+      createdAt,
     },
     players: {},
     pieces:  {},
+  });
+
+  // Write a lightweight index entry for the open rooms browser
+  await fbPatch(`vs-index/${roomId}`, {
+    pieces: PIECE_COUNT,
+    hardMode,
+    status: 'waiting',
+    createdAt,
+    creatorName: null,
   });
 
   res.redirect(302, `/vs.html?room=${roomId}`);

@@ -60,7 +60,7 @@ export default async function handler(req, res) {
     deleted++;
   }));
 
-  // Also clean up VS rooms older than 24h
+  // Also clean up VS rooms + index entries older than 24h
   const vsListRes = await fetch(`${dbUrl}/vs.json?shallow=true&auth=${secret}`);
   const vsRoomIds = await vsListRes.json();
   let vsDeleted = 0;
@@ -70,6 +70,7 @@ export default async function handler(req, res) {
       const createdAt = await metaRes.json();
       if (!createdAt || createdAt >= cutoff) return;
       await fetch(`${dbUrl}/vs/${id}.json?auth=${secret}`, { method: 'DELETE' });
+      await fetch(`${dbUrl}/vs-index/${id}.json?auth=${secret}`, { method: 'DELETE' });
       vsDeleted++;
     }));
   }

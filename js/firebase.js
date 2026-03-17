@@ -269,8 +269,14 @@ export async function loadVSRoom(roomId) {
   return snap.val();
 }
 
-export function joinVSRoom(roomId, playerId, name, color) {
-  return update(ref(db, `vs/${roomId}/players/${playerId}`), { name, color, ready: false, finishedAt: null });
+export async function joinVSRoom(roomId, playerId, name, color) {
+  await update(ref(db, `vs/${roomId}/players/${playerId}`), { name, color, ready: false, finishedAt: null });
+  // Set creatorName in vs-index if not already set (first joiner becomes creator)
+  const idxRef = ref(db, `vs-index/${roomId}/creatorName`);
+  const snap   = await get(idxRef);
+  if (!snap.exists() || snap.val() === null) {
+    await set(idxRef, name);
+  }
 }
 
 export function setVSReady(roomId, playerId) {
@@ -359,11 +365,26 @@ export function solveVSGroup(roomId, playerId, updates) {
 }
 
 export function setVSPlaying(roomId) {
+  update(ref(db, `vs-index/${roomId}`), { status: 'playing' });
   return update(ref(db, `vs/${roomId}/meta`), { status: 'playing', startedAt: Date.now() });
 }
 
 export function setVSWinner(roomId, playerId, secs) {
+  update(ref(db, `vs-index/${roomId}`), { status: 'done' });
   return update(ref(db, `vs/${roomId}/meta`), { status: 'done', winner: playerId, winnerSecs: secs });
+}
+
+// ── VS Index (open rooms browser) ─────────────────────────────────────────────
+
+export function onVSIndex(callback) {
+  const r = ref(db, 'vs-index');
+  const handler = snap => callback(snap.val() || {});
+  onValue(r, handler);
+  return () => off(r, 'value', handler);
+}
+
+export function updateVSIndex(roomId, fields) {
+  return update(ref(db, `vs-index/${roomId}`), fields);
 }
 
 export function setVSFinished(roomId, playerId, finishedAt) {

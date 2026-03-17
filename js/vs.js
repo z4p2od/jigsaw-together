@@ -38,6 +38,12 @@ let scale       = 1;
 let pinch       = null;
 let lastTap     = { time: 0, el: null };
 
+// Opponent board (read-only)
+const oppPieceEls    = [];
+const oppPieceStates = [];
+const oppGroups      = {};
+const oppPieceGroup  = [];
+
 // DOM refs
 const loadingEl      = document.getElementById('loading-overlay');
 const loadingText    = document.getElementById('loading-text');
@@ -64,6 +70,8 @@ const vsResultTimes  = document.getElementById('vs-result-times');
 const vsRematchBtn   = document.getElementById('vs-rematch-btn');
 const vsGame         = document.getElementById('vs-game');
 const board          = document.getElementById('puzzle-board');
+const oppBoard       = document.getElementById('puzzle-board-opp');
+const oppBoardLabel  = document.getElementById('opp-board-label');
 const timerEl        = document.getElementById('timer-display');
 const vspMeName      = document.getElementById('vsp-me-name');
 const vspMeFill      = document.getElementById('vsp-me-fill');
@@ -115,12 +123,13 @@ function seededRandom(seed) {
   };
 }
 
-function scatterFromSeed(seed, count, dispW, dispH) {
+function scatterFromSeed(seed, count, dispW, dispH, hardMode) {
   const rand = seededRandom(seed);
+  const ROTS = [0, 90, 180, 270];
   return Array.from({ length: count }, () => ({
     x: rand() * (BOARD_W - dispW),
     y: rand() * (BOARD_H - dispH),
-    rotation: 0,
+    rotation: hardMode ? ROTS[Math.floor(rand() * 4)] : 0,
   }));
 }
 
@@ -251,14 +260,17 @@ function startCountdown() {
 }
 
 async function startGame(room) {
-  const { meta: m, pieces: existingPieces = {} } = room;
+  const { meta: m, pieces: existingPieces = {}, players = {} } = room;
   meta = m;
 
   vsGame.style.display = '';
 
-  const count    = m.cols * m.rows;
-  totalPieces    = count;
-  const scattered = scatterFromSeed(m.seed, count, m.displayW, m.displayH);
+  // Compute split-board scale so both boards fit side by side
+  scale = computeSplitScale();
+
+  const count     = m.cols * m.rows;
+  totalPieces     = count;
+  const scattered = scatterFromSeed(m.seed, count, m.displayW, m.displayH, m.hardMode);
 
   // Init my pieces in Firebase only if not already there
   if (!existingPieces[playerId]) {
@@ -277,6 +289,7 @@ async function startGame(room) {
   setupHelp();
   setupPeek();
   attachDragListeners();
+  if (m.hardMode) attachRotateListeners();
 
   // Timer
   if (startedAt) {
@@ -290,19 +303,20 @@ async function startGame(room) {
   // Subscribe to my own piece changes
   unsubPieces = onVSPieces(roomId, playerId, applyRemoteUpdate);
 
-  // Subscribe to opponent's piece count for progress bar
-  const oppId = Object.keys(room.players || {}).find(id => id !== playerId);
+  // Set up opponent board
+  const oppId = Object.keys(players).find(id => id !== playerId);
   if (oppId) {
-    unsubOpp = onVSOpponentPieces(roomId, oppId, oppPieces => {
-      if (!oppPieces) return;
-      const oppTotal   = Object.keys(oppPieces).length;
-      const oppSolved  = Object.values(oppPieces).filter(p => p.solved).length;
-      const oppGrouped = Object.values(oppPieces).filter(p => p.groupId).length;
-      const oppPlaced  = Math.max(oppSolved, oppGrouped);
-      const pct = oppTotal > 0 ? Math.round(oppPlaced / oppTotal * 100) : 0;
-      vspOppFill.style.width = pct + '%';
-      vspOppPct.textContent  = pct + '%';
-    });
+    const oppName = players[oppId]?.name || 'Opponent';
+    if (oppBoardLabel) oppBoardLabel.textContent = oppName;
+    vspOppName.textContent = oppName;
+
+    setupOppBoard();
+    const initialOppPieces = existingPieces[oppId]
+      ? Object.values(existingPieces[oppId])
+      : scattered.map(p => ({ ...p, solved: false }));
+    await renderOppPieces(initialOppPieces);
+
+    unsubOpp = onVSOpponentPieces(roomId, oppId, applyOppUpdate);
   }
 
   window.addEventListener('beforeunload', cleanup);
@@ -310,34 +324,25 @@ async function startGame(room) {
 
 // ── Board + Rendering ─────────────────────────────────────────────────────────
 
-function setupBoard() {
-  board.style.width          = BOARD_W + 'px';
-  board.style.height         = BOARD_H + 'px';
-  board.style.transformOrigin = 'top left';
+function computeSplitScale() {
+  const headerH  = 120; // progress bar + header
+  const availW   = (window.innerWidth  / 2) - 12;
+  const availH   = window.innerHeight  - headerH;
+  return Math.min(availW / BOARD_W, availH / BOARD_H, 1);
 }
 
-async function renderAllPieces() {
-  const src = meta.imageUrl;
-  const img = await loadImage(src);
-  const { cols, rows, pieceW, pieceH, edges, displayW, displayH } = meta;
-  const pad = getPad(displayW, displayH);
-  meta._displayW = displayW;
-  meta._displayH = displayH;
-  meta._pad      = pad;
+function setupBoard() {
+  board.style.width           = BOARD_W + 'px';
+  board.style.height          = BOARD_H + 'px';
+  board.style.transformOrigin = 'top left';
+  applyScale(scale);
+}
 
-  const BATCH = 50;
-  for (let start = 0; start < totalPieces; start += BATCH) {
-    await new Promise(r => setTimeout(r, 0));
-    const end = Math.min(start + BATCH, totalPieces);
-    for (let i = start; i < end; i++) {
-      const col    = i % cols;
-      const row    = Math.floor(i / cols);
-      const dataUrl = cutPiece(img, col, row, pieceW, pieceH, displayW, displayH, edges[i]);
-      const p      = pieceStates[i];
-      renderPiece(i, dataUrl, p.x, p.y, p.solved, displayW + pad * 2, displayH + pad * 2);
-    }
-    loadingText.textContent = `Cutting pieces... ${Math.min(end, totalPieces)} / ${totalPieces}`;
-  }
+function setupOppBoard() {
+  oppBoard.style.width           = BOARD_W + 'px';
+  oppBoard.style.height          = BOARD_H + 'px';
+  oppBoard.style.transformOrigin = 'top left';
+  applyOppScale(scale);
 }
 
 function renderPiece(index, dataUrl, x, y, solved, elW, elH) {
@@ -389,6 +394,102 @@ function loadImage(src) {
   });
 }
 
+// ── Opponent board rendering ───────────────────────────────────────────────────
+
+// _cachedImg is set during renderAllPieces so opp rendering can reuse it
+let _cachedImg = null;
+
+async function renderAllPieces() {
+  const src = meta.imageUrl;
+  _cachedImg = await loadImage(src);
+  const img = _cachedImg;
+  const { cols, rows, pieceW, pieceH, edges, displayW, displayH } = meta;
+  const pad = getPad(displayW, displayH);
+  meta._displayW = displayW;
+  meta._displayH = displayH;
+  meta._pad      = pad;
+
+  const BATCH = 50;
+  for (let start = 0; start < totalPieces; start += BATCH) {
+    await new Promise(r => setTimeout(r, 0));
+    const end = Math.min(start + BATCH, totalPieces);
+    for (let i = start; i < end; i++) {
+      const col     = i % cols;
+      const row     = Math.floor(i / cols);
+      const dataUrl = cutPiece(img, col, row, pieceW, pieceH, displayW, displayH, edges[i]);
+      const p       = pieceStates[i];
+      renderPiece(i, dataUrl, p.x, p.y, p.solved, displayW + pad * 2, displayH + pad * 2);
+    }
+    loadingText.textContent = `Cutting pieces... ${Math.min(end, totalPieces)} / ${totalPieces}`;
+  }
+}
+
+async function renderOppPieces(states) {
+  const img = _cachedImg;
+  if (!img) return;
+  const { cols, pieceW, pieceH, edges, displayW, displayH } = meta;
+  const pad = meta._pad;
+  const elW = displayW + pad * 2;
+  const elH = displayH + pad * 2;
+
+  for (let i = 0; i < states.length; i++) {
+    oppPieceStates[i] = states[i] ?? { x: 0, y: 0, rotation: 0, solved: false };
+    const col     = i % cols;
+    const row     = Math.floor(i / cols);
+    const dataUrl = cutPiece(img, col, row, pieceW, pieceH, displayW, displayH, edges[i]);
+    const el      = document.createElement('img');
+    el.src        = dataUrl;
+    el.className  = 'piece' + (oppPieceStates[i].solved ? ' solved' : '');
+    el.draggable  = false;
+    el.style.width  = elW + 'px';
+    el.style.height = elH + 'px';
+    moveOppPieceEl(i, oppPieceStates[i].x, oppPieceStates[i].y, el);
+    oppBoard.appendChild(el);
+    oppPieceEls[i] = el;
+  }
+}
+
+function moveOppPieceEl(index, x, y, el) {
+  const pad = meta?._pad ?? 0;
+  const e   = el ?? oppPieceEls[index];
+  if (!e) return;
+  const rot = oppPieceStates[index]?.rotation ?? 0;
+  e.style.left = '0';
+  e.style.top  = '0';
+  e.style.transform = rot
+    ? `translate(${x - pad}px, ${y - pad}px) rotate(${rot}deg)`
+    : `translate(${x - pad}px, ${y - pad}px)`;
+}
+
+function applyOppUpdate(allPieces) {
+  if (!allPieces) return;
+  const entries = Object.entries(allPieces);
+
+  // Update progress bar
+  const oppTotal   = entries.length;
+  const oppSolved  = entries.filter(([, p]) => p.solved).length;
+  const oppGrouped = entries.filter(([, p]) => p.groupId).length;
+  const oppPlaced  = Math.max(oppSolved, oppGrouped);
+  const pct = oppTotal > 0 ? Math.round(oppPlaced / oppTotal * 100) : 0;
+  vspOppFill.style.width = pct + '%';
+  vspOppPct.textContent  = pct + '%';
+
+  // Update each opponent piece element
+  entries.forEach(([key, p]) => {
+    const i = Number(key);
+    if (!oppPieceEls[i]) return;
+    oppPieceStates[i] = { ...(oppPieceStates[i] ?? {}), ...p };
+    moveOppPieceEl(i, p.x, p.y);
+    if (p.solved) oppPieceEls[i].classList.add('solved');
+  });
+}
+
+function applyOppScale(s) {
+  oppBoard.style.transform   = s === 1 ? '' : `scale(${s})`;
+  oppBoard.style.marginRight  = s > 1 ? BOARD_W * (s - 1) + 'px' : '';
+  oppBoard.style.marginBottom = s > 1 ? BOARD_H * (s - 1) + 'px' : '';
+}
+
 // ── Drag ──────────────────────────────────────────────────────────────────────
 
 function attachDragListeners() {
@@ -399,6 +500,64 @@ function attachDragListeners() {
   wrap.addEventListener('touchstart', onTouchStart, { passive: false });
   wrap.addEventListener('touchmove',  onTouchMove,  { passive: false });
   wrap.addEventListener('touchend',   onTouchEnd);
+}
+
+function attachRotateListeners() {
+  board.addEventListener('contextmenu', onContextMenu);
+  board.addEventListener('touchend',    onDoubleTap);
+}
+
+function onContextMenu(e) {
+  e.preventDefault();
+  const el = e.target.closest('.piece');
+  if (!el) return;
+  const index = Number(el.dataset.index);
+  if (pieceStates[index]?.lockedBy && pieceStates[index].lockedBy !== playerId) return;
+  rotateAtIndex(index);
+}
+
+function onDoubleTap(e) {
+  const touch = e.changedTouches[0];
+  const el    = document.elementFromPoint(touch.clientX, touch.clientY)?.closest('.piece');
+  if (!el) return;
+  const now  = Date.now();
+  const same = lastTap.el === el && (now - lastTap.time) < 300;
+  lastTap    = { time: now, el };
+  if (!same) return;
+  e.preventDefault();
+  const index = Number(el.dataset.index);
+  if (pieceStates[index]?.lockedBy && pieceStates[index].lockedBy !== playerId) return;
+  rotateAtIndex(index);
+}
+
+function rotateAtIndex(index) {
+  const gid     = pieceGroup[index];
+  const indices = gid ? [...groups[gid]] : [index];
+  const newRot  = ((pieceStates[index].rotation ?? 0) + 90) % 360;
+  const { _displayW: dW, _displayH: dH } = meta;
+
+  if (indices.length === 1) {
+    pieceStates[index].rotation = newRot;
+    movePieceEl(index, pieceStates[index].x, pieceStates[index].y);
+    updateVSPieceRotation(roomId, playerId, index, newRot);
+    return;
+  }
+
+  const cx = indices.reduce((s, i) => s + pieceStates[i].x + dW / 2, 0) / indices.length;
+  const cy = indices.reduce((s, i) => s + pieceStates[i].y + dH / 2, 0) / indices.length;
+  const positions = [];
+  indices.forEach(i => {
+    const px   = pieceStates[i].x + dW / 2;
+    const py   = pieceStates[i].y + dH / 2;
+    const newX = cx - (py - cy) - dW / 2;
+    const newY = cy + (px - cx) - dH / 2;
+    pieceStates[i].x        = newX;
+    pieceStates[i].y        = newY;
+    pieceStates[i].rotation = newRot;
+    movePieceEl(i, newX, newY);
+    positions.push({ index: i, x: newX, y: newY });
+  });
+  updateVSGroupRotationAndPositions(roomId, playerId, positions, newRot);
 }
 
 function onMouseDown(e) {

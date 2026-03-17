@@ -87,6 +87,14 @@ function formatTime(secs) {
 
 loadPOTD();
 
+// ── VS Mode create ────────────────────────────────────────────────────────────
+
+document.getElementById('vs-create-btn').addEventListener('click', () => {
+  const pieces = document.querySelector('input[name="vs-pieces"]:checked').value;
+  const hard   = document.querySelector('input[name="vs-mode"]:checked').value === 'hard';
+  window.location.href = `/api/vs-create?pieces=${pieces}&hard=${hard}`;
+});
+
 // ── Image upload ──────────────────────────────────────────────────────────────
 
 fileInput.addEventListener('change', () => handleFile(fileInput.files[0]));
