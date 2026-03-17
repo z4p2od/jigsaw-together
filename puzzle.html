@@ -61,11 +61,35 @@
         <span class="progress-text" id="progress-text">0 / 0 pieces</span>
         <button id="peek-btn" class="icon-btn" title="See the full image">🖼️</button>
         <button id="help-btn" class="icon-btn" title="Controls">?</button>
+        <button id="chat-btn" class="icon-btn" title="Chat" style="position:relative">💬</button>
       </div>
     </header>
 
     <div class="puzzle-board-wrap">
       <div id="puzzle-board"></div>
+    </div>
+  </div>
+
+  <!-- Chat panel -->
+  <div id="chat-panel" class="chat-panel">
+    <div class="chat-header">
+      <span>Chat</span>
+      <button id="chat-close" class="icon-btn">✕</button>
+    </div>
+    <div id="chat-messages" class="chat-messages"></div>
+    <div class="chat-input-row">
+      <div class="chat-emojis">
+        <button class="emoji-btn" data-emoji="🎉">🎉</button>
+        <button class="emoji-btn" data-emoji="👏">👏</button>
+        <button class="emoji-btn" data-emoji="🔥">🔥</button>
+        <button class="emoji-btn" data-emoji="😮">😮</button>
+        <button class="emoji-btn" data-emoji="😂">😂</button>
+        <button class="emoji-btn" data-emoji="❤️">❤️</button>
+      </div>
+      <div class="chat-compose">
+        <input type="text" id="chat-input" class="chat-input-field" placeholder="Say something…" maxlength="200" />
+        <button id="chat-send" class="icon-btn">↑</button>
+      </div>
     </div>
   </div>
 

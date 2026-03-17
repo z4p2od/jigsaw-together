@@ -5,8 +5,10 @@ import {
   set,
   get,
   update,
+  push,
   onValue,
   onChildChanged,
+  onChildAdded,
   off,
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
 
@@ -244,6 +246,19 @@ export function onPOTDLeaderboard(difficulty, date, callback) {
   };
   onValue(r, handler);
   return () => off(r, 'value', handler);
+}
+
+/** Send a chat message (or emoji reaction) to a puzzle's chat. */
+export function sendChatMessage(puzzleId, msg) {
+  return push(ref(db, `chat/${puzzleId}`), msg);
+}
+
+/** Subscribe to chat messages. Calls callback for each new message. Returns unsubscribe fn. */
+export function onChatMessages(puzzleId, callback) {
+  const r = ref(db, `chat/${puzzleId}`);
+  const handler = snap => { if (snap.val()) callback(snap.val()); };
+  onChildAdded(r, handler);
+  return () => off(r, 'child_added', handler);
 }
 
 /** Write a POTD completion score. Keyed by puzzleId so each game is one entry. */

@@ -16,6 +16,8 @@ import {
   updateGroupRotationAndPositions,
   recordPOTDScore,
   onPOTDLeaderboard,
+  sendChatMessage,
+  onChatMessages,
 } from './firebase.js';
 import { cutPiece, getPad } from './jigsaw.js';
 
@@ -56,6 +58,11 @@ let playersMap  = {}; // id → { name, color } — kept up to date by renderPla
 
 // Timer
 let timerInterval = null;
+
+// Chat
+let chatUnread    = 0;
+let chatOpen      = false;
+const lastPlayerPos = {}; // playerId → { x, y } last known board position
 let startedAt     = null;
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
@@ -82,6 +89,12 @@ const helpBtn         = document.getElementById('help-btn');
 const peekBtn         = document.getElementById('peek-btn');
 const boxCover        = document.getElementById('box-cover');
 const boxCoverImg     = document.getElementById('box-cover-img');
+const chatBtn         = document.getElementById('chat-btn');
+const chatPanel       = document.getElementById('chat-panel');
+const chatClose       = document.getElementById('chat-close');
+const chatMessages    = document.getElementById('chat-messages');
+const chatInput       = document.getElementById('chat-input');
+const chatSendBtn     = document.getElementById('chat-send');
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
@@ -132,6 +145,7 @@ async function initPuzzle() {
 
     setupHelp();
     setupPeek();
+    setupChat();
 
     unsubscribe = onPiecesChanged(puzzleId, applyRemoteUpdate);
     unsubPlayers = onPlayersChanged(puzzleId, renderPlayers);
@@ -335,6 +349,9 @@ function onMouseMove(e) {
   });
 
   updateGroupPosition(puzzleId, positions);
+  // Track own position for emoji spawn
+  const ap = pieceStates[dragging?.anchorIndex ?? indices[0]];
+  if (ap) lastPlayerPos[playerId] = { x: ap.x, y: ap.y };
 }
 
 async function onMouseUp(e) {
@@ -763,6 +780,8 @@ function applyRemoteUpdate(index, data) {
   if (currentLock && currentLock !== playerId) {
     pieceEls[index]?.classList.add('locked-by-other');
     setPieceAvatar(index, currentLock);
+    // Track last known position for emoji animations
+    lastPlayerPos[currentLock] = { x: pieceStates[index].x, y: pieceStates[index].y };
   } else {
     pieceEls[index]?.classList.remove('locked-by-other');
     setPieceAvatar(index, null);
@@ -845,6 +864,98 @@ function setupPeek() {
 
   peekBtn.addEventListener('click', toggle);
   boxCover.addEventListener('click', hide);
+}
+
+function setupChat() {
+  // Open / close panel
+  const open  = () => { chatPanel.classList.add('open'); chatOpen = true; setChatBadge(0); };
+  const close = () => { chatPanel.classList.remove('open'); chatOpen = false; };
+
+  chatBtn.addEventListener('click', () => chatOpen ? close() : open());
+  chatClose.addEventListener('click', close);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && chatOpen) close(); });
+
+  // Send on Enter or send button
+  const send = () => {
+    const text = chatInput.value.trim();
+    if (!text) return;
+    chatInput.value = '';
+    const color = getPlayerColor(playerId);
+    sendChatMessage(puzzleId, { playerId, name: playerName, color, text, ts: Date.now() });
+  };
+  chatSendBtn.addEventListener('click', send);
+  chatInput.addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
+
+  // Emoji buttons — send as chat message
+  chatPanel.querySelectorAll('.emoji-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const emoji = btn.dataset.emoji;
+      const color = getPlayerColor(playerId);
+      sendChatMessage(puzzleId, { playerId, name: playerName, color, text: emoji, ts: Date.now() });
+    });
+  });
+
+  // Listen for incoming messages
+  onChatMessages(puzzleId, msg => {
+    appendChatMessage(msg);
+    if (isSingleEmoji(msg.text)) spawnBoardEmoji(msg);
+    if (!chatOpen && msg.playerId !== playerId) setChatBadge(chatUnread + 1);
+  });
+}
+
+function setChatBadge(n) {
+  chatUnread = n;
+  let badge = chatBtn.querySelector('.chat-badge');
+  if (n > 0) {
+    if (!badge) { badge = document.createElement('div'); badge.className = 'chat-badge'; chatBtn.appendChild(badge); }
+    badge.textContent = n > 9 ? '9+' : n;
+  } else {
+    badge?.remove();
+  }
+}
+
+function appendChatMessage(msg) {
+  const mine = msg.playerId === playerId;
+  const time = new Date(msg.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const emojiOnly = isSingleEmoji(msg.text);
+
+  const el = document.createElement('div');
+  el.className = 'chat-msg' + (mine ? ' mine' : '');
+  el.innerHTML = `
+    <div class="chat-msg-meta">
+      ${!mine ? `<div class="chat-msg-dot" style="background:${msg.color}"></div>` : ''}
+      <span>${mine ? 'You' : msg.name}</span>
+      <span>${time}</span>
+    </div>
+    <div class="chat-msg-bubble${emojiOnly ? ' emoji-only' : ''}">${escapeHtml(msg.text)}</div>
+  `;
+  chatMessages.appendChild(el);
+
+  // Keep max 50 messages in DOM
+  while (chatMessages.children.length > 50) chatMessages.removeChild(chatMessages.firstChild);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function spawnBoardEmoji(msg) {
+  const pos = msg.playerId === playerId
+    ? (dragging ? { x: pieceStates[dragging.anchorIndex]?.x ?? BOARD_W / 2, y: pieceStates[dragging.anchorIndex]?.y ?? BOARD_H / 2 } : lastPlayerPos[playerId] ?? { x: BOARD_W / 2, y: BOARD_H / 2 })
+    : (lastPlayerPos[msg.playerId] ?? { x: BOARD_W / 2, y: BOARD_H / 2 });
+
+  const el = document.createElement('div');
+  el.className = 'board-emoji';
+  el.textContent = msg.text;
+  el.style.left = (pos.x + 20) + 'px';
+  el.style.top  = (pos.y - 10) + 'px';
+  board.appendChild(el);
+  el.addEventListener('animationend', () => el.remove());
+}
+
+function isSingleEmoji(text) {
+  return /^\p{Emoji_Presentation}$/u.test(text.trim()) || /^\p{Emoji}\uFE0F?$/u.test(text.trim());
+}
+
+function escapeHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
 function setupShareLink() {
