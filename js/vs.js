@@ -6,6 +6,7 @@ import {
   updateVSGroupRotationAndPositions, solveVSGroup,
   setVSPlaying, setVSWinner, setVSFinished,
   getPlayerColor,
+  sendChatMessage, onChatMessages,
 } from './firebase.js';
 import { cutPiece, getPad } from './jigsaw.js';
 
@@ -37,6 +38,10 @@ let dragging    = null;
 let scale       = 1;
 let pinch       = null;
 let lastTap     = { time: 0, el: null };
+
+// Chat
+let chatUnread = 0;
+let chatOpen   = false;
 
 // Opponent board (read-only)
 const oppPieceEls    = [];
@@ -72,6 +77,12 @@ const vsGame         = document.getElementById('vs-game');
 const board          = document.getElementById('puzzle-board');
 const oppBoard       = document.getElementById('puzzle-board-opp');
 const oppBoardLabel  = document.getElementById('opp-board-label');
+const chatBtn        = document.getElementById('chat-btn');
+const chatPanel      = document.getElementById('chat-panel');
+const chatClose      = document.getElementById('chat-close');
+const chatMessages   = document.getElementById('chat-messages');
+const chatInput      = document.getElementById('chat-input');
+const chatSendBtn    = document.getElementById('chat-send');
 const timerEl        = document.getElementById('timer-display');
 const vspMeName      = document.getElementById('vsp-me-name');
 const vspMeFill      = document.getElementById('vsp-me-fill');
@@ -288,6 +299,7 @@ async function startGame(room) {
   reconstructGroups();
   setupHelp();
   setupPeek();
+  setupChat();
   attachDragListeners();
   if (m.hardMode) attachRotateListeners();
 
@@ -935,6 +947,93 @@ function setupPeek() {
   const hide   = () => boxCover.classList.remove('show');
   peekBtn.addEventListener('click', toggle);
   boxCover.addEventListener('click', hide);
+}
+
+// ── Chat ──────────────────────────────────────────────────────────────────────
+
+function setupChat() {
+  const open  = () => { chatPanel.classList.add('open'); chatOpen = true; setChatBadge(0); };
+  const close = () => { chatPanel.classList.remove('open'); chatOpen = false; };
+
+  chatBtn.addEventListener('click', () => chatOpen ? close() : open());
+  chatClose.addEventListener('click', close);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && chatOpen) close(); });
+
+  const send = () => {
+    const text = chatInput.value.trim();
+    if (!text) return;
+    chatInput.value = '';
+    const color = getPlayerColor(playerId);
+    sendChatMessage(roomId, { playerId, name: playerName, color, text, ts: Date.now() });
+  };
+  chatSendBtn.addEventListener('click', send);
+  chatInput.addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
+
+  chatPanel.querySelectorAll('.emoji-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const color = getPlayerColor(playerId);
+      sendChatMessage(roomId, { playerId, name: playerName, color, text: btn.dataset.emoji, ts: Date.now() });
+    });
+  });
+
+  onChatMessages(roomId, msg => {
+    appendChatMessage(msg);
+    if (isSingleEmoji(msg.text)) spawnBoardEmoji(msg);
+    if (!chatOpen && msg.playerId !== playerId) setChatBadge(chatUnread + 1);
+  });
+}
+
+function setChatBadge(n) {
+  chatUnread = n;
+  let badge = chatBtn.querySelector('.chat-badge');
+  if (n > 0) {
+    if (!badge) { badge = document.createElement('div'); badge.className = 'chat-badge'; chatBtn.appendChild(badge); }
+    badge.textContent = n > 9 ? '9+' : n;
+  } else {
+    badge?.remove();
+  }
+}
+
+function appendChatMessage(msg) {
+  const mine = msg.playerId === playerId;
+  const time = new Date(msg.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const emojiOnly = isSingleEmoji(msg.text);
+  const el = document.createElement('div');
+  el.className = 'chat-msg' + (mine ? ' mine' : '');
+  el.innerHTML = `
+    <div class="chat-msg-meta">
+      ${!mine ? `<div class="chat-msg-dot" style="background:${msg.color}"></div>` : ''}
+      <span>${mine ? 'You' : msg.name}</span>
+      <span>${time}</span>
+    </div>
+    <div class="chat-msg-bubble${emojiOnly ? ' emoji-only' : ''}">${escapeHtml(msg.text)}</div>
+  `;
+  chatMessages.appendChild(el);
+  while (chatMessages.children.length > 50) chatMessages.removeChild(chatMessages.firstChild);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function spawnBoardEmoji(msg) {
+  for (let i = 0; i < 6; i++) {
+    const x = 40 + Math.random() * (BOARD_W - 80);
+    const y = 40 + Math.random() * (BOARD_H - 80);
+    const el = document.createElement('div');
+    el.className = 'board-emoji';
+    el.textContent = msg.text;
+    el.style.left = x + 'px';
+    el.style.top  = y + 'px';
+    el.style.animationDelay = (i * 80) + 'ms';
+    board.appendChild(el);
+    el.addEventListener('animationend', () => el.remove());
+  }
+}
+
+function isSingleEmoji(text) {
+  return /^\p{Emoji_Presentation}$/u.test(text.trim()) || /^\p{Emoji}\uFE0F?$/u.test(text.trim());
+}
+
+function escapeHtml(str) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 // ── Cleanup ───────────────────────────────────────────────────────────────────
