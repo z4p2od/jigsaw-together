@@ -719,7 +719,16 @@ function applyRemoteUpdate(index, data) {
 
   const wasSolved  = pieceStates[index]?.solved;
   const wasGroupId = pieceStates[index]?.groupId;
-  pieceStates[index] = { ...pieceStates[index], ...data };
+
+  // Merge incoming data but don't let stale lock echoes overwrite our local lock state.
+  // Our own lock writes are fire-and-forget; the Firebase echo can arrive after we've
+  // already dropped the piece and cleared lockedBy locally — causing a phantom lock.
+  const update = { ...data };
+  if (update.lockedBy === playerId && !dragging?.indices.includes(index)) {
+    // This is our own lock write echoing back after we've already released — ignore it.
+    delete update.lockedBy;
+  }
+  pieceStates[index] = { ...pieceStates[index], ...update };
 
   movePieceEl(index, data.x, data.y);
 
@@ -742,7 +751,8 @@ function applyRemoteUpdate(index, data) {
     return;
   }
 
-  if (data.lockedBy && data.lockedBy !== playerId) {
+  const currentLock = pieceStates[index].lockedBy;
+  if (currentLock && currentLock !== playerId) {
     pieceEls[index]?.classList.add('locked-by-other');
   } else {
     pieceEls[index]?.classList.remove('locked-by-other');
