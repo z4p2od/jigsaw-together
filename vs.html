@@ -77,8 +77,13 @@
     <div class="vs-result-card">
       <h2 id="vs-result-title"></h2>
       <p id="vs-result-times"></p>
-      <a href="/" class="btn" style="margin-top:8px">Back to Home</a>
-      <a id="vs-rematch-btn" href="#" class="btn" style="background:var(--surface2);margin-top:4px">New Match</a>
+      <div id="vs-score-board" class="vs-score-board" style="display:none">
+        <span id="vs-score-me">0</span>
+        <span class="vs-score-sep">–</span>
+        <span id="vs-score-opp">0</span>
+      </div>
+      <button id="vs-rematch-btn" class="btn" style="margin-top:8px">⚡ Rematch</button>
+      <a href="/" class="btn vs-new-game-btn" style="background:var(--surface2);margin-top:4px">New Game</a>
     </div>
   </div>
 

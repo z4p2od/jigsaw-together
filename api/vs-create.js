@@ -145,5 +145,8 @@ export default async function handler(req, res) {
     creatorName: null,
   });
 
+  if (req.query.json === '1') {
+    return res.json({ roomId });
+  }
   res.redirect(302, `/vs.html?room=${roomId}`);
 }

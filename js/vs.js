@@ -4,7 +4,7 @@ import {
   updateVSGroupPosition, lockVSGroup, unlockVSGroup,
   writeVSSnap, updateVSPieceRotation,
   updateVSGroupRotationAndPositions, solveVSGroup,
-  setVSPlaying, setVSWinner, setVSFinished,
+  setVSPlaying, setVSWinner, setVSFinished, setVSRematch,
   getPlayerColor,
   sendChatMessage, onChatMessages,
 } from './firebase.js';
@@ -43,6 +43,22 @@ let lastTap     = { time: 0, el: null };
 let chatUnread = 0;
 let chatOpen   = false;
 
+// Win counter (persisted in sessionStorage for rematch series)
+// key: sorted pair of playerIds joined by '|'
+function winsKey(oppId) {
+  return 'vsWins:' + [playerId, oppId].sort().join('|');
+}
+function getWins(oppId) {
+  const raw = sessionStorage.getItem(winsKey(oppId));
+  return raw ? JSON.parse(raw) : { [playerId]: 0, [oppId]: 0 };
+}
+function recordWin(winnerId, oppId) {
+  const wins = getWins(oppId);
+  wins[winnerId] = (wins[winnerId] ?? 0) + 1;
+  sessionStorage.setItem(winsKey(oppId), JSON.stringify(wins));
+  return wins;
+}
+
 // Opponent board (read-only)
 const oppPieceEls    = [];
 const oppPieceStates = [];
@@ -73,6 +89,9 @@ const vsResult       = document.getElementById('vs-result');
 const vsResultTitle  = document.getElementById('vs-result-title');
 const vsResultTimes  = document.getElementById('vs-result-times');
 const vsRematchBtn   = document.getElementById('vs-rematch-btn');
+const vsScoreBoard   = document.getElementById('vs-score-board');
+const vsScoreMe      = document.getElementById('vs-score-me');
+const vsScoreOpp     = document.getElementById('vs-score-opp');
 const vsGame         = document.getElementById('vs-game');
 const board          = document.getElementById('puzzle-board');
 const oppBoard       = document.getElementById('puzzle-board-opp');
@@ -172,10 +191,24 @@ async function initVS() {
       setVSReady(roomId, playerId);
     });
 
-    // Rematch button
-    vsRematchBtn.addEventListener('click', e => {
-      e.preventDefault();
-      location.href = '/api/vs-create';
+    // Rematch button — creates a new room with same settings,
+    // then writes rematchRoomId so the opponent auto-follows
+    vsRematchBtn.addEventListener('click', async () => {
+      vsRematchBtn.disabled = true;
+      vsRematchBtn.textContent = 'Creating rematch…';
+      const pieces = meta?.pieces ?? 100;
+      const hard   = meta?.hardMode ?? false;
+      try {
+        const res     = await fetch(`/api/vs-create?pieces=${pieces}&hard=${hard}&json=1`);
+        const { roomId: newRoom } = await res.json();
+        if (newRoom) {
+          await setVSRematch(roomId, newRoom);
+          location.href = `/vs.html?room=${newRoom}`;
+        }
+      } catch {
+        vsRematchBtn.disabled = false;
+        vsRematchBtn.textContent = '⚡ Rematch';
+      }
     });
 
     loadingEl.style.display = 'none';
@@ -214,6 +247,12 @@ function handleRoomUpdate(room) {
 
   if (m.status === 'done' && prevStatus !== 'done') {
     showResult(room);
+  }
+
+  // Opponent clicked Rematch first — follow them to the new room
+  if (m.rematchRoomId && m.status === 'done') {
+    location.href = `/vs.html?room=${m.rematchRoomId}`;
+    return;
   }
 
   prevStatus = m.status;
@@ -886,11 +925,11 @@ function showResult(room) {
   stopTimer();
   const { meta: m, players = {} } = room;
   const winnerId = m.winner;
-  const iWon = winnerId === playerId;
+  const iWon     = winnerId === playerId;
+  const oppId    = Object.keys(players).find(id => id !== playerId);
 
   vsResult.style.display = 'flex';
   vsGame.style.opacity   = '0.4';
-  vsResult.style.display = 'flex';
 
   vsResultTitle.textContent = iWon ? '🏆 You Won!' : '😔 You Lost';
 
@@ -902,6 +941,14 @@ function showResult(room) {
     }
   });
   vsResultTimes.textContent = lines.join('  ·  ');
+
+  // Win counter
+  if (oppId) {
+    const wins = recordWin(winnerId, oppId);
+    vsScoreMe.textContent  = wins[playerId]  ?? 0;
+    vsScoreOpp.textContent = wins[oppId]     ?? 0;
+    vsScoreBoard.style.display = '';
+  }
 }
 
 // ── Timer ─────────────────────────────────────────────────────────────────────
@@ -1014,18 +1061,22 @@ function appendChatMessage(msg) {
 }
 
 function spawnBoardEmoji(msg) {
-  for (let i = 0; i < 6; i++) {
-    const x = 40 + Math.random() * (BOARD_W - 80);
-    const y = 40 + Math.random() * (BOARD_H - 80);
-    const el = document.createElement('div');
-    el.className = 'board-emoji';
-    el.textContent = msg.text;
-    el.style.left = x + 'px';
-    el.style.top  = y + 'px';
-    el.style.animationDelay = (i * 80) + 'ms';
-    board.appendChild(el);
-    el.addEventListener('animationend', () => el.remove());
-  }
+  // Spawn on own board and opponent board, 10 total each
+  [board, oppBoard].forEach(target => {
+    if (!target) return;
+    for (let i = 0; i < 10; i++) {
+      const x = 40 + Math.random() * (BOARD_W - 80);
+      const y = 40 + Math.random() * (BOARD_H - 80);
+      const el = document.createElement('div');
+      el.className = 'board-emoji';
+      el.textContent = msg.text;
+      el.style.left = x + 'px';
+      el.style.top  = y + 'px';
+      el.style.animationDelay = (i * 60) + 'ms';
+      target.appendChild(el);
+      el.addEventListener('animationend', () => el.remove());
+    }
+  });
 }
 
 function isSingleEmoji(text) {

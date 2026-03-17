@@ -364,6 +364,10 @@ export function solveVSGroup(roomId, playerId, updates) {
   return update(ref(db, `vs/${roomId}/pieces/${playerId}`), flat);
 }
 
+export function setVSRematch(roomId, newRoomId) {
+  return update(ref(db, `vs/${roomId}/meta`), { rematchRoomId: newRoomId });
+}
+
 export function setVSPlaying(roomId) {
   update(ref(db, `vs-index/${roomId}`), { status: 'playing' });
   return update(ref(db, `vs/${roomId}/meta`), { status: 'playing', startedAt: Date.now() });
