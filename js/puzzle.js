@@ -514,11 +514,11 @@ function rotateAtIndex(index) {
 
   const positions = [];
   indices.forEach(i => {
-    // Rotate piece centre 90° CW around (cx, cy): newX = cx+(py-cy), newY = cy-(px-cx)
+    // Rotate piece centre 90° CW in screen coords (y-down): newPx = cx-(py-cy), newPy = cy+(px-cx)
     const px   = pieceStates[i].x + dW / 2;
     const py   = pieceStates[i].y + dH / 2;
-    const newX = cx + (py - cy) - dW / 2;
-    const newY = cy - (px - cx) - dH / 2;
+    const newX = cx - (py - cy) - dW / 2;
+    const newY = cy + (px - cx) - dH / 2;
     pieceStates[i].x        = newX;
     pieceStates[i].y        = newY;
     pieceStates[i].rotation = newRot;
