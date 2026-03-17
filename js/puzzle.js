@@ -616,12 +616,9 @@ function findNeighbourSnap(dragIndices) {
 
       const dist = Math.hypot(actualDx - expectedDx, actualDy - expectedDy);
 
-      console.log(`piece ${i} → neighbour ${nIdx}: edgeID=${eI[myEdge]}, dist=${dist.toFixed(1)}, threshold=${threshold.toFixed(1)}`);
-
       if (dist <= threshold) {
         const targetX = pieceStates[nIdx].x + expectedDx;
         const targetY = pieceStates[nIdx].y + expectedDy;
-        console.log(`✅ SNAP: piece ${i} → ${nIdx}`);
         return {
           dragIndex:      i,
           neighbourIndex: nIdx,

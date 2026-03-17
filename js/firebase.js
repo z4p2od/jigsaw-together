@@ -29,7 +29,7 @@ export async function createPuzzle(meta, pieces) {
   const puzzleId = crypto.randomUUID();
   const piecesObj = {};
   pieces.forEach((p, i) => {
-    piecesObj[i] = { x: p.x, y: p.y, rotation: p.rotation ?? 0, solved: false, lockedBy: null };
+    piecesObj[i] = { x: p.x, y: p.y, rotation: p.rotation ?? 0, solved: false };
   });
 
   await set(ref(db, `puzzles/${puzzleId}`), {
