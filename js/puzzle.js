@@ -44,9 +44,8 @@ let unsubscribe = null;
 let scale       = 1;   // current zoom level applied to #puzzle-board
 let pinch       = null; // { dist0, scale0 } — active pinch gesture state
 
-// Long-press for mobile rotate (hard mode only)
-let longPressTimer    = null;
-let longPressStartPos = null;
+// Double-tap for mobile rotate (hard mode only)
+let lastTap = { time: 0, el: null };
 
 // Player presence
 let playerName  = sessionStorage.getItem('playerName') || null;
@@ -247,11 +246,8 @@ function attachDragListeners() {
   window.addEventListener('mousemove',  onMouseMove);
   window.addEventListener('mouseup',    onMouseUp);
 
-  // Long-press for mobile rotation (hard mode only)
-  board.addEventListener('pointerdown', onPointerDownLongPress);
-  board.addEventListener('pointermove', onPointerMoveLongPress);
-  board.addEventListener('pointerup',   cancelLongPress);
-  board.addEventListener('pointercancel', cancelLongPress);
+  // Double-tap for mobile rotation (hard mode only)
+  board.addEventListener('touchend', onDoubleTap);
 
   // Use the wrap for touch so pinch-to-zoom works even when fingers start outside board
   const wrap = board.parentElement;
@@ -468,28 +464,22 @@ function onContextMenu(e) {
   rotateAtIndex(index);
 }
 
-function onPointerDownLongPress(e) {
-  if (!meta?.hardMode || e.pointerType === 'mouse') return;
-  longPressStartPos = { x: e.clientX, y: e.clientY };
-  longPressTimer = setTimeout(() => {
-    longPressTimer = null;
-    const el = document.elementFromPoint(longPressStartPos.x, longPressStartPos.y)?.closest('.piece');
-    if (!el) return;
-    const index = Number(el.dataset.index);
-    if (pieceStates[index].lockedBy && pieceStates[index].lockedBy !== playerId) return;
-    rotateAtIndex(index);
-  }, 500);
-}
+function onDoubleTap(e) {
+  if (!meta?.hardMode) return;
+  const touch = e.changedTouches[0];
+  const el    = document.elementFromPoint(touch.clientX, touch.clientY)?.closest('.piece');
+  if (!el) return;
 
-function onPointerMoveLongPress(e) {
-  if (!longPressTimer) return;
-  const d = Math.hypot(e.clientX - longPressStartPos.x, e.clientY - longPressStartPos.y);
-  if (d > 8) cancelLongPress();
-}
+  const now  = Date.now();
+  const same = lastTap.el === el && (now - lastTap.time) < 300;
+  lastTap = { time: now, el };
+  if (!same) return;
 
-function cancelLongPress() {
-  clearTimeout(longPressTimer);
-  longPressTimer = null;
+  // Double-tap confirmed
+  e.preventDefault();
+  const index = Number(el.dataset.index);
+  if (pieceStates[index].lockedBy && pieceStates[index].lockedBy !== playerId) return;
+  rotateAtIndex(index);
 }
 
 function rotateAtIndex(index) {
@@ -779,7 +769,7 @@ function setupHelp() {
   ];
   if (meta.hardMode) {
     controls.push({ key: 'Right-click',  desc: 'Rotate a piece or group 90°' });
-    controls.push({ key: 'Long-press',   desc: 'Rotate on mobile (hold 0.5s)' });
+    controls.push({ key: 'Double-tap',   desc: 'Rotate a piece or group on mobile' });
   }
   helpList.innerHTML = controls.map(c =>
     `<li><strong>${c.key}</strong>${c.desc}</li>`
