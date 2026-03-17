@@ -579,17 +579,29 @@ function findNeighbourSnap(dragIndices) {
       // Border edges have id=0 — skip those
       if (eI[myEdge] === 0 || eI[myEdge] !== eN[neighbourEdge]) continue;
 
-      // In hard mode both pieces must be at the same rotation to snap
-      if ((pieceStates[i].rotation ?? 0) !== (pieceStates[nIdx].rotation ?? 0)) continue;
+      // Both pieces must be at the same rotation to snap
+      const rot = pieceStates[i].rotation ?? 0;
+      if (rot !== (pieceStates[nIdx].rotation ?? 0)) continue;
 
-      // Actual relative offset: piece i minus its neighbour
+      // Actual relative offset: piece i minus its neighbour (in DOM/x-y space)
       const actualDx = pieceStates[i].x - pieceStates[nIdx].x;
       const actualDy = pieceStates[i].y - pieceStates[nIdx].y;
 
-      // Expected relative offset: neighbour is at (col+dc, row+dr) so piece i
-      // is dc steps LEFT and dr steps UP from neighbour → expected = (-dc*dW, -dr*dH)
-      const expectedDx = -dc * dW;
-      const expectedDy = -dr * dH;
+      // Expected relative offset at 0° is (-dc*dW, -dr*dH).
+      // When both pieces are rotated by R degrees CW, the grid axes rotate too,
+      // so the expected DOM offset must be rotated by the same angle.
+      const base0x = -dc * dW;
+      const base0y = -dr * dH;
+      let expectedDx, expectedDy;
+      if (rot === 0) {
+        expectedDx = base0x;           expectedDy = base0y;
+      } else if (rot === 90) {
+        expectedDx = -base0y;          expectedDy =  base0x;
+      } else if (rot === 180) {
+        expectedDx = -base0x;          expectedDy = -base0y;
+      } else { // 270
+        expectedDx =  base0y;          expectedDy = -base0x;
+      }
 
       const dist = Math.hypot(actualDx - expectedDx, actualDy - expectedDy);
 
