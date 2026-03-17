@@ -39,7 +39,7 @@ async function loadPOTD() {
 
       const card = document.getElementById(`potd-${diff.key}`);
       if (!card) continue;
-      card.querySelector('.potd-play').href = `/puzzle.html?id=${data.puzzleId}`;
+      card.querySelector('.potd-play').href = `/api/potd-play?difficulty=${diff.key}`;
       card.style.display = '';
       anyShown = true;
 
