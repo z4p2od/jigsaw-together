@@ -256,12 +256,12 @@ function attachDragListeners() {
   wrap.addEventListener('touchend',   onTouchEnd);
 }
 
-async function onMouseDown(e) {
+function onMouseDown(e) {
   const el = e.target.closest('.piece');
   if (!el || el.classList.contains('solved')) return;
 
-  const index   = Number(el.dataset.index);
-  const state   = pieceStates[index];
+  const index = Number(el.dataset.index);
+  const state = pieceStates[index];
   if (state.lockedBy && state.lockedBy !== playerId) return;
 
   const gid     = pieceGroup[index];
@@ -270,18 +270,9 @@ async function onMouseDown(e) {
   // Check none locked by others
   if (indices.some(i => pieceStates[i].lockedBy && pieceStates[i].lockedBy !== playerId)) return;
 
-  await lockGroup(puzzleId, indices, playerId);
-
-  // Start timer on first move
-  if (!startedAt) {
-    startedAt = await setStartedAt(puzzleId);
-    startTimer();
-  }
-
   const boardRect = board.getBoundingClientRect();
   const anchorX   = pieceStates[index].x;
   const anchorY   = pieceStates[index].y;
-  // Divide by scale to convert screen pixels to board (unscaled) coordinates
   const offsetX   = (e.clientX - boardRect.left) / scale - anchorX;
   const offsetY   = (e.clientY - boardRect.top)  / scale - anchorY;
 
@@ -293,19 +284,36 @@ async function onMouseDown(e) {
     };
   });
 
-  dragging = { indices, anchorIndex: index, offsetX, offsetY, relOffsets };
-
-  indices.forEach(i => {
-    pieceEls[i]?.classList.add('dragging');
-    if (pieceEls[i]) pieceEls[i].style.zIndex = 1000;
-  });
+  // Don't lock yet — lock only when movement actually starts (onMouseMove).
+  // This prevents orphaned locks from clicks/taps that never move.
+  dragging = { indices, anchorIndex: index, offsetX, offsetY, relOffsets, locked: false };
 }
 
 function onMouseMove(e) {
   if (!dragging) return;
   const { indices, offsetX, offsetY, relOffsets } = dragging;
-  const boardRect = board.getBoundingClientRect();
 
+  // First movement — acquire locks and start timer now (not on mousedown).
+  // This prevents orphaned locks from clicks/taps that never actually drag.
+  if (!dragging.locked) {
+    dragging.locked = true;
+    lockGroup(puzzleId, indices, playerId);
+    indices.forEach(i => { pieceStates[i].lockedBy = playerId; });
+    // Mark dragging pieces visually
+    indices.forEach(i => {
+      pieceEls[i]?.classList.add('dragging');
+      if (pieceEls[i]) pieceEls[i].style.zIndex = 1000;
+    });
+    // Start timer on first interaction
+    if (!startedAt) {
+      setStartedAt(puzzleId).then(t => {
+        startedAt = t;
+        startTimer();
+      });
+    }
+  }
+
+  const boardRect = board.getBoundingClientRect();
   const anchorX = (e.clientX - boardRect.left) / scale - offsetX;
   const anchorY = (e.clientY - boardRect.top)  / scale - offsetY;
 
@@ -324,13 +332,16 @@ function onMouseMove(e) {
 
 async function onMouseUp(e) {
   if (!dragging) return;
-  const { indices, anchorIndex, offsetX, offsetY, relOffsets } = dragging;
+  const { indices, anchorIndex, offsetX, offsetY, relOffsets, locked } = dragging;
   dragging = null;
 
   indices.forEach(i => {
     pieceEls[i]?.classList.remove('dragging');
     if (pieceEls[i]) pieceEls[i].style.zIndex = '';
   });
+
+  // If we never moved, there's no Firebase lock to release — just bail out.
+  if (!locked) return;
 
   const boardRect = board.getBoundingClientRect();
   const anchorX   = (e.clientX - boardRect.left) / scale - offsetX;
@@ -406,7 +417,7 @@ function onTouchStart(e) {
   if (e.touches.length === 2) {
     // Two fingers — start pinch zoom; cancel any ongoing drag
     if (dragging) {
-      unlockGroup(puzzleId, dragging.indices);
+      if (dragging.locked) unlockGroup(puzzleId, dragging.indices);
       dragging.indices.forEach(i => {
         pieceEls[i]?.classList.remove('dragging');
         if (pieceEls[i]) pieceEls[i].style.zIndex = '';
@@ -422,8 +433,8 @@ function onTouchStart(e) {
 
   const touch = e.touches[0];
   onMouseDown({ clientX: touch.clientX, clientY: touch.clientY,
-                target: document.elementFromPoint(touch.clientX, touch.clientY) })
-    .then(() => { if (dragging) e.preventDefault(); });
+                target: document.elementFromPoint(touch.clientX, touch.clientY) });
+  if (dragging) e.preventDefault();
 }
 
 function onTouchMove(e) {
@@ -862,6 +873,6 @@ function getOrCreatePlayerId() {
 window.addEventListener('beforeunload', () => {
   if (unsubscribe) unsubscribe();
   if (unsubPlayers) unsubPlayers();
-  if (dragging) unlockGroup(puzzleId, dragging.indices);
+  if (dragging?.locked) unlockGroup(puzzleId, dragging.indices);
   removePlayer(puzzleId, playerId);
 });
