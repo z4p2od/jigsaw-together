@@ -377,17 +377,13 @@ async function onMouseUp(e) {
       const iRow = Math.floor(i / cols);
       const dcI  = iCol - anchorCol;
       const drI  = iRow - anchorRow;
-      // Use same formula as snap expectedDx/Dy but with dc=-dcI, dr=-drI
-      // (placement goes from anchor outward; snap formula goes from piece to anchor).
-      const pad = meta._pad;
-      const elW = dW + pad * 2;
-      const elH = dH + pad * 2;
-      const dc_ = -dcI, dr_ = -drI;  // direction from anchor to piece i
+      // Offset from anchor to piece i in inner-rect coords.
+      // Same rotation formula: 90° CW maps (dx,dy)→(-dy,dx).
       let ox, oy;
-      if (rot === 0)        { ox = -dc_ * dW;   oy = -dr_ * dH;  }
-      else if (rot === 90)  { ox =  dr_ * elH;  oy = -dc_ * elW; }
-      else if (rot === 180) { ox =  dc_ * dW;   oy =  dr_ * dH;  }
-      else                  { ox = -dr_ * elH;  oy =  dc_ * elW; }
+      if (rot === 0)        { ox =  dcI * dW;   oy =  drI * dH;  }
+      else if (rot === 90)  { ox = -drI * dH;   oy =  dcI * dW;  }
+      else if (rot === 180) { ox = -dcI * dW;   oy = -drI * dH;  }
+      else                  { ox =  drI * dH;   oy = -dcI * dW;  }
       const x = anchorX + ox;
       const y = anchorY + oy;
       pieceStates[i] = { ...pieceStates[i], x, y, lockedBy: null };
@@ -604,29 +600,17 @@ function findNeighbourSnap(dragIndices) {
       const actualDx = pieceStates[i].x - pieceStates[nIdx].x;
       const actualDy = pieceStates[i].y - pieceStates[nIdx].y;
 
-      // Element size includes tab padding on all sides.
-      const pad  = meta._pad;
-      const elW  = dW + pad * 2;
-      const elH  = dH + pad * 2;
-
-      // At 0°: adjacent x/y top-lefts differ by (-dc*dW, -dr*dH).
-      // At 90° CW: element rotates, visual adjacency uses element dimensions.
-      // The x/y → DOM translate is (x-pad, y-pad). For two rotated pieces to
-      // look flush, their translate coords differ by element visual size (elW/elH).
-      // Mapping (dc,dr) → expected (dx,dy) of x/y coords:
-      //   0°:   dx=-dc*dW,  dy=-dr*dH
-      //   90°:  dx= dr*elH, dy=-dc*elW   (right→down using elW, up→right using elH)
-      //   180°: dx= dc*dW,  dy= dr*dH
-      //   270°: dx=-dr*elH, dy= dc*elW
+      // Expected offset between inner-rect top-lefts (x/y coords).
+      // At 0°: (-dc*dW, -dr*dH). Rotate 90° CW: (dx,dy)→(-dy,dx).
       let expectedDx, expectedDy;
       if (rot === 0) {
         expectedDx = -dc * dW;   expectedDy = -dr * dH;
       } else if (rot === 90) {
-        expectedDx =  dr * elH;  expectedDy = -dc * elW;
+        expectedDx =  dr * dH;   expectedDy = -dc * dW;
       } else if (rot === 180) {
         expectedDx =  dc * dW;   expectedDy =  dr * dH;
       } else { // 270
-        expectedDx = -dr * elH;  expectedDy =  dc * elW;
+        expectedDx = -dr * dH;   expectedDy =  dc * dW;
       }
 
       const dist = Math.hypot(actualDx - expectedDx, actualDy - expectedDy);
