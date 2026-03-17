@@ -378,12 +378,11 @@ async function onMouseUp(e) {
       const dcI  = iCol - anchorCol;
       const drI  = iRow - anchorRow;
       // At 0°: offset = (dcI*dW, drI*dH). Rotate that offset by rot° CW.
-      // 90° CW in screen coords (y-down): (dx,dy) → (+dy, -dx)
       let ox, oy;
       if (rot === 0)        { ox =  dcI * dW;  oy =  drI * dH; }
-      else if (rot === 90)  { ox =  drI * dH;  oy = -dcI * dW; }
+      else if (rot === 90)  { ox = -drI * dH;  oy =  dcI * dW; }
       else if (rot === 180) { ox = -dcI * dW;  oy = -drI * dH; }
-      else                  { ox = -drI * dH;  oy =  dcI * dW; }
+      else                  { ox =  drI * dH;  oy = -dcI * dW; }
       const x = anchorX + ox;
       const y = anchorY + oy;
       pieceStates[i] = { ...pieceStates[i], x, y, lockedBy: null };
@@ -606,15 +605,14 @@ function findNeighbourSnap(dragIndices) {
       const base0x = -dc * dW;
       const base0y = -dr * dH;
       let expectedDx, expectedDy;
-      // 90° CW in screen coords (y-down): (dx,dy) → (+dy, -dx)
       if (rot === 0) {
-        expectedDx =  base0x;          expectedDy =  base0y;
+        expectedDx = base0x;           expectedDy = base0y;
       } else if (rot === 90) {
-        expectedDx =  base0y;          expectedDy = -base0x;
+        expectedDx = -base0y;          expectedDy =  base0x;
       } else if (rot === 180) {
         expectedDx = -base0x;          expectedDy = -base0y;
       } else { // 270
-        expectedDx = -base0y;          expectedDy =  base0x;
+        expectedDx =  base0y;          expectedDy = -base0x;
       }
 
       const dist = Math.hypot(actualDx - expectedDx, actualDy - expectedDy);
