@@ -880,13 +880,27 @@ function renderPlayers(players) {
 const avatarEls = [];
 
 function setPieceAvatar(index, lockOwner) {
-  // Remove existing avatar for this piece
-  avatarEls[index]?.remove();
-  avatarEls[index] = null;
+  // Get all indices in this piece's group
+  const gid     = pieceGroup[index];
+  const indices = gid ? [...groups[gid]] : [index];
+
+  // Remove avatars from all pieces in the group
+  indices.forEach(i => { avatarEls[i]?.remove(); avatarEls[i] = null; });
 
   if (!lockOwner || lockOwner === playerId) return;
   const player = playersMap[lockOwner];
   if (!player) return;
+
+  // Show avatar only on the top-right piece of the group (min row, max col)
+  const cols = meta?.cols ?? 1;
+  const anchor = indices.reduce((best, i) => {
+    const row = Math.floor(i / cols);
+    const col = i % cols;
+    const bestRow = Math.floor(best / cols);
+    const bestCol = best % cols;
+    if (row < bestRow || (row === bestRow && col > bestCol)) return i;
+    return best;
+  });
 
   const avatar = document.createElement('div');
   avatar.className = 'piece-avatar';
@@ -894,9 +908,8 @@ function setPieceAvatar(index, lockOwner) {
   avatar.textContent = player.name[0].toUpperCase();
   avatar.title = player.name;
   board.appendChild(avatar);
-  avatarEls[index] = avatar;
-  // Position it now
-  updateAvatarPosition(index);
+  avatarEls[anchor] = avatar;
+  updateAvatarPosition(anchor);
 }
 
 function updateAvatarPosition(index) {
