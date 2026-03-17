@@ -196,26 +196,28 @@ function renderPiece(index, dataUrl, x, y, solved, elW, elH) {
   el.style.height  = elH + 'px';
   el.draggable     = false;
   movePieceEl(index, x, y, el);
-  rotatePieceEl(index, pieceStates[index]?.rotation ?? 0, el);
   board.appendChild(el);
   pieceEls[index] = el;
   updatePieceZIndex(index);
 }
 
-// x,y are inner-rect coords; subtract pad for DOM position
+// Position and rotate a piece using a single CSS transform.
+// x,y are inner-rect coords (top-left of the unpadded cell).
+// We translate by (x-pad, y-pad) then rotate around the element centre.
+// Using transform for both keeps positioning and rotation independent —
+// no interaction between left/top and rotate.
 function movePieceEl(index, x, y, el) {
   const pad = meta?._pad ?? 0;
   const e   = el ?? pieceEls[index];
   if (!e) return;
-  e.style.left = (x - pad) + 'px';
-  e.style.top  = (y - pad) + 'px';
+  const rot = pieceStates[index]?.rotation ?? 0;
+  e.style.left = '0';
+  e.style.top  = '0';
+  e.style.transform = rot
+    ? `translate(${x - pad}px, ${y - pad}px) rotate(${rot}deg)`
+    : `translate(${x - pad}px, ${y - pad}px)`;
 }
 
-function rotatePieceEl(index, rotation, el) {
-  const e = el ?? pieceEls[index];
-  if (!e) return;
-  e.style.transform = rotation ? `rotate(${rotation}deg)` : '';
-}
 
 // Set z-index so tab edges render on top of the slot pieces they protrude into.
 // A right-tab on piece (col,row) protrudes into (col+1,row) → needs z > that piece.
@@ -498,7 +500,7 @@ function rotateAtIndex(index) {
   if (indices.length === 1) {
     // Single piece — update rotation only, position unchanged
     pieceStates[index].rotation = newRot;
-    rotatePieceEl(index, newRot);
+    movePieceEl(index, pieceStates[index].x, pieceStates[index].y);
     updatePieceRotation(puzzleId, index, newRot);
     return;
   }
@@ -520,7 +522,6 @@ function rotateAtIndex(index) {
     pieceStates[i].y        = newY;
     pieceStates[i].rotation = newRot;
     movePieceEl(i, newX, newY);
-    rotatePieceEl(i, newRot);
     positions.push({ index: i, x: newX, y: newY });
   });
 
@@ -723,7 +724,6 @@ function applyRemoteUpdate(index, data) {
   pieceStates[index] = { ...pieceStates[index], ...data };
 
   movePieceEl(index, data.x, data.y);
-  if (data.rotation !== undefined) rotatePieceEl(index, data.rotation);
 
   // If this piece just joined a group (from another player's snap), merge locally
   if (data.groupId && data.groupId !== wasGroupId) {
