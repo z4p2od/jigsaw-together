@@ -129,7 +129,7 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  const date = new Date().toISOString().split('T')[0];
+  const date = new Date().toLocaleDateString('sv', { timeZone: 'Europe/Athens' });
 
   // List available images
   const images = await listPOTDImages();

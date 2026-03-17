@@ -248,6 +248,6 @@ export function onPOTDLeaderboard(difficulty, date, callback) {
 
 /** Write a POTD completion score. Keyed by puzzleId so each game is one entry. */
 export function recordPOTDScore(puzzleId, difficulty, names, secs) {
-  const date = new Date().toISOString().split('T')[0];
+  const date = new Date().toLocaleDateString('sv', { timeZone: 'Europe/Athens' });
   return set(ref(db, `potd/${difficulty}/leaderboard/${puzzleId}`), { names, secs, date });
 }

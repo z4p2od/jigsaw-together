@@ -11,7 +11,7 @@
     { "source": "/puzzle", "destination": "/puzzle.html" }
   ],
   "crons": [
-    { "path": "/api/cleanup", "schedule": "0 3 * * *" },
-    { "path": "/api/potd",    "schedule": "0 4 * * *" }
+    { "path": "/api/cleanup", "schedule": "0 21 * * *" },
+    { "path": "/api/potd",    "schedule": "0 22 * * *" }
   ]
 }

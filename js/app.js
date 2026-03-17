@@ -29,7 +29,7 @@ const DIFFICULTIES = [
 ];
 
 async function loadPOTD() {
-  const today = new Date().toISOString().split('T')[0];
+  const today = new Date().toLocaleDateString('sv', { timeZone: 'Europe/Athens' });
   let anyShown = false;
 
   for (const diff of DIFFICULTIES) {

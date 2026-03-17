@@ -794,7 +794,7 @@ function checkCompletion() {
       if (names.length === 0) names.push(playerName);
       recordPOTDScore(puzzleId, meta.potdDifficulty, names, secs);
       // Show live leaderboard in celebration banner
-      const today = new Date().toISOString().split('T')[0];
+      const today = new Date().toLocaleDateString('sv', { timeZone: 'Europe/Athens' });
       celebrationLb.style.display = '';
       onPOTDLeaderboard(meta.potdDifficulty, today, entries => {
         const sorted = Object.values(entries).sort((a, b) => a.secs - b.secs).slice(0, 5);
