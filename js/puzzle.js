@@ -754,19 +754,10 @@ function setupHelp() {
 function setupPeek() {
   boxCoverImg.src = 'data:image/jpeg;base64,' + meta.imageData;
 
-  const show = () => boxCover.classList.add('show');
-  const hide = () => boxCover.classList.remove('show');
+  const toggle = () => boxCover.classList.toggle('show');
+  const hide   = () => boxCover.classList.remove('show');
 
-  // Desktop: hold mouse button
-  peekBtn.addEventListener('mousedown', show);
-  window.addEventListener('mouseup', hide);
-
-  // Mobile: touch hold
-  peekBtn.addEventListener('touchstart', e => { e.preventDefault(); show(); }, { passive: false });
-  peekBtn.addEventListener('touchend', hide);
-  peekBtn.addEventListener('touchcancel', hide);
-
-  // Click on overlay also dismisses
+  peekBtn.addEventListener('click', toggle);
   boxCover.addEventListener('click', hide);
 }
 

@@ -273,9 +273,20 @@ body {
   justify-content: center;
   flex-shrink: 0;
   transition: background 0.15s;
+  text-decoration: none;
 }
 
 .icon-btn:hover { background: var(--accent); }
+
+.mode-hint {
+  font-size: 0.82rem;
+  color: var(--accent2);
+  line-height: 1.5;
+  padding: 8px 10px;
+  background: rgba(245,166,35,0.1);
+  border-radius: 8px;
+  border: 1px solid rgba(245,166,35,0.25);
+}
 
 /* Help modal list */
 .help-list {

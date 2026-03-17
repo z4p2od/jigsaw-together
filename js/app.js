@@ -7,10 +7,18 @@ const placeholder = document.getElementById('upload-placeholder');
 const preview     = document.getElementById('preview');
 const createBtn   = document.getElementById('create-btn');
 const statusEl    = document.getElementById('status');
+const modeHint    = document.getElementById('mode-hint');
 
 const MAX_BYTES = 10 * 1024 * 1024;
 
 let imageBase64 = null;
+
+// Show hard mode explainer when Hard is selected
+document.querySelectorAll('input[name="mode"]').forEach(radio => {
+  radio.addEventListener('change', () => {
+    modeHint.style.display = radio.value === 'hard' && radio.checked ? '' : 'none';
+  });
+});
 
 // ── Image upload ──────────────────────────────────────────────────────────────
 
