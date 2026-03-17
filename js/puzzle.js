@@ -907,8 +907,8 @@ function updateAvatarPosition(index) {
   const pad = meta?._pad ?? 0;
   const p   = pieceStates[index];
   if (!p) return;
-  const x = p.x - pad + (meta._displayW + pad * 2) - 26;
-  const y = p.y - pad + 4;
+  const x = p.x + meta._displayW - 12;
+  const y = p.y - 12;
   avatar.style.left = x + 'px';
   avatar.style.top  = y + 'px';
 }
