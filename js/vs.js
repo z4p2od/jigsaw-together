@@ -1004,13 +1004,15 @@ async function createRematchRoom() {
     const { roomId: newRoom } = await res.json();
     if (!newRoom) return;
 
-    // Pre-join and pre-ready both players so the lobby is skipped
+    // Pre-join, pre-ready and pre-start so lobby + ready screen are skipped
     const snap = await loadVSRoom(roomId);
     const currentPlayers = snap.players || {};
     await Promise.all(Object.entries(currentPlayers).map(([pid, p]) =>
       joinVSRoom(newRoom, pid, p.name, p.color)
         .then(() => setVSReady(newRoom, pid))
     ));
+    // Set status to playing immediately — no need for the ready handshake
+    await setVSPlaying(newRoom);
 
     await setVSRematch(roomId, newRoom);
     // handleRoomUpdate will see rematchRoomId and redirect both players
