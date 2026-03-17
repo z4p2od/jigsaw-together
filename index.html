@@ -13,6 +13,50 @@
       <p class="subtitle">Upload a photo, share a link, solve it together.</p>
     </div>
 
+    <!-- Puzzle of the Day — hidden until JS confirms today's puzzles exist -->
+    <div id="potd-section" style="display:none">
+      <p class="field-label" style="text-align:center;margin-bottom:8px">Puzzle of the Day</p>
+      <div class="potd-grid">
+
+        <div id="potd-easy" class="potd-card" style="display:none">
+          <div class="potd-card-header">
+            <span class="potd-difficulty">🟢 Easy</span>
+            <span class="potd-pieces">25 pieces</span>
+          </div>
+          <a class="potd-play btn" href="#">Play Today's Puzzle</a>
+          <div class="potd-leaderboard">
+            <p class="potd-lb-title">Today's Top Times</p>
+            <ol id="potd-lb-easy" class="potd-lb-list"><li class="lb-empty">No completions yet</li></ol>
+          </div>
+        </div>
+
+        <div id="potd-medium" class="potd-card" style="display:none">
+          <div class="potd-card-header">
+            <span class="potd-difficulty">🟡 Medium</span>
+            <span class="potd-pieces">100 pieces</span>
+          </div>
+          <a class="potd-play btn" href="#">Play Today's Puzzle</a>
+          <div class="potd-leaderboard">
+            <p class="potd-lb-title">Today's Top Times</p>
+            <ol id="potd-lb-medium" class="potd-lb-list"><li class="lb-empty">No completions yet</li></ol>
+          </div>
+        </div>
+
+        <div id="potd-hard" class="potd-card" style="display:none">
+          <div class="potd-card-header">
+            <span class="potd-difficulty">🔴 Hard 🔥</span>
+            <span class="potd-pieces">100 pieces · rotated</span>
+          </div>
+          <a class="potd-play btn" href="#">Play Today's Puzzle</a>
+          <div class="potd-leaderboard">
+            <p class="potd-lb-title">Today's Top Times</p>
+            <ol id="potd-lb-hard" class="potd-lb-list"><li class="lb-empty">No completions yet</li></ol>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
     <div class="card">
       <div class="upload-zone" id="upload-zone">
         <input type="file" id="file-input" accept="image/*" />

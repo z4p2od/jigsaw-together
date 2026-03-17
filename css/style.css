@@ -547,6 +547,103 @@ body {
   font-size: 0.9rem;
 }
 
+/* ── Puzzle of the Day ── */
+
+#potd-section {
+  width: 100%;
+  max-width: 480px;
+}
+
+.potd-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.potd-card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 20px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.potd-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.potd-difficulty {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.potd-pieces {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.potd-play {
+  text-align: center;
+  text-decoration: none;
+}
+
+.potd-leaderboard { display: flex; flex-direction: column; gap: 6px; }
+
+.potd-lb-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.potd-lb-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.potd-lb-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  color: var(--text);
+}
+
+.lb-rank {
+  width: 18px;
+  font-weight: 700;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.lb-names {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lb-time {
+  font-variant-numeric: tabular-nums;
+  color: var(--accent2);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.lb-empty {
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 0.8rem;
+}
+
 @media (max-width: 960px) {
   .puzzle-board-wrap {
     overflow: auto;

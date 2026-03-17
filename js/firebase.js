@@ -225,3 +225,29 @@ export function onPiecesChanged(puzzleId, callback) {
   onChildChanged(piecesRef, handler);
   return () => off(piecesRef, 'child_changed', handler);
 }
+
+// ── Puzzle of the Day ─────────────────────────────────────────────────────────
+
+/** Fetch today's POTD entry for a difficulty (one-time read). */
+export async function getPOTD(difficulty) {
+  const snap = await get(ref(db, `potd/${difficulty}`));
+  return snap.val();
+}
+
+/** Subscribe to POTD leaderboard for a difficulty, filtered to today's date. */
+export function onPOTDLeaderboard(difficulty, date, callback) {
+  const r = ref(db, `potd/${difficulty}/leaderboard`);
+  const handler = snap => {
+    const all     = snap.val() || {};
+    const today   = Object.fromEntries(Object.entries(all).filter(([, v]) => v.date === date));
+    callback(today);
+  };
+  onValue(r, handler);
+  return () => off(r, 'value', handler);
+}
+
+/** Write a POTD completion score. Keyed by puzzleId so each game is one entry. */
+export function recordPOTDScore(puzzleId, difficulty, names, secs) {
+  const date = new Date().toISOString().split('T')[0];
+  return set(ref(db, `potd/${difficulty}/leaderboard/${puzzleId}`), { names, secs, date });
+}

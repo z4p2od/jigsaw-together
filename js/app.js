@@ -1,4 +1,4 @@
-import { createPuzzle } from './firebase.js';
+import { createPuzzle, getPOTD, onPOTDLeaderboard } from './firebase.js';
 import { generateEdges } from './jigsaw.js';
 
 const fileInput   = document.getElementById('file-input');
@@ -19,6 +19,73 @@ document.querySelectorAll('input[name="mode"]').forEach(radio => {
     modeHint.style.display = radio.value === 'hard' && radio.checked ? '' : 'none';
   });
 });
+
+// ── POTD ──────────────────────────────────────────────────────────────────────
+
+const DIFFICULTIES = [
+  { key: 'easy',   label: 'Easy',   emoji: '🟢', pieces: 25  },
+  { key: 'medium', label: 'Medium', emoji: '🟡', pieces: 100 },
+  { key: 'hard',   label: 'Hard',   emoji: '🔴', pieces: 100, hard: true },
+];
+
+async function loadPOTD() {
+  const today = new Date().toISOString().split('T')[0];
+  let anyShown = false;
+
+  for (const diff of DIFFICULTIES) {
+    try {
+      const data = await getPOTD(diff.key);
+      if (!data || data.date !== today) continue;
+
+      const card = document.getElementById(`potd-${diff.key}`);
+      if (!card) continue;
+      card.querySelector('.potd-play').href = `/puzzle.html?id=${data.puzzleId}`;
+      card.style.display = '';
+      anyShown = true;
+
+      // Subscribe to leaderboard updates
+      onPOTDLeaderboard(diff.key, today, entries => renderLeaderboard(diff.key, entries));
+    } catch {}
+  }
+
+  if (anyShown) document.getElementById('potd-section').style.display = '';
+}
+
+function renderLeaderboard(diffKey, entries) {
+  const el = document.getElementById(`potd-lb-${diffKey}`);
+  if (!el) return;
+
+  // Sort by time ascending, take top 5
+  const sorted = Object.values(entries || {})
+    .sort((a, b) => a.secs - b.secs)
+    .slice(0, 5);
+
+  if (sorted.length === 0) {
+    el.innerHTML = '<li class="lb-empty">No completions yet — be the first!</li>';
+    return;
+  }
+
+  el.innerHTML = sorted.map((e, i) => {
+    const names = formatNames(e.names || []);
+    const time  = formatTime(e.secs);
+    return `<li><span class="lb-rank">${i + 1}</span><span class="lb-names">${names}</span><span class="lb-time">${time}</span></li>`;
+  }).join('');
+}
+
+function formatNames(names) {
+  if (names.length === 0) return 'Anonymous';
+  if (names.length === 1) return names[0];
+  if (names.length <= 3)  return names.join(' & ');
+  return `${names[0]}, ${names[1]} +${names.length - 2} more`;
+}
+
+function formatTime(secs) {
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+loadPOTD();
 
 // ── Image upload ──────────────────────────────────────────────────────────────
 
@@ -94,6 +161,24 @@ function scatterPieces(count, dispW, dispH, hardMode) {
   }));
 }
 
+// ── Cloudinary upload ─────────────────────────────────────────────────────────
+
+let cloudinaryConfigCache = null;
+
+async function uploadToCloudinary(base64Data) {
+  if (!cloudinaryConfigCache) {
+    cloudinaryConfigCache = await fetch('/api/cloudinary-config').then(r => r.json());
+  }
+  const { cloudName, uploadPreset } = cloudinaryConfigCache;
+  const fd = new FormData();
+  fd.append('file',          'data:image/jpeg;base64,' + base64Data);
+  fd.append('upload_preset', uploadPreset);
+  const res  = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, { method: 'POST', body: fd });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error?.message || 'Cloudinary upload failed');
+  return { imageUrl: data.secure_url, imagePublicId: data.public_id };
+}
+
 // ── Create puzzle ─────────────────────────────────────────────────────────────
 
 createBtn.addEventListener('click', handleCreatePuzzle);
@@ -113,8 +198,6 @@ async function handleCreatePuzzle() {
     const pieceW = Math.floor(img.naturalWidth  / cols);
     const pieceH = Math.floor(img.naturalHeight / rows);
 
-    // Compute display size once here — stored in Firebase so every client
-    // uses the exact same pixel values for rendering and snap alignment.
     const boardW = 900, boardH = 650;
     const scale    = Math.min((boardW * 0.55) / img.naturalWidth, (boardH * 0.55) / img.naturalHeight, 1);
     const displayW = Math.floor(pieceW * scale);
@@ -124,7 +207,10 @@ async function handleCreatePuzzle() {
     const edges    = generateEdges(cols, rows);
     const pieces   = scatterPieces(actualCount, displayW, displayH, hardMode);
 
-    const meta = { imageData: imageBase64, cols, rows, pieceW, pieceH, displayW, displayH, edges, hardMode };
+    setStatus('Uploading image...');
+    const { imageUrl, imagePublicId } = await uploadToCloudinary(imageBase64);
+
+    const meta = { imageUrl, imagePublicId, cols, rows, pieceW, pieceH, displayW, displayH, edges, hardMode };
 
     setStatus(`Creating ${actualCount}-piece puzzle...`);
     const puzzleId = await createPuzzle(meta, pieces);

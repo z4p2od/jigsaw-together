@@ -14,6 +14,7 @@ import {
   updatePieceRotation,
   updateGroupRotation,
   updateGroupRotationAndPositions,
+  recordPOTDScore,
 } from './firebase.js';
 import { cutPiece, getPad } from './jigsaw.js';
 
@@ -163,7 +164,8 @@ function setupBoard() {
 // ── Rendering ─────────────────────────────────────────────────────────────────
 
 async function renderAllPieces() {
-  const img = await loadImage('data:image/jpeg;base64,' + meta.imageData);
+  const src = meta.imageUrl ?? ('data:image/jpeg;base64,' + meta.imageData);
+  const img = await loadImage(src);
   const { cols, rows, pieceW, pieceH, edges, displayW, displayH } = meta;
   const pad = getPad(displayW, displayH);
 
@@ -782,6 +784,13 @@ function checkCompletion() {
   if (startedAt) {
     const secs = Math.floor((Date.now() - startedAt) / 1000);
     celebrationTime.textContent = `Solved in ${formatTime(secs)}`;
+
+    // Record POTD leaderboard entry — only the player who triggers completion writes it
+    if (meta.isPOTD && meta.potdDifficulty) {
+      const names = Object.values(playersMap).map(p => p.name);
+      if (names.length === 0) names.push(playerName);
+      recordPOTDScore(puzzleId, meta.potdDifficulty, names, secs);
+    }
   }
   celebration.classList.add('show');
 }
@@ -813,7 +822,7 @@ function setupHelp() {
 }
 
 function setupPeek() {
-  boxCoverImg.src = 'data:image/jpeg;base64,' + meta.imageData;
+  boxCoverImg.src = meta.imageUrl ?? ('data:image/jpeg;base64,' + meta.imageData);
 
   const toggle = () => boxCover.classList.toggle('show');
   const hide   = () => boxCover.classList.remove('show');
