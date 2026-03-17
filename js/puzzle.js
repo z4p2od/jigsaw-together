@@ -366,12 +366,23 @@ async function onMouseUp(e) {
     const anchorX   = pieceStates[anchorIdx].x;
     const anchorY   = pieceStates[anchorIdx].y;
 
+    // Rotation of the snapping pieces (both sides share the same rotation)
+    const rot = pieceStates[snap.neighbourIndex].rotation ?? 0;
+
     const positions = [];
     allIndices.forEach(i => {
       const iCol = i % cols;
       const iRow = Math.floor(i / cols);
-      const x = anchorX + (iCol - anchorCol) * dW;
-      const y = anchorY + (iRow - anchorRow) * dH;
+      const dcI  = iCol - anchorCol;
+      const drI  = iRow - anchorRow;
+      // At 0°: offset = (dcI*dW, drI*dH). Rotate that offset by rot° CW.
+      let ox, oy;
+      if (rot === 0)        { ox =  dcI * dW;  oy =  drI * dH; }
+      else if (rot === 90)  { ox = -drI * dH;  oy =  dcI * dW; }
+      else if (rot === 180) { ox = -dcI * dW;  oy = -drI * dH; }
+      else                  { ox =  drI * dH;  oy = -dcI * dW; }
+      const x = anchorX + ox;
+      const y = anchorY + oy;
       pieceStates[i] = { ...pieceStates[i], x, y, lockedBy: null };
       movePieceEl(i, x, y);
       positions.push({ index: i, x, y });
