@@ -172,6 +172,9 @@ async function initVS() {
     const room = await loadVSRoom(roomId);
     meta = room.meta;
 
+    // Hide lobby immediately if room is already playing (rematch)
+    if (room.meta.status === 'playing') vsLobby.style.display = 'none';
+
     const color = getPlayerColor(playerId);
     await joinVSRoom(roomId, playerId, playerName, color);
 
