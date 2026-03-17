@@ -70,6 +70,13 @@ const timerEl         = document.getElementById('timer-display');
 const nameModal       = document.getElementById('name-modal');
 const nameInput       = document.getElementById('name-input');
 const nameSubmit      = document.getElementById('name-submit');
+const helpModal       = document.getElementById('help-modal');
+const helpList        = document.getElementById('help-list');
+const helpClose       = document.getElementById('help-close');
+const helpBtn         = document.getElementById('help-btn');
+const peekBtn         = document.getElementById('peek-btn');
+const boxCover        = document.getElementById('box-cover');
+const boxCoverImg     = document.getElementById('box-cover-img');
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
@@ -117,6 +124,9 @@ async function initPuzzle() {
     reconstructGroups();
     setupShareLink();
     attachDragListeners();
+
+    setupHelp();
+    setupPeek();
 
     unsubscribe = onPiecesChanged(puzzleId, applyRemoteUpdate);
     unsubPlayers = onPlayersChanged(puzzleId, renderPlayers);
@@ -713,6 +723,51 @@ function checkCompletion() {
     celebrationTime.textContent = `Solved in ${formatTime(secs)}`;
   }
   celebration.classList.add('show');
+}
+
+function setupHelp() {
+  const controls = [
+    { key: 'Drag',            desc: 'Move a piece or a connected group' },
+    { key: 'Drop near edge',  desc: 'Pieces snap together automatically' },
+    { key: 'Pinch (mobile)',  desc: 'Zoom in / out' },
+    { key: 'Scroll',          desc: 'Pan the board' },
+  ];
+  if (meta.hardMode) {
+    controls.push({ key: 'Right-click',  desc: 'Rotate a piece or group 90°' });
+    controls.push({ key: 'Long-press',   desc: 'Rotate on mobile (hold 0.5s)' });
+  }
+  helpList.innerHTML = controls.map(c =>
+    `<li><strong>${c.key}</strong>${c.desc}</li>`
+  ).join('');
+
+  helpBtn.addEventListener('click', () => {
+    helpModal.style.display = 'flex';
+  });
+  helpClose.addEventListener('click', () => {
+    helpModal.style.display = 'none';
+  });
+  helpModal.addEventListener('click', e => {
+    if (e.target === helpModal) helpModal.style.display = 'none';
+  });
+}
+
+function setupPeek() {
+  boxCoverImg.src = 'data:image/jpeg;base64,' + meta.imageData;
+
+  const show = () => boxCover.classList.add('show');
+  const hide = () => boxCover.classList.remove('show');
+
+  // Desktop: hold mouse button
+  peekBtn.addEventListener('mousedown', show);
+  window.addEventListener('mouseup', hide);
+
+  // Mobile: touch hold
+  peekBtn.addEventListener('touchstart', e => { e.preventDefault(); show(); }, { passive: false });
+  peekBtn.addEventListener('touchend', hide);
+  peekBtn.addEventListener('touchcancel', hide);
+
+  // Click on overlay also dismisses
+  boxCover.addEventListener('click', hide);
 }
 
 function setupShareLink() {

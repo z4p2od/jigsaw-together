@@ -255,6 +255,77 @@ body {
   padding: 2px 8px;
   white-space: nowrap;
   flex-shrink: 0;
+  cursor: default;
+}
+
+.icon-btn {
+  background: var(--surface2);
+  border: none;
+  color: var(--text);
+  border-radius: 8px;
+  width: 32px;
+  height: 32px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+
+.icon-btn:hover { background: var(--accent); }
+
+/* Help modal list */
+.help-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  text-align: left;
+}
+
+.help-list li {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.help-list li strong {
+  color: var(--text);
+  white-space: nowrap;
+  min-width: 110px;
+}
+
+/* Box cover overlay */
+#box-cover {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 9997;
+  background: rgba(0,0,0,0.85);
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 12px;
+}
+
+#box-cover.show { display: flex; }
+
+#box-cover-img {
+  max-width: 90vw;
+  max-height: 80vh;
+  object-fit: contain;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.box-cover-hint {
+  font-size: 0.8rem;
+  color: rgba(255,255,255,0.5);
 }
 
 .share-box {

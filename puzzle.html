@@ -21,6 +21,21 @@
     </div>
   </div>
 
+  <!-- Help modal -->
+  <div id="help-modal" class="modal-overlay">
+    <div class="modal">
+      <h3>How to play</h3>
+      <ul class="help-list" id="help-list"></ul>
+      <button id="help-close" class="btn">Got it</button>
+    </div>
+  </div>
+
+  <!-- Box cover overlay -->
+  <div id="box-cover">
+    <img id="box-cover-img" alt="Puzzle image" />
+    <p class="box-cover-hint">Release to close</p>
+  </div>
+
   <div id="celebration">
     <h2>🎉 Puzzle Complete!</h2>
     <p id="celebration-time"></p>
@@ -30,7 +45,7 @@
   <div class="puzzle-page">
     <header class="puzzle-header">
       <h2>Jigsaw Together</h2>
-      <span id="hard-badge" class="hard-badge" style="display:none">Hard 🔥</span>
+      <span id="hard-badge" class="hard-badge" style="display:none" title="Pieces start rotated — right-click or long-press to rotate them">Hard 🔥</span>
       <div class="share-box">
         <span id="share-url"></span>
         <button id="copy-btn">Copy Link</button>
@@ -39,6 +54,8 @@
         <div id="players-list" class="players-list"></div>
         <span id="timer-display" class="timer">0:00</span>
         <span class="progress-text" id="progress-text">0 / 0 pieces</span>
+        <button id="peek-btn" class="icon-btn" title="Hold to see the full image">🖼️</button>
+        <button id="help-btn" class="icon-btn" title="Controls">?</button>
       </div>
     </header>
 
