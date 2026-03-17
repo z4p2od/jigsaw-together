@@ -246,6 +246,17 @@ body {
   font-weight: 700;
 }
 
+.hard-badge {
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: var(--accent2);
+  color: #000;
+  border-radius: 6px;
+  padding: 2px 8px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 .share-box {
   display: flex;
   align-items: center;

@@ -11,6 +11,8 @@ import {
   onPlayersChanged,
   getPlayerColor,
   setStartedAt,
+  updatePieceRotation,
+  updateGroupRotation,
 } from './firebase.js';
 import { cutPiece, getPad } from './jigsaw.js';
 
@@ -40,6 +42,10 @@ let dragging    = null; // { indices, anchorIndex, offsetX, offsetY, relOffsets 
 let unsubscribe = null;
 let scale       = 1;   // current zoom level applied to #puzzle-board
 let pinch       = null; // { dist0, scale0 } — active pinch gesture state
+
+// Long-press for mobile rotate (hard mode only)
+let longPressTimer    = null;
+let longPressStartPos = null;
 
 // Player presence
 let playerName  = sessionStorage.getItem('playerName') || null;
@@ -103,6 +109,8 @@ async function initPuzzle() {
     pieceStates = Object.values(data.pieces);
     totalPieces = pieceStates.length;
     solvedCount = pieceStates.filter(p => p.solved).length;
+
+    if (meta.hardMode) document.getElementById('hard-badge').style.display = '';
 
     setupBoard();
     await renderAllPieces();
@@ -177,6 +185,7 @@ function renderPiece(index, dataUrl, x, y, solved, elW, elH) {
   el.style.height  = elH + 'px';
   el.draggable     = false;
   movePieceEl(index, x, y, el);
+  rotatePieceEl(index, pieceStates[index]?.rotation ?? 0, el);
   board.appendChild(el);
   pieceEls[index] = el;
   updatePieceZIndex(index);
@@ -189,6 +198,12 @@ function movePieceEl(index, x, y, el) {
   if (!e) return;
   e.style.left = (x - pad) + 'px';
   e.style.top  = (y - pad) + 'px';
+}
+
+function rotatePieceEl(index, rotation, el) {
+  const e = el ?? pieceEls[index];
+  if (!e) return;
+  e.style.transform = rotation ? `rotate(${rotation}deg)` : '';
 }
 
 // Set z-index so tab edges render on top of the slot pieces they protrude into.
@@ -214,9 +229,17 @@ function updatePieceZIndex(index) {
 // ── Drag ──────────────────────────────────────────────────────────────────────
 
 function attachDragListeners() {
-  board.addEventListener('mousedown', onMouseDown);
-  window.addEventListener('mousemove', onMouseMove);
-  window.addEventListener('mouseup',   onMouseUp);
+  board.addEventListener('mousedown',   onMouseDown);
+  board.addEventListener('contextmenu', onContextMenu);
+  window.addEventListener('mousemove',  onMouseMove);
+  window.addEventListener('mouseup',    onMouseUp);
+
+  // Long-press for mobile rotation (hard mode only)
+  board.addEventListener('pointerdown', onPointerDownLongPress);
+  board.addEventListener('pointermove', onPointerMoveLongPress);
+  board.addEventListener('pointerup',   cancelLongPress);
+  board.addEventListener('pointercancel', cancelLongPress);
+
   // Use the wrap for touch so pinch-to-zoom works even when fingers start outside board
   const wrap = board.parentElement;
   wrap.addEventListener('touchstart', onTouchStart, { passive: false });
@@ -408,6 +431,57 @@ function onTouchEnd(e) {
   onMouseUp({ clientX: touch.clientX, clientY: touch.clientY });
 }
 
+// ── Rotation ──────────────────────────────────────────────────────────────────
+
+function onContextMenu(e) {
+  e.preventDefault();
+  if (!meta?.hardMode) return;
+  const el = e.target.closest('.piece');
+  if (!el) return;
+  const index = Number(el.dataset.index);
+  if (pieceStates[index].lockedBy && pieceStates[index].lockedBy !== playerId) return;
+  rotateAtIndex(index);
+}
+
+function onPointerDownLongPress(e) {
+  if (!meta?.hardMode || e.pointerType === 'mouse') return;
+  longPressStartPos = { x: e.clientX, y: e.clientY };
+  longPressTimer = setTimeout(() => {
+    longPressTimer = null;
+    const el = document.elementFromPoint(longPressStartPos.x, longPressStartPos.y)?.closest('.piece');
+    if (!el) return;
+    const index = Number(el.dataset.index);
+    if (pieceStates[index].lockedBy && pieceStates[index].lockedBy !== playerId) return;
+    rotateAtIndex(index);
+  }, 500);
+}
+
+function onPointerMoveLongPress(e) {
+  if (!longPressTimer) return;
+  const d = Math.hypot(e.clientX - longPressStartPos.x, e.clientY - longPressStartPos.y);
+  if (d > 8) cancelLongPress();
+}
+
+function cancelLongPress() {
+  clearTimeout(longPressTimer);
+  longPressTimer = null;
+}
+
+function rotateAtIndex(index) {
+  const gid     = pieceGroup[index];
+  const indices = gid ? [...groups[gid]] : [index];
+  const newRot  = ((pieceStates[index].rotation ?? 0) + 90) % 360;
+  indices.forEach(i => {
+    pieceStates[i].rotation = newRot;
+    rotatePieceEl(i, newRot);
+  });
+  if (indices.length > 1) {
+    updateGroupRotation(puzzleId, indices, newRot);
+  } else {
+    updatePieceRotation(puzzleId, index, newRot);
+  }
+}
+
 function touchDist(touches) {
   const dx = touches[0].clientX - touches[1].clientX;
   const dy = touches[0].clientY - touches[1].clientY;
@@ -469,6 +543,9 @@ function findNeighbourSnap(dragIndices) {
       // Edge IDs must match (they share the same physical edge)
       // Border edges have id=0 — skip those
       if (eI[myEdge] === 0 || eI[myEdge] !== eN[neighbourEdge]) continue;
+
+      // In hard mode both pieces must be at the same rotation to snap
+      if ((pieceStates[i].rotation ?? 0) !== (pieceStates[nIdx].rotation ?? 0)) continue;
 
       // Actual relative offset: piece i minus its neighbour
       const actualDx = pieceStates[i].x - pieceStates[nIdx].x;
@@ -588,6 +665,7 @@ function applyRemoteUpdate(index, data) {
   pieceStates[index] = { ...pieceStates[index], ...data };
 
   movePieceEl(index, data.x, data.y);
+  if (data.rotation !== undefined) rotatePieceEl(index, data.rotation);
 
   // If this piece just joined a group (from another player's snap), merge locally
   if (data.groupId && data.groupId !== wasGroupId) {

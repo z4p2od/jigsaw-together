@@ -152,6 +152,18 @@ export function writeSnappedPositions(puzzleId, positions, groupId) {
   return update(ref(db, `puzzles/${puzzleId}/pieces`), flat);
 }
 
+/** Update the rotation of a single piece. */
+export function updatePieceRotation(puzzleId, pieceIndex, rotation) {
+  return update(ref(db, `puzzles/${puzzleId}/pieces/${pieceIndex}`), { rotation });
+}
+
+/** Batch-update rotation for multiple pieces (group rotate). */
+export function updateGroupRotation(puzzleId, indices, rotation) {
+  const flat = {};
+  indices.forEach(i => { flat[`${i}/rotation`] = rotation; });
+  return update(ref(db, `puzzles/${puzzleId}/pieces`), flat);
+}
+
 // ── Player presence ───────────────────────────────────────────────────────────
 
 const PLAYER_COLORS = ['#e94560','#f5a623','#4ecdc4','#a78bfa','#34d399','#60a5fa','#f472b6','#fb923c'];

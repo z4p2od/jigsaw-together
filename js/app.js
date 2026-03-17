@@ -75,12 +75,14 @@ function calculateGrid(pieceCount, imgWidth, imgHeight) {
 
 // ── Scatter pieces ────────────────────────────────────────────────────────────
 
-function scatterPieces(count, dispW, dispH) {
+function scatterPieces(count, dispW, dispH, hardMode) {
   const boardW = 900;
   const boardH = 650;
+  const ROTS   = [0, 90, 180, 270];
   return Array.from({ length: count }, () => ({
-    x: Math.random() * (boardW - dispW),
-    y: Math.random() * (boardH - dispH),
+    x:        Math.random() * (boardW - dispW),
+    y:        Math.random() * (boardH - dispH),
+    rotation: hardMode ? ROTS[Math.floor(Math.random() * 4)] : 0,
   }));
 }
 
@@ -110,10 +112,11 @@ async function handleCreatePuzzle() {
     const displayW = Math.floor(pieceW * scale);
     const displayH = Math.floor(pieceH * scale);
 
-    const edges  = generateEdges(cols, rows);
-    const pieces = scatterPieces(actualCount, cols, rows, displayW, displayH);
+    const hardMode = document.querySelector('input[name="mode"]:checked').value === 'hard';
+    const edges    = generateEdges(cols, rows);
+    const pieces   = scatterPieces(actualCount, displayW, displayH, hardMode);
 
-    const meta = { imageData: imageBase64, cols, rows, pieceW, pieceH, displayW, displayH, edges };
+    const meta = { imageData: imageBase64, cols, rows, pieceW, pieceH, displayW, displayH, edges, hardMode };
 
     setStatus(`Creating ${actualCount}-piece puzzle...`);
     const puzzleId = await createPuzzle(meta, pieces);
