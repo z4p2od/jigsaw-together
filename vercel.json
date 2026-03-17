@@ -11,6 +11,6 @@
     { "source": "/puzzle", "destination": "/puzzle.html" }
   ],
   "crons": [
-    { "path": "/api/cleanup", "schedule": "0 * * * *" }
+    { "path": "/api/cleanup", "schedule": "0 3 * * *" }
   ]
 }
