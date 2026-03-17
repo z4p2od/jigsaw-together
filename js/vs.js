@@ -237,11 +237,10 @@ function handleRoomUpdate(room) {
   // Rematch offer/accept state
   if (m.status === 'done') {
     if (m.rematchRoomId) {
-      // Room already created — both players navigate
       location.href = `/vs.html?room=${m.rematchRoomId}`;
       return;
     }
-    updateRematchUI(m.rematchOffer, players);
+    updateRematchUI(m.rematchOffers || {}, players);
   }
 
   prevStatus = m.status;
@@ -382,6 +381,7 @@ function setupOppBoard() {
   oppBoard.style.width           = BOARD_W + 'px';
   oppBoard.style.height          = BOARD_H + 'px';
   oppBoard.style.transformOrigin = 'top left';
+  oppBoard.style.position        = 'relative';
   applyOppScale(scale);
 }
 
@@ -1011,20 +1011,33 @@ async function createRematchRoom() {
   }
 }
 
-function updateRematchUI(rematchOffer, players) {
+function updateRematchUI(rematchOffers, players) {
   if (!vsRematchBtn) return;
 
-  if (!rematchOffer) {
-    // No offer yet
-    if (!rematchOffered) {
-      vsRematchBtn.disabled = false;
-      vsRematchBtn.textContent = '⚡ Rematch';
-      vsRematchBtn.classList.remove('rematch-accept');
+  const iOffered   = !!rematchOffers[playerId];
+  const oppId      = Object.keys(players).find(id => id !== playerId);
+  const oppOffered = oppId ? !!rematchOffers[oppId] : false;
+  const bothOffered = iOffered && oppOffered;
+
+  if (bothOffered && !rematchOffered) {
+    // Edge case: both wrote offers simultaneously before either saw the other's
+    rematchOffered = true;
+  }
+
+  if (bothOffered) {
+    // Both agreed — first player (alphabetically) creates the room once
+    vsRematchBtn.disabled = true;
+    vsRematchBtn.textContent = 'Creating rematch…';
+    vsRematchBtn.classList.remove('rematch-accept');
+    const ids = Object.keys(players).sort();
+    if (ids[0] === playerId && !createRematchRoom._called) {
+      createRematchRoom._called = true;
+      createRematchRoom();
     }
     return;
   }
 
-  if (rematchOffer === playerId) {
+  if (iOffered) {
     // I offered — waiting
     vsRematchBtn.disabled = true;
     vsRematchBtn.textContent = 'Waiting for opponent…';
@@ -1032,18 +1045,18 @@ function updateRematchUI(rematchOffer, players) {
     return;
   }
 
-  // Opponent offered — prompt me to accept
-  if (!rematchOffered) {
+  if (oppOffered) {
+    // Opponent offered — show Accept
     vsRematchBtn.disabled = false;
     vsRematchBtn.textContent = '✅ Accept Rematch!';
     vsRematchBtn.classList.add('rematch-accept');
-  } else {
-    // I already offered too — both offered, create the room (first player only)
-    vsRematchBtn.disabled = true;
-    vsRematchBtn.textContent = 'Creating rematch…';
-    const ids = Object.keys(players).sort();
-    if (ids[0] === playerId) createRematchRoom();
+    return;
   }
+
+  // Nobody offered yet
+  vsRematchBtn.disabled = false;
+  vsRematchBtn.textContent = '⚡ Rematch';
+  vsRematchBtn.classList.remove('rematch-accept');
 }
 
 // ── Chat ──────────────────────────────────────────────────────────────────────

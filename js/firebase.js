@@ -365,7 +365,7 @@ export function solveVSGroup(roomId, playerId, updates) {
 }
 
 export function offerVSRematch(roomId, playerId) {
-  return update(ref(db, `vs/${roomId}/meta`), { rematchOffer: playerId });
+  return set(ref(db, `vs/${roomId}/meta/rematchOffers/${playerId}`), true);
 }
 
 export function setVSRematch(roomId, newRoomId) {
