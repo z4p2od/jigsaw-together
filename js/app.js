@@ -68,9 +68,10 @@ function handleFile(file) {
 function calculateGrid(pieceCount, imgWidth, imgHeight) {
   const aspect = imgWidth / imgHeight;
   let bestCols = 1, bestRows = pieceCount, bestDiff = Infinity;
+  // Only consider exact divisors so cols*rows === pieceCount exactly.
   for (let cols = 1; cols <= pieceCount; cols++) {
-    const rows = Math.round(pieceCount / cols);
-    if (cols * rows === 0) continue;
+    if (pieceCount % cols !== 0) continue;
+    const rows = pieceCount / cols;
     const diff = Math.abs(cols / rows - aspect);
     if (diff < bestDiff) {
       bestDiff = diff;
