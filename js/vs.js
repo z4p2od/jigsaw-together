@@ -997,12 +997,22 @@ async function handleRematchClick() {
 }
 
 async function createRematchRoom() {
-  const pieces = meta?.pieces ?? 100;
-  const hard   = meta?.hardMode ?? false;
+  const pieces  = meta?.pieces ?? 100;
+  const hard    = meta?.hardMode ?? false;
   try {
     const res = await fetch(`/api/vs-create?pieces=${pieces}&hard=${hard}&json=1`);
     const { roomId: newRoom } = await res.json();
-    if (newRoom) await setVSRematch(roomId, newRoom);
+    if (!newRoom) return;
+
+    // Pre-join and pre-ready both players so the lobby is skipped
+    const snap = await loadVSRoom(roomId);
+    const currentPlayers = snap.players || {};
+    await Promise.all(Object.entries(currentPlayers).map(([pid, p]) =>
+      joinVSRoom(newRoom, pid, p.name, p.color)
+        .then(() => setVSReady(newRoom, pid))
+    ));
+
+    await setVSRematch(roomId, newRoom);
     // handleRoomUpdate will see rematchRoomId and redirect both players
   } catch {
     vsRematchBtn.disabled = false;
