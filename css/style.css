@@ -1175,3 +1175,13 @@ body {
   font-size: 1.6rem;
   color: var(--text-muted);
 }
+
+/* ── Rematch accept highlight ── */
+.btn.rematch-accept {
+  background: var(--accent2, #34d399);
+  animation: rematchPulse 1s ease-in-out infinite alternate;
+}
+@keyframes rematchPulse {
+  from { box-shadow: 0 0 0 0 rgba(52,211,153,0.4); }
+  to   { box-shadow: 0 0 0 8px rgba(52,211,153,0); }
+}
