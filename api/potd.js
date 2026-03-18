@@ -80,21 +80,12 @@ function generateEdges(cols, rows) {
 
 async function listPOTDImages() {
   const auth = Buffer.from(`${process.env.CLOUDINARY_API_KEY}:${process.env.CLOUDINARY_API_SECRET}`).toString('base64');
-  // Try folder prefix first, fall back to all non-sample images
   const r = await fetch(
-    `https://api.cloudinary.com/v1_1/${process.env.CLOUDINARY_CLOUD_NAME}/resources/image?prefix=potd-pool/&max_results=500&type=upload`,
+    `https://api.cloudinary.com/v1_1/${process.env.CLOUDINARY_CLOUD_NAME}/resources/image/upload?prefix=potd-pool&max_results=500`,
     { headers: { Authorization: `Basic ${auth}` } }
   );
   const data = await r.json();
-  if (data.resources && data.resources.length > 0) return data.resources;
-
-  // Fallback: fetch all images and exclude Cloudinary sample images
-  const r2 = await fetch(
-    `https://api.cloudinary.com/v1_1/${process.env.CLOUDINARY_CLOUD_NAME}/resources/image?max_results=500&type=upload`,
-    { headers: { Authorization: `Basic ${auth}` } }
-  );
-  const data2 = await r2.json();
-  return (data2.resources || []).filter(img => !img.public_id.startsWith('samples/') && !img.public_id.startsWith('cld-sample') && img.public_id !== 'main-sample');
+  return (data.resources || []).filter(img => img.public_id.startsWith('potd-pool/'));
 }
 
 // ── Firebase REST helpers ─────────────────────────────────────────────────────
