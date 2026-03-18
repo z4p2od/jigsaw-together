@@ -59,11 +59,11 @@ function generateEdges(cols, rows) {
 async function listPoolImages() {
   const auth = Buffer.from(`${process.env.CLOUDINARY_API_KEY}:${process.env.CLOUDINARY_API_SECRET}`).toString('base64');
   const r = await fetch(
-    `https://api.cloudinary.com/v1_1/${process.env.CLOUDINARY_CLOUD_NAME}/resources/image/upload?prefix=potd-pool&max_results=500`,
+    `https://api.cloudinary.com/v1_1/${process.env.CLOUDINARY_CLOUD_NAME}/resources/image/upload?folder=potd-pool&max_results=500`,
     { headers: { Authorization: `Basic ${auth}` } }
   );
   const data = await r.json();
-  return (data.resources || []).filter(img => img.public_id.startsWith('potd-pool/'));
+  return data.resources || [];
 }
 
 function fbPut(path, value) {
