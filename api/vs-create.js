@@ -87,7 +87,8 @@ function fbPatch(path, value) {
 export default async function handler(req, res) {
   const rawPieces  = parseInt(req.query.pieces, 10);
   const PIECE_COUNT = ALLOWED_PIECES.includes(rawPieces) ? rawPieces : 100;
-  const hardMode   = req.query.hard === 'true';
+  const chaosMode  = req.query.chaos === 'true';
+  const hardMode   = !chaosMode && req.query.hard === 'true';
 
   const images = await listPoolImages();
   if (images.length === 0) return res.status(500).json({ error: 'No images available' });
@@ -116,6 +117,7 @@ export default async function handler(req, res) {
       edges, seed,
       pieces: PIECE_COUNT,
       hardMode,
+      chaosMode,
       status: 'waiting',
       winner: null,
       winnerSecs: null,
@@ -129,6 +131,7 @@ export default async function handler(req, res) {
   await fbPatch(`vs-index/${roomId}`, {
     pieces: PIECE_COUNT,
     hardMode,
+    chaosMode,
     status: 'waiting',
     createdAt,
     creatorName: null,

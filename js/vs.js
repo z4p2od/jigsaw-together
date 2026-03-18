@@ -7,6 +7,7 @@ import {
   setVSPlaying, setVSWinner, setVSFinished, setVSRematch, offerVSRematch,
   getPlayerColor,
   sendChatMessage, onChatMessages,
+  writeVSPowerupEarned, writeVSEffect, onVSEffects,
 } from './firebase.js';
 import { cutPiece, getPad } from './jigsaw.js';
 
@@ -43,6 +44,17 @@ let lastTap     = { time: 0, el: null };
 // Chat
 let chatUnread = 0;
 let chatOpen   = false;
+
+// Chaos mode powerups
+let powerupPieces    = {};        // { pieceIndex: 'bw'|'invert'|'scramble' }
+const powerupMarkerEls = [];      // DOM marker elements per piece index
+const oppPowerupMarkerEls = [];
+const earnedPowerups = new Set(); // indices already triggered
+let invertActive     = false;
+const faceDownPieces = new Set(); // indices currently face-down
+const activeEffects  = {};        // timers
+let unsubEffects     = null;
+let oppId            = null;      // set during startGame
 
 // Win counter (persisted in sessionStorage for rematch series)
 // key: sorted pair of playerIds joined by '|'
@@ -162,6 +174,21 @@ function scatterFromSeed(seed, count, dispW, dispH, hardMode) {
     y: rand() * (BOARD_H - dispH),
     rotation: hardMode ? ROTS[Math.floor(rand() * 4)] : 0,
   }));
+}
+
+function pickPowerupPieces(seed, totalPieces) {
+  const rand = seededRandom(seed + 1); // offset to not collide with scatter sequence
+  const TYPES = ['bw', 'invert', 'scramble'];
+  const indices = new Set();
+  const assignments = {};
+  while (indices.size < Math.min(5, totalPieces)) {
+    const idx = Math.floor(rand() * totalPieces);
+    if (!indices.has(idx)) {
+      assignments[idx] = TYPES[indices.size % TYPES.length];
+      indices.add(idx);
+    }
+  }
+  return assignments;
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
@@ -324,6 +351,11 @@ async function startGame(room) {
 
   solvedCount = pieceStates.filter(p => p.solved).length;
 
+  // Chaos mode setup
+  if (m.chaosMode) {
+    powerupPieces = pickPowerupPieces(m.seed, count);
+  }
+
   setupBoard();
   await renderAllPieces();
   reconstructGroups();
@@ -346,7 +378,7 @@ async function startGame(room) {
   unsubPieces = onVSPieces(roomId, playerId, applyRemoteUpdate);
 
   // Set up opponent board
-  const oppId = Object.keys(players).find(id => id !== playerId);
+  oppId = Object.keys(players).find(id => id !== playerId) ?? null;
   if (oppId) {
     const oppName = players[oppId]?.name || 'Opponent';
     if (oppBoardLabel) oppBoardLabel.textContent = oppName;
@@ -359,6 +391,17 @@ async function startGame(room) {
     await renderOppPieces(initialOppPieces);
 
     unsubOpp = onVSOpponentPieces(roomId, oppId, applyOppUpdate);
+
+    if (m.chaosMode) {
+      renderOppPowerupMarkers();
+    }
+  }
+
+  // Subscribe to incoming powerup effects (chaos mode)
+  if (m.chaosMode) {
+    unsubEffects = onVSEffects(roomId, playerId, effects => {
+      Object.values(effects).forEach(applyEffect);
+    });
   }
 
   window.addEventListener('beforeunload', cleanup);
@@ -400,6 +443,13 @@ function renderPiece(index, dataUrl, x, y, solved, elW, elH) {
   board.appendChild(el);
   pieceEls[index] = el;
   updatePieceZIndex(index);
+
+  // Chaos mode: powerup marker
+  if (powerupPieces[index] !== undefined && !solved) {
+    const marker = createPowerupMarker(index, powerupPieces[index], x, y);
+    board.appendChild(marker);
+    powerupMarkerEls[index] = marker;
+  }
 }
 
 function movePieceEl(index, x, y, el) {
@@ -412,6 +462,11 @@ function movePieceEl(index, x, y, el) {
   e.style.transform = rot
     ? `translate(${x - pad}px, ${y - pad}px) rotate(${rot}deg)`
     : `translate(${x - pad}px, ${y - pad}px)`;
+  // Move powerup marker with piece
+  if (!el && powerupMarkerEls[index]) {
+    powerupMarkerEls[index].style.left = x + 'px';
+    powerupMarkerEls[index].style.top  = y + 'px';
+  }
 }
 
 function updatePieceZIndex(index) {
@@ -523,7 +578,15 @@ function applyOppUpdate(allPieces) {
     if (!oppPieceEls[i]) return;
     oppPieceStates[i] = { ...(oppPieceStates[i] ?? {}), ...p };
     moveOppPieceEl(i, p.x, p.y);
-    if (p.solved) oppPieceEls[i].classList.add('solved');
+    if (p.solved) {
+      oppPieceEls[i].classList.add('solved');
+      if (oppPowerupMarkerEls[i]) oppPowerupMarkerEls[i].style.display = 'none';
+    }
+    // Move opp powerup marker
+    if (oppPowerupMarkerEls[i] && !p.solved) {
+      oppPowerupMarkerEls[i].style.left = p.x + 'px';
+      oppPowerupMarkerEls[i].style.top  = p.y + 'px';
+    }
   });
 }
 
@@ -607,6 +670,12 @@ function onMouseDown(e) {
   const el = e.target.closest('.piece');
   if (!el || el.classList.contains('solved')) return;
   const index = Number(el.dataset.index);
+
+  // Chaos: face-down flip on click
+  if (faceDownPieces.has(index)) {
+    setFaceDown(index, false);
+    return;
+  }
   const state = pieceStates[index];
   if (state.lockedBy && state.lockedBy !== playerId) return;
   const gid     = pieceGroup[index];
@@ -621,7 +690,10 @@ function onMouseDown(e) {
   indices.forEach(i => {
     relOffsets[i] = { dx: pieceStates[i].x - anchorX, dy: pieceStates[i].y - anchorY };
   });
-  dragging = { indices, anchorIndex: index, offsetX, offsetY, relOffsets, locked: false };
+  const rawX0 = (e.clientX - boardRect.left) / scale;
+  const rawY0 = (e.clientY - boardRect.top)  / scale;
+  dragging = { indices, anchorIndex: index, offsetX, offsetY, relOffsets, locked: false,
+    invertAnchorX: anchorX, invertAnchorY: anchorY, invertLastX: rawX0, invertLastY: rawY0 };
 }
 
 function onMouseMove(e) {
@@ -637,8 +709,22 @@ function onMouseMove(e) {
     });
   }
   const boardRect = board.getBoundingClientRect();
-  const anchorX = (e.clientX - boardRect.left) / scale - offsetX;
-  const anchorY = (e.clientY - boardRect.top)  / scale - offsetY;
+  const sensitivity = invertActive ? 0.5 : 1;
+  const invertSign  = invertActive ? -1 : 1;
+  const rawX = (e.clientX - boardRect.left) / scale;
+  const rawY = (e.clientY - boardRect.top)  / scale;
+  const anchorX = invertActive
+    ? dragging.invertAnchorX + (rawX - dragging.invertLastX) * sensitivity * invertSign
+    : rawX - offsetX;
+  const anchorY = invertActive
+    ? dragging.invertAnchorY + (rawY - dragging.invertLastY) * sensitivity * invertSign
+    : rawY - offsetY;
+  if (invertActive) {
+    dragging.invertAnchorX = anchorX;
+    dragging.invertAnchorY = anchorY;
+    dragging.invertLastX = rawX;
+    dragging.invertLastY = rawY;
+  }
   const positions = [];
   indices.forEach(i => {
     const x = anchorX + relOffsets[i].dx;
@@ -701,6 +787,7 @@ async function onMouseUp(e) {
     const gid = pieceGroup[allIndices[0]];
     await writeVSSnap(roomId, playerId, positions, gid);
     checkSolvedState();
+    checkPowerupTrigger(allIndices);
     updateMyProgress();
     checkCompletion();
   } else {
@@ -754,6 +841,151 @@ function applyScale(s) {
   board.style.transform = scale === 1 ? '' : `scale(${scale})`;
   board.style.marginRight  = scale > 1 ? BOARD_W * (scale - 1) + 'px' : '';
   board.style.marginBottom = scale > 1 ? BOARD_H * (scale - 1) + 'px' : '';
+}
+
+// ── Chaos mode powerups ───────────────────────────────────────────────────────
+
+function createPowerupMarker(index, type, x, y) {
+  const ICONS = { bw: '👁', invert: '🔄', scramble: '💥' };
+  const marker = document.createElement('div');
+  marker.className = `powerup-marker powerup-${type}`;
+  marker.dataset.index = index;
+  marker.textContent = ICONS[type] ?? '⚡';
+  marker.style.left = x + 'px';
+  marker.style.top  = y + 'px';
+  return marker;
+}
+
+function renderOppPowerupMarkers() {
+  if (!oppBoard) return;
+  Object.entries(powerupPieces).forEach(([idxStr, type]) => {
+    const i = Number(idxStr);
+    if (oppPieceStates[i]?.solved) return;
+    const state = oppPieceStates[i];
+    if (!state) return;
+    const marker = createPowerupMarker(i, type, state.x, state.y);
+    marker.className = `powerup-marker powerup-${type} opp-powerup-marker`;
+    oppBoard.appendChild(marker);
+    oppPowerupMarkerEls[i] = marker;
+  });
+}
+
+function getNeighbours(idx) {
+  const { cols, rows } = meta;
+  const col = idx % cols;
+  const row = Math.floor(idx / cols);
+  return [
+    row > 0          ? (row - 1) * cols + col : -1, // top
+    row < rows - 1   ? (row + 1) * cols + col : -1, // bottom
+    col > 0          ? row * cols + (col - 1) : -1, // left
+    col < cols - 1   ? row * cols + (col + 1) : -1, // right
+  ];
+}
+
+function checkPowerupTrigger(solvedIndices) {
+  if (!meta.chaosMode) return;
+  solvedIndices.forEach(idx => {
+    if (powerupPieces[idx] === undefined) return;
+    if (earnedPowerups.has(idx)) return;
+    const neighbours = getNeighbours(idx);
+    const boardEdgeOrSolved = neighbours.every(n => n === -1 || pieceStates[n]?.solved);
+    if (!boardEdgeOrSolved) return;
+    earnedPowerups.add(idx);
+    firePowerup(powerupPieces[idx], idx);
+  });
+}
+
+async function firePowerup(type, pieceIndex) {
+  if (!oppId) return;
+  const effect = { type, fromPlayer: playerId };
+
+  if (type === 'bw' || type === 'invert') {
+    effect.expiresAt = Date.now() + 30000;
+  }
+
+  if (type === 'scramble') {
+    const targets = Object.keys(oppPieceStates)
+      .map(Number)
+      .filter(i => !oppPieceStates[i]?.solved && !oppPieceStates[i]?.groupId);
+    const positions = {};
+    targets.forEach(i => {
+      positions[i] = {
+        x: Math.random() * (BOARD_W - meta._displayW),
+        y: Math.random() * (BOARD_H - meta._displayH),
+      };
+    });
+    effect.positions = positions;
+  }
+
+  await writeVSPowerupEarned(roomId, playerId, pieceIndex);
+  await writeVSEffect(roomId, oppId, effect);
+
+  showPowerupToast(`🎉 ${type === 'bw' ? 'Grayscale' : type === 'invert' ? 'Invert' : 'Scramble'} sent!`, false);
+
+  // Hide my marker
+  if (powerupMarkerEls[pieceIndex]) powerupMarkerEls[pieceIndex].style.display = 'none';
+  // Hide opp's marker on their view
+  if (oppPowerupMarkerEls[pieceIndex]) oppPowerupMarkerEls[pieceIndex].style.display = 'none';
+}
+
+function applyEffect(effect) {
+  if (!effect?.type) return;
+  const NAMES = { bw: 'Grayscale', invert: 'Inverted Controls', scramble: 'Scramble' };
+  showPowerupToast(`😱 ${NAMES[effect.type] ?? effect.type}${effect.expiresAt ? ' — 30s!' : '!'}`, true);
+
+  if (effect.type === 'bw') {
+    board.classList.add('board-grayscale');
+    clearTimeout(activeEffects.bwTimer);
+    const ms = Math.max(0, effect.expiresAt - Date.now());
+    activeEffects.bwTimer = setTimeout(() => board.classList.remove('board-grayscale'), ms);
+  }
+
+  if (effect.type === 'invert') {
+    invertActive = true;
+    clearTimeout(activeEffects.invertTimer);
+    const ms = Math.max(0, effect.expiresAt - Date.now());
+    activeEffects.invertTimer = setTimeout(() => { invertActive = false; }, ms);
+  }
+
+  if (effect.type === 'scramble' && effect.positions) {
+    const batchPositions = [];
+    Object.entries(effect.positions).forEach(([idxStr, pos]) => {
+      const i = Number(idxStr);
+      if (pieceStates[i]?.solved || pieceStates[i]?.groupId) return;
+      pieceStates[i].x = pos.x;
+      pieceStates[i].y = pos.y;
+      movePieceEl(i, pos.x, pos.y);
+      setFaceDown(i, true);
+      batchPositions.push({ index: i, x: pos.x, y: pos.y });
+    });
+    if (batchPositions.length) {
+      updateVSGroupPosition(roomId, playerId, batchPositions);
+    }
+  }
+}
+
+function setFaceDown(index, faceDown) {
+  const el = pieceEls[index];
+  if (!el) return;
+  if (faceDown) {
+    faceDownPieces.add(index);
+    el.classList.add('face-down');
+  } else {
+    faceDownPieces.delete(index);
+    el.classList.remove('face-down');
+  }
+}
+
+const powerupToastEl = document.getElementById('powerup-toast');
+let toastTimer = null;
+
+function showPowerupToast(msg, isReceived) {
+  if (!powerupToastEl) return;
+  powerupToastEl.textContent = msg;
+  powerupToastEl.style.display = '';
+  powerupToastEl.style.background = isReceived ? 'rgba(185,28,28,0.9)' : 'rgba(5,150,105,0.9)';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { powerupToastEl.style.display = 'none'; }, 2500);
 }
 
 // ── Snap / merge ──────────────────────────────────────────────────────────────
@@ -1169,9 +1401,10 @@ function escapeHtml(str) {
 // ── Cleanup ───────────────────────────────────────────────────────────────────
 
 function cleanup() {
-  if (unsubRoom)   { unsubRoom();   unsubRoom   = null; }
-  if (unsubPieces) { unsubPieces(); unsubPieces = null; }
-  if (unsubOpp)    { unsubOpp();    unsubOpp    = null; }
+  if (unsubRoom)    { unsubRoom();    unsubRoom    = null; }
+  if (unsubPieces)  { unsubPieces();  unsubPieces  = null; }
+  if (unsubOpp)     { unsubOpp();     unsubOpp     = null; }
+  if (unsubEffects) { unsubEffects(); unsubEffects = null; }
   stopTimer();
   if (dragging?.locked) unlockVSGroup(roomId, playerId, dragging.indices);
 }

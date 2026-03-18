@@ -91,8 +91,10 @@ loadPOTD();
 
 document.getElementById('vs-create-btn').addEventListener('click', () => {
   const pieces = document.querySelector('input[name="vs-pieces"]:checked').value;
-  const hard   = document.querySelector('input[name="vs-mode"]:checked').value === 'hard';
-  window.location.href = `/api/vs-create?pieces=${pieces}&hard=${hard}`;
+  const mode   = document.querySelector('input[name="vs-mode"]:checked').value;
+  const hard   = mode === 'hard';
+  const chaos  = mode === 'chaos';
+  window.location.href = `/api/vs-create?pieces=${pieces}&hard=${hard}&chaos=${chaos}`;
 });
 
 // ── Image upload ──────────────────────────────────────────────────────────────

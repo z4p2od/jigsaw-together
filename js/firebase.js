@@ -399,6 +399,23 @@ export function setVSFinished(roomId, playerId, finishedAt) {
   return set(ref(db, `vs/${roomId}/players/${playerId}/finishedAt`), finishedAt);
 }
 
+// ── VS Powerups (Chaos mode) ───────────────────────────────────────────────────
+
+export function writeVSPowerupEarned(roomId, playerId, pieceIndex) {
+  return set(ref(db, `vs/${roomId}/powerups/${playerId}/${pieceIndex}`), true);
+}
+
+export function writeVSEffect(roomId, targetPlayerId, effect) {
+  return push(ref(db, `vs/${roomId}/effects/${targetPlayerId}`), effect);
+}
+
+export function onVSEffects(roomId, playerId, callback) {
+  const r = ref(db, `vs/${roomId}/effects/${playerId}`);
+  const handler = snap => { if (snap.val()) callback(snap.val()); };
+  onChildAdded(r, handler);
+  return () => off(r, 'child_added', handler);
+}
+
 /** Write a POTD completion score. Keyed by puzzleId so each game is one entry. */
 export function recordPOTDScore(puzzleId, difficulty, names, secs) {
   const date = new Date().toLocaleDateString('sv', { timeZone: 'Europe/Athens' });

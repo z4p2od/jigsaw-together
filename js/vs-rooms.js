@@ -24,7 +24,7 @@ onVSIndex(rooms => {
     const row = document.createElement('div');
     row.className = 'vs-room-row';
 
-    const modeLabel = room.hardMode ? 'Hard 🔥' : 'Normal';
+    const modeLabel = room.chaosMode ? 'Chaos ⚡' : room.hardMode ? 'Hard 🔥' : 'Casual';
     const creator   = room.creatorName || 'Someone';
     const ago       = Math.floor((now - room.createdAt) / 60000);
     const agoLabel  = ago < 1 ? 'just now' : `${ago}m ago`;
