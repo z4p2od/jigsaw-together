@@ -732,7 +732,7 @@ function onMouseMove(e) {
     });
   }
   const boardRect = board.getBoundingClientRect();
-  const sensitivity = invertActive ? 0.5 : 1;
+  const sensitivity = invertActive ? 1.5 : 1;
   const invertSign  = invertActive ? -1 : 1;
   const rawX = (e.clientX - boardRect.left) / scale;
   const rawY = (e.clientY - boardRect.top)  / scale;
@@ -952,6 +952,12 @@ async function firePowerup(type, pieceIndex) {
   await writeVSEffect(roomId, oppId, effect);
 
   showPowerupToast(`🎉 ${type === 'bw' ? 'Grayscale' : type === 'invert' ? 'Invert' : 'Scramble'} sent!`, false);
+
+  // Sender also sees opponent's board go grayscale for visual feedback
+  if (type === 'bw' && oppBoard) {
+    oppBoard.classList.add('board-grayscale');
+    setTimeout(() => oppBoard.classList.remove('board-grayscale'), 30000);
+  }
 
   // Hide my marker + glow
   if (powerupMarkerEls[pieceIndex]) powerupMarkerEls[pieceIndex].style.display = 'none';
