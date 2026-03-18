@@ -410,8 +410,8 @@ async function startGame(room) {
 
   // Subscribe to incoming powerup effects (chaos mode)
   if (m.chaosMode) {
-    unsubEffects = onVSEffects(roomId, playerId, effects => {
-      Object.values(effects).forEach(applyEffect);
+    unsubEffects = onVSEffects(roomId, playerId, effect => {
+      applyEffect(effect);
     });
   }
 
@@ -549,7 +549,9 @@ async function renderOppPieces(states) {
     const dataUrl = cutPiece(img, col, row, pieceW, pieceH, displayW, displayH, edges[i]);
     const el      = document.createElement('img');
     el.src        = dataUrl;
-    el.className  = 'piece' + (oppPieceStates[i].solved ? ' solved' : '');
+    const glowCls = (meta.chaosMode && powerupPieces[i] !== undefined && !oppPieceStates[i].solved)
+      ? ` powerup-glow-${powerupPieces[i]}` : '';
+    el.className  = 'piece' + (oppPieceStates[i].solved ? ' solved' : '') + glowCls;
     el.draggable  = false;
     el.style.width  = elW + 'px';
     el.style.height = elH + 'px';
@@ -943,8 +945,9 @@ async function firePowerup(type, pieceIndex) {
   // Hide my marker + glow
   if (powerupMarkerEls[pieceIndex]) powerupMarkerEls[pieceIndex].style.display = 'none';
   if (pieceEls[pieceIndex]) pieceEls[pieceIndex].classList.remove(`powerup-glow-${type}`);
-  // Hide opp's marker on their view
+  // Hide opp's marker + glow on their view
   if (oppPowerupMarkerEls[pieceIndex]) oppPowerupMarkerEls[pieceIndex].style.display = 'none';
+  if (oppPieceEls[pieceIndex]) oppPieceEls[pieceIndex].classList.remove(`powerup-glow-${type}`);
 }
 
 function applyEffect(effect) {
@@ -1133,6 +1136,7 @@ function applyRemoteUpdate(index, data) {
 
   if (data.solved) {
     pieceEls[index]?.classList.add('solved');
+    if (faceDownPieces.has(index)) setFaceDown(index, false);
     solvedCount = pieceStates.filter(p => p.solved).length;
     updateMyProgress();
     checkCompletion();
@@ -1253,8 +1257,9 @@ async function handleRematchClick() {
 async function createRematchRoom() {
   const pieces  = meta?.pieces ?? 100;
   const hard    = meta?.hardMode ?? false;
+  const chaos   = meta?.chaosMode ?? false;
   try {
-    const res = await fetch(`/api/vs-create?pieces=${pieces}&hard=${hard}&json=1`);
+    const res = await fetch(`/api/vs-create?pieces=${pieces}&hard=${hard}&chaos=${chaos}&json=1`);
     const { roomId: newRoom } = await res.json();
     if (!newRoom) return;
 
