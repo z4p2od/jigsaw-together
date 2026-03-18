@@ -650,15 +650,24 @@ function mirrorCoords(clientX, clientY) {
 function updateFakeCursor(clientX, clientY) {
   const fc = getOrCreateFakeCursor();
   if (!invertActive) {
-    fc.style.display = 'none';
-    board.parentElement.style.cursor = '';
+    syncCursorVisibility();
     return;
   }
   const { clientX: mx, clientY: my } = mirrorCoords(clientX, clientY);
-  fc.style.display = 'block';
   fc.style.left = (mx - 2) + 'px';
   fc.style.top  = (my - 2) + 'px';
-  board.parentElement.style.cursor = 'none';
+  syncCursorVisibility();
+}
+
+function syncCursorVisibility() {
+  const fc = getOrCreateFakeCursor();
+  if (invertActive) {
+    fc.style.display = 'block';
+    board.parentElement.style.cursor = 'none';
+  } else {
+    fc.style.display = 'none';
+    board.parentElement.style.cursor = '';
+  }
 }
 
 function attachDragListeners() {
@@ -668,8 +677,9 @@ function attachDragListeners() {
   const wrap = board.parentElement;
   wrap.addEventListener('mousemove', e => updateFakeCursor(e.clientX, e.clientY));
   wrap.addEventListener('mouseleave', () => {
+    // Hide fake cursor when leaving board area, but keep cursor:none if invert active
     if (fakeCursor) fakeCursor.style.display = 'none';
-    board.parentElement.style.cursor = '';
+    if (!invertActive) board.parentElement.style.cursor = '';
   });
   wrap.addEventListener('touchstart', onTouchStart, { passive: false });
   wrap.addEventListener('touchmove',  onTouchMove,  { passive: false });
@@ -1008,21 +1018,29 @@ function applyEffect(effect) {
   showPowerupToast(`😱 ${NAMES[effect.type] ?? effect.type}${effect.expiresAt ? ' — 30s!' : '!'}`, true);
 
   if (effect.type === 'bw') {
+    // Extend if already active — always use the furthest expiry
+    const expiresAt = Math.max(effect.expiresAt, activeEffects.bwExpiresAt ?? 0);
+    activeEffects.bwExpiresAt = expiresAt;
     board.classList.add('board-grayscale');
     clearTimeout(activeEffects.bwTimer);
-    const ms = Math.max(0, effect.expiresAt - Date.now());
-    activeEffects.bwTimer = setTimeout(() => board.classList.remove('board-grayscale'), ms);
+    activeEffects.bwTimer = setTimeout(() => {
+      board.classList.remove('board-grayscale');
+      activeEffects.bwExpiresAt = 0;
+    }, Math.max(0, expiresAt - Date.now()));
   }
 
   if (effect.type === 'invert') {
+    // Extend if already active — always use the furthest expiry
+    const expiresAt = Math.max(effect.expiresAt, activeEffects.invertExpiresAt ?? 0);
+    activeEffects.invertExpiresAt = expiresAt;
     invertActive = true;
+    syncCursorVisibility();
     clearTimeout(activeEffects.invertTimer);
-    const ms = Math.max(0, effect.expiresAt - Date.now());
     activeEffects.invertTimer = setTimeout(() => {
       invertActive = false;
-      if (fakeCursor) fakeCursor.style.display = 'none';
-      board.parentElement.style.cursor = '';
-    }, ms);
+      activeEffects.invertExpiresAt = 0;
+      syncCursorVisibility();
+    }, Math.max(0, expiresAt - Date.now()));
   }
 
   if (effect.type === 'scramble' && effect.positions) {
