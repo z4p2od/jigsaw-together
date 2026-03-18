@@ -41,10 +41,26 @@ export default async function handler(req, res) {
   );
   const d3 = await r3.json();
 
+  // 5. Try folder= parameter
+  const r4 = await fetch(
+    `https://api.cloudinary.com/v1_1/${cloud}/resources/image/upload?folder=potd-pool&max_results=5`,
+    { headers: { Authorization: `Basic ${auth}` } }
+  );
+  const d4 = await r4.json();
+
+  // 6. Try the folders/{name}/resources endpoint
+  const r5 = await fetch(
+    `https://api.cloudinary.com/v1_1/${cloud}/folders/potd-pool`,
+    { headers: { Authorization: `Basic ${auth}` } }
+  );
+  const d5 = await r5.json();
+
   res.json({
     folders: folders.folders || folders,
     prefix_no_slash: { total: d1.resources?.length, samples: d1.resources?.map(r => r.public_id) },
     prefix_with_slash: { total: d2.resources?.length, samples: d2.resources?.map(r => r.public_id) },
     all_first5: d3.resources?.map(r => r.public_id),
+    folder_param: { total: d4.resources?.length, samples: d4.resources?.map(r => r.public_id) },
+    folder_endpoint: d5,
   });
 }
