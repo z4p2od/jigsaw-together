@@ -621,11 +621,56 @@ function applyOppScale(s) {
 
 // ── Drag ──────────────────────────────────────────────────────────────────────
 
+// Fake cursor for invert effect
+let fakeCursor = null;
+
+function getOrCreateFakeCursor() {
+  if (fakeCursor) return fakeCursor;
+  fakeCursor = document.createElement('div');
+  fakeCursor.id = 'fake-cursor';
+  fakeCursor.style.cssText = 'position:fixed;width:20px;height:20px;pointer-events:none;z-index:9999;display:none;' +
+    'background:url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'20\' height=\'20\' viewBox=\'0 0 20 20\'%3E%3Cpath d=\'M0 0 L0 16 L4 12 L7 19 L9 18 L6 11 L11 11 Z\' fill=\'white\' stroke=\'black\' stroke-width=\'1\'/%3E%3C/svg%3E") no-repeat';
+  document.body.appendChild(fakeCursor);
+  return fakeCursor;
+}
+
+function mirrorCoords(clientX, clientY) {
+  if (!invertActive) return { clientX, clientY };
+  const wrap = board.parentElement;
+  const rect = wrap.getBoundingClientRect();
+  // Mirror around the center of the board wrap
+  const cx = rect.left + rect.width  / 2;
+  const cy = rect.top  + rect.height / 2;
+  return {
+    clientX: 2 * cx - clientX,
+    clientY: 2 * cy - clientY,
+  };
+}
+
+function updateFakeCursor(clientX, clientY) {
+  const fc = getOrCreateFakeCursor();
+  if (!invertActive) {
+    fc.style.display = 'none';
+    board.parentElement.style.cursor = '';
+    return;
+  }
+  const { clientX: mx, clientY: my } = mirrorCoords(clientX, clientY);
+  fc.style.display = 'block';
+  fc.style.left = (mx - 2) + 'px';
+  fc.style.top  = (my - 2) + 'px';
+  board.parentElement.style.cursor = 'none';
+}
+
 function attachDragListeners() {
   board.addEventListener('mousedown',   onMouseDown);
   window.addEventListener('mousemove',  onMouseMove);
   window.addEventListener('mouseup',    onMouseUp);
   const wrap = board.parentElement;
+  wrap.addEventListener('mousemove', e => updateFakeCursor(e.clientX, e.clientY));
+  wrap.addEventListener('mouseleave', () => {
+    if (fakeCursor) fakeCursor.style.display = 'none';
+    board.parentElement.style.cursor = '';
+  });
   wrap.addEventListener('touchstart', onTouchStart, { passive: false });
   wrap.addEventListener('touchmove',  onTouchMove,  { passive: false });
   wrap.addEventListener('touchend',   onTouchEnd);
@@ -690,7 +735,10 @@ function rotateAtIndex(index) {
 }
 
 function onMouseDown(e) {
-  const el = e.target.closest('.piece');
+  const { clientX, clientY } = mirrorCoords(e.clientX, e.clientY);
+  const el = invertActive
+    ? document.elementFromPoint(clientX, clientY)?.closest('.piece')
+    : e.target.closest('.piece');
   if (!el || el.classList.contains('solved')) return;
   const index = Number(el.dataset.index);
 
@@ -707,15 +755,13 @@ function onMouseDown(e) {
   const boardRect = board.getBoundingClientRect();
   const anchorX   = pieceStates[index].x;
   const anchorY   = pieceStates[index].y;
-  const offsetX   = (e.clientX - boardRect.left) / scale - anchorX;
-  const offsetY   = (e.clientY - boardRect.top)  / scale - anchorY;
   const relOffsets = {};
   indices.forEach(i => {
     relOffsets[i] = { dx: pieceStates[i].x - anchorX, dy: pieceStates[i].y - anchorY };
   });
-  const rawX0 = (e.clientX - boardRect.left) / scale;
-  const rawY0 = (e.clientY - boardRect.top)  / scale;
-  dragging = { indices, anchorIndex: index, offsetX, offsetY, relOffsets, locked: false,
+  const rawX0 = (clientX - boardRect.left) / scale;
+  const rawY0 = (clientY - boardRect.top)  / scale;
+  dragging = { indices, anchorIndex: index, relOffsets, locked: false,
     invertAnchorX: anchorX, invertAnchorY: anchorY, invertLastX: rawX0, invertLastY: rawY0 };
 }
 
@@ -732,13 +778,13 @@ function onMouseMove(e) {
     });
   }
   const boardRect = board.getBoundingClientRect();
-  const rawX = (e.clientX - boardRect.left) / scale;
-  const rawY = (e.clientY - boardRect.top)  / scale;
+  const { clientX: cx, clientY: cy } = mirrorCoords(e.clientX, e.clientY);
+  const rawX = (cx - boardRect.left) / scale;
+  const rawY = (cy - boardRect.top)  / scale;
   const dx = rawX - dragging.invertLastX;
   const dy = rawY - dragging.invertLastY;
-  const sign = invertActive ? -1.5 : 1;
-  dragging.invertAnchorX += dx * sign;
-  dragging.invertAnchorY += dy * sign;
+  dragging.invertAnchorX += dx;
+  dragging.invertAnchorY += dy;
   dragging.invertLastX = rawX;
   dragging.invertLastY = rawY;
   const anchorX = dragging.invertAnchorX;
@@ -972,7 +1018,11 @@ function applyEffect(effect) {
     invertActive = true;
     clearTimeout(activeEffects.invertTimer);
     const ms = Math.max(0, effect.expiresAt - Date.now());
-    activeEffects.invertTimer = setTimeout(() => { invertActive = false; }, ms);
+    activeEffects.invertTimer = setTimeout(() => {
+      invertActive = false;
+      if (fakeCursor) fakeCursor.style.display = 'none';
+      board.parentElement.style.cursor = '';
+    }, ms);
   }
 
   if (effect.type === 'scramble' && effect.positions) {

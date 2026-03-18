@@ -11,7 +11,7 @@ import crypto from 'crypto';
 
 const BOARD_W = 900;
 const BOARD_H = 650;
-const ALLOWED_PIECES = [4, 24, 100, 250, 500, 1000];
+const ALLOWED_PIECES = [4, 24, 40, 100, 250, 500, 1000];
 
 function calculateGrid(pieceCount, imgWidth, imgHeight) {
   const aspect = imgWidth / imgHeight;
@@ -59,7 +59,7 @@ function generateEdges(cols, rows) {
 async function listPoolImages() {
   const auth = Buffer.from(`${process.env.CLOUDINARY_API_KEY}:${process.env.CLOUDINARY_API_SECRET}`).toString('base64');
   const r = await fetch(
-    `https://api.cloudinary.com/v1_1/${process.env.CLOUDINARY_CLOUD_NAME}/resources/image/upload?folder=potd-pool&max_results=500`,
+    `https://api.cloudinary.com/v1_1/${process.env.CLOUDINARY_CLOUD_NAME}/resources/image/upload?folder=puzzle-library&max_results=500`,
     { headers: { Authorization: `Basic ${auth}` } }
   );
   const data = await r.json();
