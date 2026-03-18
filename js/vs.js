@@ -190,14 +190,23 @@ function pickPowerupPieces(seed, totalPieces, cols, rows) {
   const rand = seededRandom((seed * 1000003) & 0xffffffff);
   const TYPES = ['bw', 'invert', 'scramble'];
   const picked = new Set();
+  const excluded = new Set(); // picked indices + their direct neighbours
   const assignments = {};
   const count = Math.min(5, interior.length);
-  while (picked.size < count) {
+  let attempts = 0;
+  while (picked.size < count && attempts < 1000) {
+    attempts++;
     const idx = interior[Math.floor(rand() * interior.length)];
-    if (!picked.has(idx)) {
-      assignments[idx] = TYPES[picked.size % TYPES.length];
-      picked.add(idx);
-    }
+    if (picked.has(idx) || excluded.has(idx)) continue;
+    assignments[idx] = TYPES[picked.size % TYPES.length];
+    picked.add(idx);
+    // Exclude this piece and all its direct neighbours from future picks
+    excluded.add(idx);
+    const col = idx % cols, row = Math.floor(idx / cols);
+    if (row > 0)          excluded.add((row - 1) * cols + col);
+    if (row < rows - 1)   excluded.add((row + 1) * cols + col);
+    if (col > 0)          excluded.add(row * cols + (col - 1));
+    if (col < cols - 1)   excluded.add(row * cols + (col + 1));
   }
   return assignments;
 }
