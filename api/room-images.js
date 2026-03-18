@@ -11,7 +11,7 @@ export default async function handler(req, res) {
   ).toString('base64');
 
   const r = await fetch(
-    `https://api.cloudinary.com/v1_1/${process.env.CLOUDINARY_CLOUD_NAME}/resources/image/upload?folder=potd-pool&max_results=500`,
+    `https://api.cloudinary.com/v1_1/${process.env.CLOUDINARY_CLOUD_NAME}/resources/image/upload?folder=puzzle-library&max_results=500`,
     { headers: { Authorization: `Basic ${auth}` } }
   );
   const data = await r.json();
