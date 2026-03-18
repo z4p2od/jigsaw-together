@@ -399,6 +399,23 @@ export function setVSFinished(roomId, playerId, finishedAt) {
   return set(ref(db, `vs/${roomId}/players/${playerId}/finishedAt`), finishedAt);
 }
 
+// ── Public Rooms Index ────────────────────────────────────────────────────────
+
+export function onRoomsIndex(callback) {
+  const r = ref(db, 'rooms-index');
+  const handler = snap => callback(snap.val() || {});
+  onValue(r, handler);
+  return () => off(r, 'value', handler);
+}
+
+export function updateRoomsIndex(roomId, fields) {
+  return update(ref(db, `rooms-index/${roomId}`), fields);
+}
+
+export function deleteRoomsIndex(roomId) {
+  return set(ref(db, `rooms-index/${roomId}`), null);
+}
+
 /** Write a POTD completion score. Keyed by puzzleId so each game is one entry. */
 export function recordPOTDScore(puzzleId, difficulty, names, secs) {
   const date = new Date().toLocaleDateString('sv', { timeZone: 'Europe/Athens' });
