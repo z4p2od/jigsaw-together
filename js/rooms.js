@@ -38,7 +38,7 @@ onRoomsIndex(rooms => {
         </div>
         <span class="room-stat">${players} playing · ${pct}% done</span>
       </div>
-      <a href="/puzzle.html?id=${roomId}" class="btn" style="flex-shrink:0;padding:6px 14px;font-size:0.85rem">Join</a>
+      <a href="/puzzle.html?id=${roomId}" class="btn room-join-btn">Join</a>
     `;
     listEl.appendChild(row);
   });
