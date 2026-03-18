@@ -192,7 +192,7 @@ function pickPowerupPieces(seed, totalPieces, cols, rows) {
   const picked = new Set();
   const excluded = new Set(); // picked indices + their direct neighbours
   const assignments = {};
-  const count = Math.min(5, interior.length);
+  const count = Math.min(5, Math.floor(interior.length / 3));
   let attempts = 0;
   while (picked.size < count && attempts < 1000) {
     attempts++;
