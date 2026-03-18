@@ -14,6 +14,6 @@
   ],
   "crons": [
     { "path": "/api/cleanup", "schedule": "0 21 * * *" },
-    { "path": "/api/potd",    "schedule": "8 8 * * *" }
+    { "path": "/api/potd",    "schedule": "5 8 * * *" }
   ]
 }
