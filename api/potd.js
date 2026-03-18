@@ -125,7 +125,8 @@ function fbPatch(path, value) {
 // ── Main handler ──────────────────────────────────────────────────────────────
 
 export default async function handler(req, res) {
-  if (req.headers['authorization'] !== `Bearer ${process.env.POTD_SECRET}`) {
+  const expected = process.env.CRON_SECRET || process.env.POTD_SECRET;
+  if (req.headers['authorization'] !== `Bearer ${expected}`) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
