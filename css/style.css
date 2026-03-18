@@ -1189,6 +1189,32 @@ body {
   50%       { transform: scale(1.25); opacity: 0.75; }
 }
 
+.powerup-glow-bw {
+  filter: drop-shadow(0 0 6px #9ca3af) drop-shadow(0 0 12px #6b7280);
+  animation: glow-bw 1.4s ease-in-out infinite;
+}
+.powerup-glow-invert {
+  filter: drop-shadow(0 0 6px #a78bfa) drop-shadow(0 0 12px #7c3aed);
+  animation: glow-invert 1.4s ease-in-out infinite;
+}
+.powerup-glow-scramble {
+  filter: drop-shadow(0 0 6px #fcd34d) drop-shadow(0 0 12px #f59e0b);
+  animation: glow-scramble 1.4s ease-in-out infinite;
+}
+
+@keyframes glow-bw {
+  0%, 100% { filter: drop-shadow(0 0 4px #9ca3af) drop-shadow(0 0 8px #6b7280); }
+  50%       { filter: drop-shadow(0 0 10px #d1d5db) drop-shadow(0 0 20px #9ca3af); }
+}
+@keyframes glow-invert {
+  0%, 100% { filter: drop-shadow(0 0 4px #a78bfa) drop-shadow(0 0 8px #7c3aed); }
+  50%       { filter: drop-shadow(0 0 10px #c4b5fd) drop-shadow(0 0 20px #a78bfa); }
+}
+@keyframes glow-scramble {
+  0%, 100% { filter: drop-shadow(0 0 4px #fcd34d) drop-shadow(0 0 8px #f59e0b); }
+  50%       { filter: drop-shadow(0 0 10px #fef08a) drop-shadow(0 0 20px #fcd34d); }
+}
+
 .board-grayscale { filter: grayscale(1); }
 
 .piece.face-down {

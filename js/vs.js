@@ -176,16 +176,27 @@ function scatterFromSeed(seed, count, dispW, dispH, hardMode) {
   }));
 }
 
-function pickPowerupPieces(seed, totalPieces) {
-  const rand = seededRandom(seed + 1); // offset to not collide with scatter sequence
+function pickPowerupPieces(seed, totalPieces, cols, rows) {
+  // Only pick interior pieces — those with all 4 neighbours present
+  const interior = [];
+  for (let i = 0; i < totalPieces; i++) {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    if (col > 0 && col < cols - 1 && row > 0 && row < rows - 1) interior.push(i);
+  }
+  if (interior.length === 0) return {}; // tiny puzzle fallback
+
+  // Use a separate seeded RNG — multiply seed by large prime to get different sequence
+  const rand = seededRandom((seed * 1000003) & 0xffffffff);
   const TYPES = ['bw', 'invert', 'scramble'];
-  const indices = new Set();
+  const picked = new Set();
   const assignments = {};
-  while (indices.size < Math.min(5, totalPieces)) {
-    const idx = Math.floor(rand() * totalPieces);
-    if (!indices.has(idx)) {
-      assignments[idx] = TYPES[indices.size % TYPES.length];
-      indices.add(idx);
+  const count = Math.min(5, interior.length);
+  while (picked.size < count) {
+    const idx = interior[Math.floor(rand() * interior.length)];
+    if (!picked.has(idx)) {
+      assignments[idx] = TYPES[picked.size % TYPES.length];
+      picked.add(idx);
     }
   }
   return assignments;
@@ -353,7 +364,7 @@ async function startGame(room) {
 
   // Chaos mode setup
   if (m.chaosMode) {
-    powerupPieces = pickPowerupPieces(m.seed, count);
+    powerupPieces = pickPowerupPieces(m.seed, count, m.cols, m.rows);
   }
 
   setupBoard();
@@ -444,8 +455,9 @@ function renderPiece(index, dataUrl, x, y, solved, elW, elH) {
   pieceEls[index] = el;
   updatePieceZIndex(index);
 
-  // Chaos mode: powerup marker
+  // Chaos mode: powerup glow + marker
   if (powerupPieces[index] !== undefined && !solved) {
+    el.classList.add(`powerup-glow-${powerupPieces[index]}`);
     const marker = createPowerupMarker(index, powerupPieces[index], x, y);
     board.appendChild(marker);
     powerupMarkerEls[index] = marker;
@@ -882,14 +894,20 @@ function getNeighbours(idx) {
   ];
 }
 
-function checkPowerupTrigger(solvedIndices) {
+function checkPowerupTrigger(mergedIndices) {
   if (!meta.chaosMode) return;
-  solvedIndices.forEach(idx => {
+  mergedIndices.forEach(idx => {
     if (powerupPieces[idx] === undefined) return;
     if (earnedPowerups.has(idx)) return;
+    // Check all 4 neighbours are in the same group as this piece
+    const myGroup = pieceGroup[idx];
+    if (!myGroup) return;
     const neighbours = getNeighbours(idx);
-    const boardEdgeOrSolved = neighbours.every(n => n === -1 || pieceStates[n]?.solved);
-    if (!boardEdgeOrSolved) return;
+    const allNeighboursSnapped = neighbours.every(n => {
+      if (n === -1) return true; // board edge counts as satisfied
+      return pieceGroup[n] === myGroup || pieceStates[n]?.solved;
+    });
+    if (!allNeighboursSnapped) return;
     earnedPowerups.add(idx);
     firePowerup(powerupPieces[idx], idx);
   });
@@ -922,8 +940,9 @@ async function firePowerup(type, pieceIndex) {
 
   showPowerupToast(`🎉 ${type === 'bw' ? 'Grayscale' : type === 'invert' ? 'Invert' : 'Scramble'} sent!`, false);
 
-  // Hide my marker
+  // Hide my marker + glow
   if (powerupMarkerEls[pieceIndex]) powerupMarkerEls[pieceIndex].style.display = 'none';
+  if (pieceEls[pieceIndex]) pieceEls[pieceIndex].classList.remove(`powerup-glow-${type}`);
   // Hide opp's marker on their view
   if (oppPowerupMarkerEls[pieceIndex]) oppPowerupMarkerEls[pieceIndex].style.display = 'none';
 }
