@@ -721,7 +721,7 @@ function onMouseDown(e) {
 
 function onMouseMove(e) {
   if (!dragging) return;
-  const { indices, offsetX, offsetY, relOffsets } = dragging;
+  const { indices, relOffsets } = dragging;
   if (!dragging.locked) {
     dragging.locked = true;
     lockVSGroup(roomId, playerId, indices, playerId);
@@ -732,22 +732,17 @@ function onMouseMove(e) {
     });
   }
   const boardRect = board.getBoundingClientRect();
-  const sensitivity = invertActive ? 1.5 : 1;
-  const invertSign  = invertActive ? -1 : 1;
   const rawX = (e.clientX - boardRect.left) / scale;
   const rawY = (e.clientY - boardRect.top)  / scale;
-  const anchorX = invertActive
-    ? dragging.invertAnchorX + (rawX - dragging.invertLastX) * sensitivity * invertSign
-    : rawX - offsetX;
-  const anchorY = invertActive
-    ? dragging.invertAnchorY + (rawY - dragging.invertLastY) * sensitivity * invertSign
-    : rawY - offsetY;
-  if (invertActive) {
-    dragging.invertAnchorX = anchorX;
-    dragging.invertAnchorY = anchorY;
-    dragging.invertLastX = rawX;
-    dragging.invertLastY = rawY;
-  }
+  const dx = rawX - dragging.invertLastX;
+  const dy = rawY - dragging.invertLastY;
+  const sign = invertActive ? -1.5 : 1;
+  dragging.invertAnchorX += dx * sign;
+  dragging.invertAnchorY += dy * sign;
+  dragging.invertLastX = rawX;
+  dragging.invertLastY = rawY;
+  const anchorX = dragging.invertAnchorX;
+  const anchorY = dragging.invertAnchorY;
   const positions = [];
   indices.forEach(i => {
     const x = anchorX + relOffsets[i].dx;
@@ -762,23 +757,14 @@ function onMouseMove(e) {
 
 async function onMouseUp(e) {
   if (!dragging) return;
-  const { indices, anchorIndex, offsetX, offsetY, relOffsets, locked } = dragging;
+  const { indices, anchorIndex, locked } = dragging;
   dragging = null;
   indices.forEach(i => {
     pieceEls[i]?.classList.remove('dragging');
     if (pieceEls[i]) pieceEls[i].style.zIndex = '';
   });
   if (!locked) return;
-  const boardRect = board.getBoundingClientRect();
-  const anchorX   = (e.clientX - boardRect.left) / scale - offsetX;
-  const anchorY   = (e.clientY - boardRect.top)  / scale - offsetY;
-  indices.forEach(i => {
-    const x = anchorX + relOffsets[i].dx;
-    const y = anchorY + relOffsets[i].dy;
-    pieceStates[i].x = x;
-    pieceStates[i].y = y;
-    movePieceEl(i, x, y);
-  });
+  // Piece positions are already up to date from the last onMouseMove delta
   const snap = findNeighbourSnap(indices);
   if (snap) {
     const { cols, _displayW: dW, _displayH: dH } = meta;
