@@ -42,6 +42,61 @@ function fbPatch(path, value) {
   });
 }
 
+function requireAdminAuth(req) {
+  const header = req.headers.authorization || req.headers.Authorization;
+  if (!header || typeof header !== 'string') return false;
+  const [scheme, token] = header.split(' ');
+  if (scheme !== 'Bearer' || !token) return false;
+  return token === process.env.FEEDBACK_ADMIN_TOKEN;
+}
+
+function fbGet(pathname) {
+  const { FIREBASE_DB_URL: url, FIREBASE_DB_SECRET: s } = process.env;
+  if (!url || !s) throw new Error('Missing Firebase env vars');
+  return fetch(`${url}/${pathname}.json?auth=${s}`);
+}
+
+async function fbGetJson(pathname) {
+  const res = await fbGet(pathname);
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Firebase GET error: ${res.status} ${text}`);
+  }
+  return res.json();
+}
+
+function fbPut(pathname, value) {
+  const { FIREBASE_DB_URL: url, FIREBASE_DB_SECRET: s } = process.env;
+  if (!url || !s) throw new Error('Missing Firebase env vars');
+  return fetch(`${url}/${pathname}.json?auth=${s}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(value),
+  });
+}
+
+async function fbPutJson(pathname, value) {
+  const res = await fbPut(pathname, value);
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Firebase PUT error: ${res.status} ${text}`);
+  }
+}
+
+function fbDelete(pathname) {
+  const { FIREBASE_DB_URL: url, FIREBASE_DB_SECRET: s } = process.env;
+  if (!url || !s) throw new Error('Missing Firebase env vars');
+  return fetch(`${url}/${pathname}.json?auth=${s}`, { method: 'DELETE' });
+}
+
+async function fbDeleteJson(pathname) {
+  const res = await fbDelete(pathname);
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Firebase DELETE error: ${res.status} ${text}`);
+  }
+}
+
 function safeStr(str) {
   return String(str || '');
 }
@@ -354,6 +409,108 @@ async function createGithubIssue(cfg, feedbackId, report, triage) {
 }
 
 export default async function handler(req, res) {
+  const actionRaw = req.query && req.query.action ? req.query.action : null;
+  const action = actionRaw ? String(actionRaw).toLowerCase() : null;
+
+  if (action === 'list') {
+    if (req.method !== 'GET') {
+      res.setHeader('Allow', 'GET');
+      return res.status(405).json({ error: 'Method not allowed' });
+    }
+    if (!requireAdminAuth(req)) return res.status(401).json({ error: 'Unauthorized' });
+
+    const rawLimit = parseInt(req.query.limit, 10);
+    const limit = Number.isFinite(rawLimit) && rawLimit > 0 && rawLimit <= 500 ? rawLimit : 50;
+
+    try {
+      const params = new URLSearchParams({
+        auth: process.env.FIREBASE_DB_SECRET,
+        orderBy: JSON.stringify('createdAt'),
+        limitToLast: String(limit),
+      });
+      const urlBase = process.env.FIREBASE_DB_URL;
+      const resFb = await fetch(`${urlBase}/feedback.json?${params.toString()}`);
+      if (!resFb.ok) {
+        const text = await resFb.text().catch(() => '');
+        throw new Error(`Firebase error: ${resFb.status} ${text}`);
+      }
+      const obj = await resFb.json();
+      const list = Object.entries(obj || {}).map(([id, v]) => ({ id, ...(v || {}) }));
+      list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      return res.json({ items: list });
+    } catch (err) {
+      console.error('Failed to list feedback', err);
+      return res.status(500).json({ error: 'Failed to load feedback' });
+    }
+  }
+
+  if (action === 'triage') {
+    if (req.method !== 'POST') {
+      res.setHeader('Allow', 'POST');
+      return res.status(405).json({ error: 'Method not allowed' });
+    }
+    if (!requireAdminAuth(req)) return res.status(401).json({ error: 'Unauthorized' });
+
+    const { id, status, decision, severity, notes, reviewer } = req.body || {};
+    if (!id || typeof id !== 'string') return res.status(400).json({ error: 'id is required' });
+    if (!status || typeof status !== 'string') return res.status(400).json({ error: 'status is required' });
+
+    const allowedStatus = new Set(['new', 'triaged', 'in_progress', 'fixed', 'ignored']);
+    const allowedDecision = new Set(['bug', 'idea', 'question', 'not_actionable']);
+    const allowedSeverity = new Set(['low', 'medium', 'high', 'critical']);
+
+    const triage = {
+      status: allowedStatus.has(status) ? status : 'triaged',
+      decision: allowedDecision.has(decision) ? decision : null,
+      severity: allowedSeverity.has(severity) ? severity : null,
+      notes: typeof notes === 'string' && notes.trim() ? notes.trim() : null,
+      reviewer: typeof reviewer === 'string' && reviewer.trim() ? reviewer.trim() : null,
+      updatedAt: Date.now(),
+    };
+
+    try {
+      await fbPatch(`feedback/${id}`, { triage });
+      return res.json({ ok: true });
+    } catch (err) {
+      console.error('Failed to update triage', err);
+      return res.status(500).json({ error: 'Failed to update triage' });
+    }
+  }
+
+  if (action === 'delete') {
+    if (req.method !== 'POST') {
+      res.setHeader('Allow', 'POST');
+      return res.status(405).json({ error: 'Method not allowed' });
+    }
+    if (!requireAdminAuth(req)) return res.status(401).json({ error: 'Unauthorized' });
+
+    const { id, archive, reason } = req.body || {};
+    const feedbackId = typeof id === 'string' ? id.trim() : '';
+    const okId = /^[A-Za-z0-9_-]+$/.test(feedbackId);
+    if (!okId) return res.status(400).json({ error: 'Valid id is required' });
+
+    const shouldArchive = archive === undefined ? true : !!archive;
+    const auditReason = typeof reason === 'string' && reason.trim() ? reason.trim() : null;
+
+    try {
+      const existing = await fbGetJson(`feedback/${feedbackId}`);
+      if (!existing) return res.status(404).json({ error: 'Feedback item not found' });
+
+      if (shouldArchive) {
+        await fbPutJson(`feedback-archive/${feedbackId}`, {
+          ...existing,
+          archivedAt: Date.now(),
+          archiveReason: auditReason,
+        });
+      }
+      await fbDeleteJson(`feedback/${feedbackId}`);
+      return res.json({ ok: true, archived: shouldArchive });
+    } catch (err) {
+      console.error('Failed to delete feedback', err);
+      return res.status(500).json({ error: 'Failed to delete feedback' });
+    }
+  }
+
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
     return res.status(405).json({ error: 'Method not allowed' });

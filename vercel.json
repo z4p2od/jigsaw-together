@@ -12,7 +12,10 @@
     { "source": "/vs",       "destination": "/vs.html"       },
     { "source": "/vs-rooms", "destination": "/vs-rooms.html" },
     { "source": "/play",     "destination": "/play.html"     },
-    { "source": "/rooms",    "destination": "/rooms.html"    }
+    { "source": "/rooms",    "destination": "/rooms.html"    },
+    { "source": "/api/feedback-list", "destination": "/api/feedback?action=list" },
+    { "source": "/api/feedback-triage", "destination": "/api/feedback?action=triage" },
+    { "source": "/api/feedback-delete", "destination": "/api/feedback?action=delete" }
   ],
   "crons": [
     { "path": "/api/cleanup", "schedule": "0 21 * * *" },
