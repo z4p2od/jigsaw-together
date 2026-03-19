@@ -377,7 +377,15 @@ async function createGithubPR(cfg, feedbackId, report, triage) {
 
 async function createGithubIssue(cfg, feedbackId, report, triage) {
   const shortTitle = safeStr(report?.message || 'Bug report').slice(0, 72);
-  const title = `Bug report needs confirmation: ${shortTitle}`;
+  const reportType = (report?.type || '').toLowerCase();
+  const issueTypeLabel = reportType === 'bug'
+    ? 'Bug report'
+    : reportType === 'idea'
+      ? 'Idea'
+      : reportType === 'feedback'
+        ? 'Feedback'
+        : 'Feedback';
+  const title = `${issueTypeLabel} needs confirmation: ${shortTitle}`;
 
   const body = [
     `## Feedback report`,
@@ -567,9 +575,9 @@ export default async function handler(req, res) {
     }
 
     // Auto-triage + GitHub automation (Option 1: run immediately on submission)
-    // Only triggers for bug submissions.
+    // Best-effort GitHub automation: bugs get PRs/issues; ideas/feedback get issues.
     const mode = process.env.FEEDBACK_AGENT_MODE || 'aggressive';
-    if (storedType === 'bug') {
+    if (storedType === 'bug' || storedType === 'idea' || storedType === 'feedback') {
       try {
         const triage = triageBugReport({ ...payload, createdAt: now }, mode);
         const githubCfg = getGithubConfig();
@@ -589,7 +597,7 @@ export default async function handler(req, res) {
         await fbPatch(`feedback/${feedbackId}`, { triage: triageWrite });
 
         if (githubCfg) {
-          const minConfidenceForAutomation = 0.25;
+          const minConfidenceForAutomation = storedType === 'bug' ? 0.25 : 0.15;
           if (triage.confidence < minConfidenceForAutomation) return res.status(201).json({ ok: true, id: feedbackId });
 
           const shouldOpenPR = triage.confirmationBucket === 'likely_confirmed';
