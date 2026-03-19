@@ -570,25 +570,25 @@ export default async function handler(req, res) {
     // Only triggers for bug submissions.
     const mode = process.env.FEEDBACK_AGENT_MODE || 'aggressive';
     if (storedType === 'bug') {
-      const triage = triageBugReport({ ...payload, createdAt: now }, mode);
-      const githubCfg = getGithubConfig();
+      try {
+        const triage = triageBugReport({ ...payload, createdAt: now }, mode);
+        const githubCfg = getGithubConfig();
 
-      const triageWrite = {
-        status: 'triaged',
-        decision: triage.decision,
-        severity: triage.severity,
-        confidence: triage.confidence,
-        confirmationBucket: triage.confirmationBucket,
-        notes: triage.notes,
-        agent: 'github-auto-triage',
-        updatedAt: Date.now(),
-      };
+        const triageWrite = {
+          status: 'triaged',
+          decision: triage.decision,
+          severity: triage.severity,
+          confidence: triage.confidence,
+          confirmationBucket: triage.confirmationBucket,
+          notes: triage.notes,
+          agent: 'github-auto-triage',
+          updatedAt: Date.now(),
+        };
 
-      // Best-effort: update triage in Firebase first (even if GitHub fails).
-      await fbPatch(`feedback/${feedbackId}`, { triage: triageWrite });
+        // Best-effort: update triage in Firebase first (even if GitHub fails).
+        await fbPatch(`feedback/${feedbackId}`, { triage: triageWrite });
 
-      if (githubCfg) {
-        try {
+        if (githubCfg) {
           const minConfidenceForAutomation = 0.25;
           if (triage.confidence < minConfidenceForAutomation) return res.status(201).json({ ok: true, id: feedbackId });
 
@@ -666,10 +666,10 @@ export default async function handler(req, res) {
               },
             });
           }
-        } catch (err) {
-          console.error('GitHub automation failed', err);
-          // Don't fail the user submission because of GitHub.
         }
+      } catch (err) {
+        // Never fail the user submission due to automation problems.
+        console.error('Post-submit automation failed', err);
       }
     }
 
