@@ -298,6 +298,8 @@ async function initVS() {
 
       if (room.meta.status === 'playing') {
         vsTeamLobby.style.display = 'none';
+      } else {
+        vsTeamLobby.style.display = 'flex';
       }
     } else {
       // ── 1v1 lobby setup ──────────────────────────────────────────────────
