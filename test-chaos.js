@@ -5,17 +5,16 @@ const COLORS = ['#e94560','#f5a623','#4ecdc4','#a78bfa','#34d399','#60a5fa',
 const EMOJIS = ['🌟','🎯','🚀','💎','🌈','🔥','⚡','🎪','🦋','🌺','🎭','🎨'];
 const BOARD_W = 500, BOARD_H = 380, PIECE_W = 80, PIECE_H = 80;
 
-const myBoard   = document.getElementById('my-board');
-const oppBoard  = document.getElementById('opp-board');
-const myWrap    = document.getElementById('my-wrap');
-const oppWrap   = document.getElementById('opp-wrap');
+const myBoard    = document.getElementById('my-board');
+const oppBoard   = document.getElementById('opp-board');
+const myWrap     = document.getElementById('my-wrap');
+const oppWrap    = document.getElementById('opp-wrap');
 const fakeCursor = document.getElementById('fake-cursor');
 
-// Make board divs fill their wrap
 myBoard.style.cssText  = 'position:absolute;inset:0';
 oppBoard.style.cssText = 'position:absolute;inset:0';
 
-const myPieces  = [];  // {el, ox, oy} original positions
+const myPieces  = [];
 const oppPieces = [];
 
 function randomPos() {
@@ -26,15 +25,28 @@ function randomPos() {
 }
 
 function createPiece(board, index, x, y) {
-  const el = document.createElement('div');
-  el.className = 'piece';
-  el.dataset.index = index;
-  el.style.background = COLORS[index % COLORS.length];
-  el.style.left = x + 'px';
-  el.style.top  = y + 'px';
-  el.textContent = EMOJIS[index % EMOJIS.length];
-  board.appendChild(el);
-  return el;
+  const piece = document.createElement('div');
+  piece.className = 'piece';
+  piece.dataset.index = index;
+  piece.style.left = x + 'px';
+  piece.style.top  = y + 'px';
+
+  const inner = document.createElement('div');
+  inner.className = 'piece-inner';
+
+  const front = document.createElement('div');
+  front.className = 'piece-front';
+  front.style.background = COLORS[index % COLORS.length];
+  front.textContent = EMOJIS[index % EMOJIS.length];
+
+  const back = document.createElement('div');
+  back.className = 'piece-back';
+
+  inner.appendChild(front);
+  inner.appendChild(back);
+  piece.appendChild(inner);
+  board.appendChild(piece);
+  return piece;
 }
 
 function initBoards() {
@@ -54,7 +66,7 @@ initBoards();
 
 // ── Drag ──────────────────────────────────────────────────────────────────────
 
-let dragging = null;
+let dragging    = null;
 let invertActive = false;
 
 function mirrorCoords(clientX, clientY) {
@@ -68,53 +80,58 @@ function mirrorCoords(clientX, clientY) {
 
 function syncCursor() {
   if (invertActive) {
-    myWrap.style.cursor = 'none';
+    myWrap.classList.add('invert-active');
     fakeCursor.style.display = 'block';
   } else {
-    myWrap.style.cursor = '';
+    myWrap.classList.remove('invert-active');
     fakeCursor.style.display = 'none';
   }
+}
+
+function startDrag(el, board, wrap, clientX, clientY) {
+  if (el.classList.contains('face-down')) {
+    // Flip back on click — add class after brief delay so drag doesn't trigger
+    el.classList.remove('face-down');
+    return;
+  }
+  const rect = wrap.getBoundingClientRect();
+  const offX = clientX - rect.left - parseInt(el.style.left);
+  const offY = clientY - rect.top  - parseInt(el.style.top);
+  dragging = { el, offX, offY, wrap };
+  el.style.zIndex = 1000;
 }
 
 myBoard.addEventListener('mousedown', e => {
   const el = e.target.closest('.piece');
   if (!el) return;
-  // Face-down flip
-  if (el.classList.contains('face-down')) { el.classList.remove('face-down'); return; }
-  const { clientX, clientY } = mirrorCoords(e.clientX, e.clientY);
-  const rect = myWrap.getBoundingClientRect();
-  const offX = clientX - rect.left - parseInt(el.style.left);
-  const offY = clientY - rect.top  - parseInt(el.style.top);
-  dragging = { el, offX, offY, board: myWrap };
-  el.style.zIndex = 1000;
   e.preventDefault();
+  const { clientX, clientY } = mirrorCoords(e.clientX, e.clientY);
+  startDrag(el, myBoard, myWrap, clientX, clientY);
 });
 
 oppBoard.addEventListener('mousedown', e => {
   const el = e.target.closest('.piece');
   if (!el) return;
-  if (el.classList.contains('face-down')) { el.classList.remove('face-down'); return; }
-  const rect = oppWrap.getBoundingClientRect();
-  const offX = e.clientX - rect.left - parseInt(el.style.left);
-  const offY = e.clientY - rect.top  - parseInt(el.style.top);
-  dragging = { el, offX, offY, board: oppWrap };
-  el.style.zIndex = 1000;
   e.preventDefault();
+  startDrag(el, oppBoard, oppWrap, e.clientX, e.clientY);
 });
 
 window.addEventListener('mousemove', e => {
-  // Update fake cursor position
+  // Always update fake cursor
   if (invertActive) {
     const { clientX: mx, clientY: my } = mirrorCoords(e.clientX, e.clientY);
-    fakeCursor.style.left = (mx - 2) + 'px';
-    fakeCursor.style.top  = (my - 2) + 'px';
+    fakeCursor.style.left = (mx - 4) + 'px';
+    fakeCursor.style.top  = (my - 4) + 'px';
   }
+
   if (!dragging) return;
+
   let clientX = e.clientX, clientY = e.clientY;
-  if (dragging.board === myWrap && invertActive) {
+  if (dragging.wrap === myWrap && invertActive) {
     ({ clientX, clientY } = mirrorCoords(e.clientX, e.clientY));
   }
-  const rect = dragging.board.getBoundingClientRect();
+
+  const rect = dragging.wrap.getBoundingClientRect();
   const x = Math.max(0, Math.min(BOARD_W - PIECE_W, clientX - rect.left - dragging.offX));
   const y = Math.max(0, Math.min(BOARD_H - PIECE_H, clientY - rect.top  - dragging.offY));
   dragging.el.style.left = x + 'px';
@@ -127,6 +144,7 @@ window.addEventListener('mouseup', () => {
   dragging = null;
 });
 
+// Hide fake cursor only when mouse leaves and invert is off
 myWrap.addEventListener('mouseleave', () => {
   if (!invertActive) fakeCursor.style.display = 'none';
 });
@@ -141,10 +159,10 @@ const activeEffects = {};
 function fireGrayscale() {
   const expiresAt = Math.max(Date.now() + 30000, activeEffects.bwExpiresAt ?? 0);
   activeEffects.bwExpiresAt = expiresAt;
-  oppBoard.parentElement.classList.add('board-grayscale');
+  oppWrap.classList.add('board-grayscale');
   clearTimeout(activeEffects.bwTimer);
   activeEffects.bwTimer = setTimeout(() => {
-    oppBoard.parentElement.classList.remove('board-grayscale');
+    oppWrap.classList.remove('board-grayscale');
     activeEffects.bwExpiresAt = 0;
     updateEffectsUI();
   }, expiresAt - Date.now());
@@ -164,31 +182,35 @@ function fireInvert() {
     syncCursor();
     updateEffectsUI();
   }, expiresAt - Date.now());
-  showToast('🔄 Inverted controls active on your board!');
+  showToast('🔄 Inverted controls on your board!');
   updateEffectsUI();
 }
 
 function fireScramble() {
-  oppPieces.forEach(({ el }) => {
-    if (el.classList.contains('face-down')) return;
+  // Pick ~60% of pieces randomly to flip face-down
+  const indices = [...Array(oppPieces.length).keys()]
+    .sort(() => Math.random() - 0.5)
+    .slice(0, Math.ceil(oppPieces.length * 0.6));
+
+  indices.forEach(i => {
+    const { el } = oppPieces[i];
     const p = randomPos();
     el.style.left = p.x + 'px';
     el.style.top  = p.y + 'px';
-    el.classList.add('face-down');
+    // Small delay per piece for a cascade feel
+    setTimeout(() => el.classList.add('face-down'), i * 60);
   });
-  showToast('💥 Opponent pieces scrambled!');
+  showToast('💥 Some opponent pieces scrambled!');
 }
 
 function resetAll() {
-  // Clear effects
   clearTimeout(activeEffects.bwTimer);
   clearTimeout(activeEffects.invertTimer);
   activeEffects.bwExpiresAt = 0;
   activeEffects.invertExpiresAt = 0;
   invertActive = false;
   syncCursor();
-  oppBoard.parentElement.classList.remove('board-grayscale');
-  // Reset pieces
+  oppWrap.classList.remove('board-grayscale');
   myPieces.forEach(({ el, ox, oy }) => {
     el.style.left = ox + 'px';
     el.style.top  = oy + 'px';
@@ -209,21 +231,16 @@ const effectsList = document.getElementById('effects-list');
 const noEffects   = document.getElementById('no-effects');
 
 const EFFECT_DEFS = [
-  { key: 'bw',     label: 'Grayscale',         color: '#6b7280', barColor: '#9ca3af' },
-  { key: 'invert', label: 'Inverted Controls',  color: '#7c3aed', barColor: '#a78bfa' },
+  { key: 'bw',     label: 'Grayscale',        color: '#6b7280', barColor: '#9ca3af' },
+  { key: 'invert', label: 'Inverted Controls', color: '#7c3aed', barColor: '#a78bfa' },
 ];
 
 function updateEffectsUI() {
-  const now = Date.now();
+  const now    = Date.now();
   const active = EFFECT_DEFS.filter(d => (activeEffects[d.key + 'ExpiresAt'] ?? 0) > now);
   noEffects.style.display = active.length ? 'none' : '';
-  EFFECT_DEFS.forEach(d => {
-    const existing = document.getElementById('effect-row-' + d.key);
-    if (existing) existing.remove();
-  });
+  EFFECT_DEFS.forEach(d => { document.getElementById('effect-row-' + d.key)?.remove(); });
   active.forEach(d => {
-    const expiresAt = activeEffects[d.key + 'ExpiresAt'];
-    const totalMs   = 30000;
     const row = document.createElement('div');
     row.className = 'effect-item';
     row.id = 'effect-row-' + d.key;
@@ -239,7 +256,6 @@ function updateEffectsUI() {
   });
 }
 
-// Live countdown ticker
 setInterval(() => {
   const now = Date.now();
   EFFECT_DEFS.forEach(d => {
@@ -248,9 +264,8 @@ setInterval(() => {
     const barEl  = document.getElementById('bar-'  + d.key);
     if (!timeEl || !barEl) return;
     const ms  = Math.max(0, expiresAt - now);
-    const pct = Math.min(100, (ms / 30000) * 100);
     timeEl.textContent = Math.ceil(ms / 1000) + 's';
-    barEl.style.width  = pct + '%';
+    barEl.style.width  = Math.min(100, (ms / 30000) * 100) + '%';
   });
 }, 200);
 
