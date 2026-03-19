@@ -162,6 +162,7 @@ The app includes:
 - `POST /api/feedback` — stores player bug/feedback submissions
 - `GET /api/feedback-list?limit=50` — admin-only list endpoint
 - `POST /api/feedback-triage` — admin-only triage status updater
+- `POST /api/feedback-delete` — admin-only archive+delete a resolved report
 - `scripts/feedback-agent.mjs` — local CLI helper for triage + PR scaffolding
 
 ### Run the triage helper
