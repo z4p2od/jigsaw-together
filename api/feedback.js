@@ -443,6 +443,12 @@ export default async function handler(req, res) {
             const cursorCfg = getCursorConfig();
             if (cursorCfg) {
               try {
+                console.log('Cursor automation starting', {
+                  feedbackId,
+                  hasCursorApiKey: true,
+                  cursorModel: cursorCfg.model,
+                  prUrlPresent: !!prUrl,
+                });
                 const promptText = [
                   'You are a coding agent working in this repository.',
                   'Implement a fix for the bug described below.',
@@ -480,12 +486,18 @@ export default async function handler(req, res) {
                 console.error('Cursor automation failed', err);
               }
             } else {
-            await fbPatch(`feedback/${feedbackId}`, {
-              triage: {
-                ...triageWrite,
-                github: { prUrl: prUrl || null, type: 'pr' },
-              },
-            });
+              console.log('Cursor automation skipped (CURSOR_API_KEY missing)', {
+                feedbackId,
+                hasCursorApiKey: !!process.env.CURSOR_API_KEY,
+                cursorModel: process.env.CURSOR_MODEL || null,
+                prUrlPresent: !!prUrl,
+              });
+              await fbPatch(`feedback/${feedbackId}`, {
+                triage: {
+                  ...triageWrite,
+                  github: { prUrl: prUrl || null, type: 'pr' },
+                },
+              });
             }
           } else {
             const issueUrl = await createGithubIssue(githubCfg, feedbackId, { ...payload, createdAt: now }, triage);
