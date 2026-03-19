@@ -7,6 +7,7 @@ import {
   setVSPlaying, setVSWinner, setVSFinished, setVSRematch, offerVSRematch,
   getPlayerColor,
   sendChatMessage, onChatMessages,
+  writeVSPowerupEarned, writeVSEffect, onVSEffects, writeVSShufflePositions,
 } from './firebase.js';
 import { cutPiece, getPad } from './jigsaw.js';
 
@@ -43,6 +44,17 @@ let lastTap     = { time: 0, el: null };
 // Chat
 let chatUnread = 0;
 let chatOpen   = false;
+
+// Chaos mode powerups
+let powerupPieces    = {};        // { pieceIndex: 'bw'|'invert'|'scramble' }
+const powerupMarkerEls = [];      // DOM marker elements per piece index
+const oppPowerupMarkerEls = [];
+const earnedPowerups = new Set(); // indices already triggered
+let invertActive     = false;
+const faceDownPieces = new Set(); // indices currently face-down
+const activeEffects  = {};        // timers
+let unsubEffects     = null;
+let oppId            = null;      // set during startGame
 
 // Win counter (persisted in sessionStorage for rematch series)
 // key: sorted pair of playerIds joined by '|'
@@ -162,6 +174,41 @@ function scatterFromSeed(seed, count, dispW, dispH, hardMode) {
     y: rand() * (BOARD_H - dispH),
     rotation: hardMode ? ROTS[Math.floor(rand() * 4)] : 0,
   }));
+}
+
+function pickPowerupPieces(seed, totalPieces, cols, rows) {
+  // Only pick interior pieces — those with all 4 neighbours present
+  const interior = [];
+  for (let i = 0; i < totalPieces; i++) {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    if (col > 0 && col < cols - 1 && row > 0 && row < rows - 1) interior.push(i);
+  }
+  if (interior.length === 0) return {}; // tiny puzzle fallback
+
+  // Use a separate seeded RNG — multiply seed by large prime to get different sequence
+  const rand = seededRandom((seed * 1000003) & 0xffffffff);
+  const TYPES = ['bw', 'invert', 'scramble', 'flip', 'shake', 'shuffle'];
+  const picked = new Set();
+  const excluded = new Set(); // picked indices + their direct neighbours
+  const assignments = {};
+  const count = Math.min(5, Math.floor(interior.length / 3));
+  let attempts = 0;
+  while (picked.size < count && attempts < 1000) {
+    attempts++;
+    const idx = interior[Math.floor(rand() * interior.length)];
+    if (picked.has(idx) || excluded.has(idx)) continue;
+    assignments[idx] = TYPES[picked.size % TYPES.length];
+    picked.add(idx);
+    // Exclude this piece and all its direct neighbours from future picks
+    excluded.add(idx);
+    const col = idx % cols, row = Math.floor(idx / cols);
+    if (row > 0)          excluded.add((row - 1) * cols + col);
+    if (row < rows - 1)   excluded.add((row + 1) * cols + col);
+    if (col > 0)          excluded.add(row * cols + (col - 1));
+    if (col < cols - 1)   excluded.add(row * cols + (col + 1));
+  }
+  return assignments;
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
@@ -324,6 +371,11 @@ async function startGame(room) {
 
   solvedCount = pieceStates.filter(p => p.solved).length;
 
+  // Chaos mode setup
+  if (m.chaosMode) {
+    powerupPieces = pickPowerupPieces(m.seed, count, m.cols, m.rows);
+  }
+
   setupBoard();
   await renderAllPieces();
   reconstructGroups();
@@ -346,7 +398,7 @@ async function startGame(room) {
   unsubPieces = onVSPieces(roomId, playerId, applyRemoteUpdate);
 
   // Set up opponent board
-  const oppId = Object.keys(players).find(id => id !== playerId);
+  oppId = Object.keys(players).find(id => id !== playerId) ?? null;
   if (oppId) {
     const oppName = players[oppId]?.name || 'Opponent';
     if (oppBoardLabel) oppBoardLabel.textContent = oppName;
@@ -359,6 +411,17 @@ async function startGame(room) {
     await renderOppPieces(initialOppPieces);
 
     unsubOpp = onVSOpponentPieces(roomId, oppId, applyOppUpdate);
+
+    if (m.chaosMode) {
+      renderOppPowerupMarkers();
+    }
+  }
+
+  // Subscribe to incoming powerup effects (chaos mode)
+  if (m.chaosMode) {
+    unsubEffects = onVSEffects(roomId, playerId, effect => {
+      applyEffect(effect);
+    });
   }
 
   window.addEventListener('beforeunload', cleanup);
@@ -400,6 +463,14 @@ function renderPiece(index, dataUrl, x, y, solved, elW, elH) {
   board.appendChild(el);
   pieceEls[index] = el;
   updatePieceZIndex(index);
+
+  // Chaos mode: powerup glow + marker
+  if (powerupPieces[index] !== undefined && !solved) {
+    el.classList.add(`powerup-glow-${powerupPieces[index]}`);
+    const marker = createPowerupMarker(index, powerupPieces[index], x, y);
+    board.appendChild(marker);
+    powerupMarkerEls[index] = marker;
+  }
 }
 
 function movePieceEl(index, x, y, el) {
@@ -412,6 +483,11 @@ function movePieceEl(index, x, y, el) {
   e.style.transform = rot
     ? `translate(${x - pad}px, ${y - pad}px) rotate(${rot}deg)`
     : `translate(${x - pad}px, ${y - pad}px)`;
+  // Move powerup marker with piece
+  if (!el && powerupMarkerEls[index]) {
+    powerupMarkerEls[index].style.left = x + 'px';
+    powerupMarkerEls[index].style.top  = y + 'px';
+  }
 }
 
 function updatePieceZIndex(index) {
@@ -482,7 +558,9 @@ async function renderOppPieces(states) {
     const dataUrl = cutPiece(img, col, row, pieceW, pieceH, displayW, displayH, edges[i]);
     const el      = document.createElement('img');
     el.src        = dataUrl;
-    el.className  = 'piece' + (oppPieceStates[i].solved ? ' solved' : '');
+    const glowCls = (meta.chaosMode && powerupPieces[i] !== undefined && !oppPieceStates[i].solved)
+      ? ` powerup-glow-${powerupPieces[i]}` : '';
+    el.className  = 'piece' + (oppPieceStates[i].solved ? ' solved' : '') + glowCls;
     el.draggable  = false;
     el.style.width  = elW + 'px';
     el.style.height = elH + 'px';
@@ -523,7 +601,15 @@ function applyOppUpdate(allPieces) {
     if (!oppPieceEls[i]) return;
     oppPieceStates[i] = { ...(oppPieceStates[i] ?? {}), ...p };
     moveOppPieceEl(i, p.x, p.y);
-    if (p.solved) oppPieceEls[i].classList.add('solved');
+    if (p.solved) {
+      oppPieceEls[i].classList.add('solved');
+      if (oppPowerupMarkerEls[i]) oppPowerupMarkerEls[i].style.display = 'none';
+    }
+    // Move opp powerup marker
+    if (oppPowerupMarkerEls[i] && !p.solved) {
+      oppPowerupMarkerEls[i].style.left = p.x + 'px';
+      oppPowerupMarkerEls[i].style.top  = p.y + 'px';
+    }
   });
 }
 
@@ -535,11 +621,66 @@ function applyOppScale(s) {
 
 // ── Drag ──────────────────────────────────────────────────────────────────────
 
+// Fake cursor for invert effect
+let fakeCursor = null;
+
+function getOrCreateFakeCursor() {
+  if (fakeCursor) return fakeCursor;
+  fakeCursor = document.createElement('div');
+  fakeCursor.id = 'fake-cursor';
+  fakeCursor.style.cssText = 'position:fixed;width:24px;height:24px;pointer-events:none;z-index:9999;display:none';
+  fakeCursor.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9 3 C9 2 10 1 11 1 C12 1 13 2 13 3 L13 10 L14.5 8.5 C15 8 16 8 16.5 8.5 C17 9 17 10 16.5 10.5 L14 13 C14 13 14 17 12 19 C10.5 20.5 8 21 6 19.5 C4 18 4 15 4 13 L4 8 C4 7 5 6 6 6 C7 6 8 7 8 8 L8 3 C8 2 8.5 1.5 9 1.5 Z" fill="white" stroke="black" stroke-width="1" stroke-linejoin="round"/></svg>';
+  document.body.appendChild(fakeCursor);
+  return fakeCursor;
+}
+
+function mirrorCoords(clientX, clientY) {
+  if (!invertActive) return { clientX, clientY };
+  const wrap = board.parentElement;
+  const rect = wrap.getBoundingClientRect();
+  // Mirror around the center of the board wrap
+  const cx = rect.left + rect.width  / 2;
+  const cy = rect.top  + rect.height / 2;
+  return {
+    clientX: 2 * cx - clientX,
+    clientY: 2 * cy - clientY,
+  };
+}
+
+function updateFakeCursor(clientX, clientY) {
+  const fc = getOrCreateFakeCursor();
+  if (!invertActive) {
+    syncCursorVisibility();
+    return;
+  }
+  const { clientX: mx, clientY: my } = mirrorCoords(clientX, clientY);
+  fc.style.left = (mx - 9) + 'px';
+  fc.style.top  = (my - 1) + 'px';
+  syncCursorVisibility();
+}
+
+function syncCursorVisibility() {
+  const fc = getOrCreateFakeCursor();
+  if (invertActive) {
+    fc.style.display = 'block';
+    board.parentElement.style.cursor = 'none';
+  } else {
+    fc.style.display = 'none';
+    board.parentElement.style.cursor = '';
+  }
+}
+
 function attachDragListeners() {
   board.addEventListener('mousedown',   onMouseDown);
   window.addEventListener('mousemove',  onMouseMove);
   window.addEventListener('mouseup',    onMouseUp);
   const wrap = board.parentElement;
+  wrap.addEventListener('mousemove', e => updateFakeCursor(e.clientX, e.clientY));
+  wrap.addEventListener('mouseleave', () => {
+    // Hide fake cursor when leaving board area, but keep cursor:none if invert active
+    if (fakeCursor) fakeCursor.style.display = 'none';
+    if (!invertActive) board.parentElement.style.cursor = '';
+  });
   wrap.addEventListener('touchstart', onTouchStart, { passive: false });
   wrap.addEventListener('touchmove',  onTouchMove,  { passive: false });
   wrap.addEventListener('touchend',   onTouchEnd);
@@ -604,9 +745,18 @@ function rotateAtIndex(index) {
 }
 
 function onMouseDown(e) {
-  const el = e.target.closest('.piece');
+  const { clientX, clientY } = mirrorCoords(e.clientX, e.clientY);
+  const el = invertActive
+    ? document.elementFromPoint(clientX, clientY)?.closest('.piece')
+    : e.target.closest('.piece');
   if (!el || el.classList.contains('solved')) return;
   const index = Number(el.dataset.index);
+
+  // Chaos: face-down flip on click
+  if (faceDownPieces.has(index)) {
+    setFaceDown(index, false);
+    return;
+  }
   const state = pieceStates[index];
   if (state.lockedBy && state.lockedBy !== playerId) return;
   const gid     = pieceGroup[index];
@@ -615,18 +765,19 @@ function onMouseDown(e) {
   const boardRect = board.getBoundingClientRect();
   const anchorX   = pieceStates[index].x;
   const anchorY   = pieceStates[index].y;
-  const offsetX   = (e.clientX - boardRect.left) / scale - anchorX;
-  const offsetY   = (e.clientY - boardRect.top)  / scale - anchorY;
   const relOffsets = {};
   indices.forEach(i => {
     relOffsets[i] = { dx: pieceStates[i].x - anchorX, dy: pieceStates[i].y - anchorY };
   });
-  dragging = { indices, anchorIndex: index, offsetX, offsetY, relOffsets, locked: false };
+  const rawX0 = (clientX - boardRect.left) / scale;
+  const rawY0 = (clientY - boardRect.top)  / scale;
+  dragging = { indices, anchorIndex: index, relOffsets, locked: false,
+    invertAnchorX: anchorX, invertAnchorY: anchorY, invertLastX: rawX0, invertLastY: rawY0 };
 }
 
 function onMouseMove(e) {
   if (!dragging) return;
-  const { indices, offsetX, offsetY, relOffsets } = dragging;
+  const { indices, relOffsets } = dragging;
   if (!dragging.locked) {
     dragging.locked = true;
     lockVSGroup(roomId, playerId, indices, playerId);
@@ -637,8 +788,17 @@ function onMouseMove(e) {
     });
   }
   const boardRect = board.getBoundingClientRect();
-  const anchorX = (e.clientX - boardRect.left) / scale - offsetX;
-  const anchorY = (e.clientY - boardRect.top)  / scale - offsetY;
+  const { clientX: cx, clientY: cy } = mirrorCoords(e.clientX, e.clientY);
+  const rawX = (cx - boardRect.left) / scale;
+  const rawY = (cy - boardRect.top)  / scale;
+  const dx = rawX - dragging.invertLastX;
+  const dy = rawY - dragging.invertLastY;
+  dragging.invertAnchorX += dx;
+  dragging.invertAnchorY += dy;
+  dragging.invertLastX = rawX;
+  dragging.invertLastY = rawY;
+  const anchorX = dragging.invertAnchorX;
+  const anchorY = dragging.invertAnchorY;
   const positions = [];
   indices.forEach(i => {
     const x = anchorX + relOffsets[i].dx;
@@ -653,23 +813,14 @@ function onMouseMove(e) {
 
 async function onMouseUp(e) {
   if (!dragging) return;
-  const { indices, anchorIndex, offsetX, offsetY, relOffsets, locked } = dragging;
+  const { indices, anchorIndex, locked } = dragging;
   dragging = null;
   indices.forEach(i => {
     pieceEls[i]?.classList.remove('dragging');
     if (pieceEls[i]) pieceEls[i].style.zIndex = '';
   });
   if (!locked) return;
-  const boardRect = board.getBoundingClientRect();
-  const anchorX   = (e.clientX - boardRect.left) / scale - offsetX;
-  const anchorY   = (e.clientY - boardRect.top)  / scale - offsetY;
-  indices.forEach(i => {
-    const x = anchorX + relOffsets[i].dx;
-    const y = anchorY + relOffsets[i].dy;
-    pieceStates[i].x = x;
-    pieceStates[i].y = y;
-    movePieceEl(i, x, y);
-  });
+  // Piece positions are already up to date from the last onMouseMove delta
   const snap = findNeighbourSnap(indices);
   if (snap) {
     const { cols, _displayW: dW, _displayH: dH } = meta;
@@ -701,6 +852,7 @@ async function onMouseUp(e) {
     const gid = pieceGroup[allIndices[0]];
     await writeVSSnap(roomId, playerId, positions, gid);
     checkSolvedState();
+    checkPowerupTrigger(allIndices);
     updateMyProgress();
     checkCompletion();
   } else {
@@ -754,6 +906,290 @@ function applyScale(s) {
   board.style.transform = scale === 1 ? '' : `scale(${scale})`;
   board.style.marginRight  = scale > 1 ? BOARD_W * (scale - 1) + 'px' : '';
   board.style.marginBottom = scale > 1 ? BOARD_H * (scale - 1) + 'px' : '';
+}
+
+// ── Chaos mode powerups ───────────────────────────────────────────────────────
+
+function createPowerupMarker(index, type, x, y) {
+  const ICONS = { bw: '👁', invert: '🔄', scramble: '💥' };
+  const marker = document.createElement('div');
+  marker.className = `powerup-marker powerup-${type}`;
+  marker.dataset.index = index;
+  marker.textContent = ICONS[type] ?? '⚡';
+  marker.style.left = x + 'px';
+  marker.style.top  = y + 'px';
+  return marker;
+}
+
+function renderOppPowerupMarkers() {
+  if (!oppBoard) return;
+  Object.entries(powerupPieces).forEach(([idxStr, type]) => {
+    const i = Number(idxStr);
+    if (oppPieceStates[i]?.solved) return;
+    const state = oppPieceStates[i];
+    if (!state) return;
+    const marker = createPowerupMarker(i, type, state.x, state.y);
+    marker.className = `powerup-marker powerup-${type} opp-powerup-marker`;
+    oppBoard.appendChild(marker);
+    oppPowerupMarkerEls[i] = marker;
+  });
+}
+
+function getNeighbours(idx) {
+  const { cols, rows } = meta;
+  const col = idx % cols;
+  const row = Math.floor(idx / cols);
+  return [
+    row > 0          ? (row - 1) * cols + col : -1, // top
+    row < rows - 1   ? (row + 1) * cols + col : -1, // bottom
+    col > 0          ? row * cols + (col - 1) : -1, // left
+    col < cols - 1   ? row * cols + (col + 1) : -1, // right
+  ];
+}
+
+function checkPowerupTrigger(mergedIndices) {
+  if (!meta.chaosMode) return;
+  mergedIndices.forEach(idx => {
+    if (powerupPieces[idx] === undefined) return;
+    if (earnedPowerups.has(idx)) return;
+    // Check all 4 neighbours are in the same group as this piece
+    const myGroup = pieceGroup[idx];
+    if (!myGroup) return;
+    const neighbours = getNeighbours(idx);
+    const allNeighboursSnapped = neighbours.every(n => {
+      if (n === -1) return true; // board edge counts as satisfied
+      return pieceGroup[n] === myGroup || pieceStates[n]?.solved;
+    });
+    if (!allNeighboursSnapped) return;
+    earnedPowerups.add(idx);
+    firePowerup(powerupPieces[idx], idx);
+  });
+}
+
+async function firePowerup(type, pieceIndex) {
+  if (!oppId) return;
+  const effect = { type, fromPlayer: playerId };
+
+  effect.sentAt = Date.now();
+  if (type === 'bw' || type === 'invert' || type === 'flip') {
+    effect.expiresAt = Date.now() + 20000;
+  }
+  if (type === 'shake') {
+    effect.expiresAt = Date.now() + 10000;
+  }
+
+  if (type === 'scramble') {
+    const targets = Object.keys(oppPieceStates)
+      .map(Number)
+      .filter(i => !oppPieceStates[i]?.solved && !oppPieceStates[i]?.groupId);
+    const positions = {};
+    targets.forEach(i => {
+      positions[i] = {
+        x: Math.random() * (BOARD_W - meta._displayW),
+        y: Math.random() * (BOARD_H - meta._displayH),
+      };
+    });
+    effect.positions = positions;
+  }
+
+  if (type === 'shuffle') {
+    // Count group sizes, only target groups with 2+ pieces
+    const groupSizes = {};
+    Object.values(oppPieceStates).forEach(p => {
+      if (p?.groupId) groupSizes[p.groupId] = (groupSizes[p.groupId] ?? 0) + 1;
+    });
+    const grouped = Object.keys(oppPieceStates)
+      .map(Number)
+      .filter(i => {
+        const p = oppPieceStates[i];
+        return p?.groupId && !p?.solved && (groupSizes[p.groupId] ?? 0) > 1;
+      });
+    const positions = {};
+    grouped.forEach(i => {
+      positions[i] = {
+        x: Math.random() * (BOARD_W - meta._displayW),
+        y: Math.random() * (BOARD_H - meta._displayH),
+      };
+    });
+    effect.positions = positions;
+  }
+
+  await writeVSPowerupEarned(roomId, playerId, pieceIndex);
+  await writeVSEffect(roomId, oppId, effect);
+
+  const SENT_NAMES = { bw: 'Grayscale', invert: 'Invert', scramble: 'Scramble', flip: 'Flip', shake: 'Shake', shuffle: 'Shuffle' };
+  showPowerupToast(`🎉 ${SENT_NAMES[type] ?? type} sent!`, false);
+
+  // Sender sees the effect on opponent's board for visual feedback
+  if (oppBoard) {
+    if (type === 'bw')   { oppBoard.classList.add('board-grayscale');              setTimeout(() => oppBoard.classList.remove('board-grayscale'), 20000); }
+    if (type === 'flip') { oppBoard.classList.add('board-flip');                   setTimeout(() => oppBoard.classList.remove('board-flip'),      20000); }
+    if (type === 'shake'){ oppBoard.parentElement.classList.add('board-shake');    setTimeout(() => oppBoard.parentElement.classList.remove('board-shake'), 10000); }
+  }
+
+  // Hide my marker + glow
+  if (powerupMarkerEls[pieceIndex]) powerupMarkerEls[pieceIndex].style.display = 'none';
+  if (pieceEls[pieceIndex]) pieceEls[pieceIndex].classList.remove(`powerup-glow-${type}`);
+  // Hide opp's marker + glow on their view
+  if (oppPowerupMarkerEls[pieceIndex]) oppPowerupMarkerEls[pieceIndex].style.display = 'none';
+  if (oppPieceEls[pieceIndex]) oppPieceEls[pieceIndex].classList.remove(`powerup-glow-${type}`);
+}
+
+function applyEffect(effect) {
+  if (!effect?.type) return;
+  // Ignore effects sent before this game started (onChildAdded replays old data)
+  if (effect.sentAt && startedAt && effect.sentAt < startedAt) return;
+  const NAMES = { bw: 'Grayscale', invert: 'Inverted Controls', scramble: 'Scramble', flip: 'Flipped!', shake: 'Shake!', shuffle: 'Shuffled!' };
+  showPowerupToast(`😱 ${NAMES[effect.type] ?? effect.type}${effect.expiresAt ? ' — 30s!' : '!'}`, true);
+
+  if (effect.type === 'bw') {
+    // Extend if already active — always use the furthest expiry
+    const expiresAt = Math.max(effect.expiresAt, activeEffects.bwExpiresAt ?? 0);
+    activeEffects.bwExpiresAt = expiresAt;
+    board.classList.add('board-grayscale');
+    clearTimeout(activeEffects.bwTimer);
+    activeEffects.bwTimer = setTimeout(() => {
+      board.classList.remove('board-grayscale');
+      activeEffects.bwExpiresAt = 0; updateEffectTimers();
+    }, Math.max(0, expiresAt - Date.now()));
+  }
+
+  if (effect.type === 'invert') {
+    // Extend if already active — always use the furthest expiry
+    const expiresAt = Math.max(effect.expiresAt, activeEffects.invertExpiresAt ?? 0);
+    activeEffects.invertExpiresAt = expiresAt;
+    invertActive = true;
+    syncCursorVisibility();
+    clearTimeout(activeEffects.invertTimer);
+    activeEffects.invertTimer = setTimeout(() => {
+      invertActive = false;
+      activeEffects.invertExpiresAt = 0;
+      syncCursorVisibility();
+      updateEffectTimers();
+    }, Math.max(0, expiresAt - Date.now()));
+  }
+
+  if (effect.type === 'scramble' && effect.positions) {
+    const batchPositions = [];
+    Object.entries(effect.positions).forEach(([idxStr, pos]) => {
+      const i = Number(idxStr);
+      if (pieceStates[i]?.solved || pieceStates[i]?.groupId) return;
+      pieceStates[i].x = pos.x;
+      pieceStates[i].y = pos.y;
+      movePieceEl(i, pos.x, pos.y);
+      setFaceDown(i, true);
+      batchPositions.push({ index: i, x: pos.x, y: pos.y });
+    });
+    if (batchPositions.length) updateVSGroupPosition(roomId, playerId, batchPositions);
+  }
+
+  if (effect.type === 'flip') {
+    const expiresAt = Math.max(effect.expiresAt, activeEffects.flipExpiresAt ?? 0);
+    activeEffects.flipExpiresAt = expiresAt;
+    board.classList.add('board-flip');
+    clearTimeout(activeEffects.flipTimer);
+    activeEffects.flipTimer = setTimeout(() => {
+      board.classList.remove('board-flip');
+      activeEffects.flipExpiresAt = 0;
+      updateEffectTimers();
+    }, Math.max(0, expiresAt - Date.now()));
+  }
+
+  if (effect.type === 'shake') {
+    const expiresAt = Math.max(effect.expiresAt, activeEffects.shakeExpiresAt ?? 0);
+    activeEffects.shakeExpiresAt = expiresAt;
+    board.parentElement.classList.add('board-shake');
+    clearTimeout(activeEffects.shakeTimer);
+    activeEffects.shakeTimer = setTimeout(() => {
+      board.parentElement.classList.remove('board-shake');
+      activeEffects.shakeExpiresAt = 0;
+      updateEffectTimers();
+    }, Math.max(0, expiresAt - Date.now()));
+  }
+
+  if (effect.type === 'shuffle' && effect.positions) {
+    const batchPositions = [];
+    Object.entries(effect.positions).forEach(([idxStr, pos]) => {
+      const i = Number(idxStr);
+      if (pieceStates[i]?.solved) return;
+      const oldGroup = pieceGroup[i];
+      if (oldGroup && groups[oldGroup]) {
+        groups[oldGroup].delete(i);
+        if (groups[oldGroup].size === 0) delete groups[oldGroup];
+      }
+      pieceGroup[i] = null;
+      pieceStates[i] = { ...pieceStates[i], x: pos.x, y: pos.y, groupId: null, lockedBy: null };
+      movePieceEl(i, pos.x, pos.y);
+      batchPositions.push({ index: i, x: pos.x, y: pos.y });
+    });
+    if (batchPositions.length) writeVSShufflePositions(roomId, playerId, batchPositions);
+  }
+
+  updateEffectTimers();
+}
+
+function setFaceDown(index, faceDown) {
+  const el = pieceEls[index];
+  if (!el) return;
+  if (faceDown) {
+    faceDownPieces.add(index);
+    el.classList.add('face-down');
+  } else {
+    faceDownPieces.delete(index);
+    el.classList.remove('face-down');
+  }
+}
+
+const powerupToastEl  = document.getElementById('powerup-toast');
+const effectTimersEl  = document.getElementById('vs-effect-timers');
+let toastTimer = null;
+
+const EFFECT_TIMER_DEFS = [
+  { key: 'bw',     label: 'Grayscale',  color: '#6b7280', bar: '#9ca3af', duration: 20000 },
+  { key: 'invert', label: 'Invert',     color: '#7c3aed', bar: '#a78bfa', duration: 20000 },
+  { key: 'flip',   label: 'Flip',       color: '#ef4444', bar: '#f87171', duration: 20000 },
+  { key: 'shake',  label: 'Shake',      color: '#ea580c', bar: '#fb923c', duration: 10000 },
+];
+
+function updateEffectTimers() {
+  if (!effectTimersEl) return;
+  const now    = Date.now();
+  const active = EFFECT_TIMER_DEFS.filter(d => (activeEffects[d.key + 'ExpiresAt'] ?? 0) > now);
+  effectTimersEl.style.display = active.length ? '' : 'none';
+  EFFECT_TIMER_DEFS.forEach(d => { document.getElementById('vset-' + d.key)?.remove(); });
+  active.forEach(d => {
+    const item = document.createElement('div');
+    item.className = 'vs-effect-item';
+    item.id = 'vset-' + d.key;
+    item.innerHTML = `<div class="vs-effect-dot" style="background:${d.color}"></div>`
+      + `<span>${d.label}</span>`
+      + `<div class="vs-effect-track"><div class="vs-effect-fill" id="vsef-${d.key}" style="background:${d.bar}"></div></div>`
+      + `<span class="vs-effect-time" id="vset-time-${d.key}"></span>`;
+    effectTimersEl.appendChild(item);
+  });
+}
+
+setInterval(() => {
+  if (!effectTimersEl) return;
+  const now = Date.now();
+  EFFECT_TIMER_DEFS.forEach(d => {
+    const expiresAt = activeEffects[d.key + 'ExpiresAt'] ?? 0;
+    const fillEl = document.getElementById('vsef-' + d.key);
+    const timeEl = document.getElementById('vset-time-' + d.key);
+    if (!fillEl || !timeEl) return;
+    const ms = Math.max(0, expiresAt - now);
+    fillEl.style.width = Math.min(100, (ms / d.duration) * 100) + '%';
+    timeEl.textContent = Math.ceil(ms / 1000) + 's';
+  });
+}, 200);
+
+function showPowerupToast(msg, isReceived) {
+  if (!powerupToastEl) return;
+  powerupToastEl.textContent = msg;
+  powerupToastEl.style.display = '';
+  powerupToastEl.style.background = isReceived ? 'rgba(185,28,28,0.9)' : 'rgba(5,150,105,0.9)';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { powerupToastEl.style.display = 'none'; }, 2500);
 }
 
 // ── Snap / merge ──────────────────────────────────────────────────────────────
@@ -882,6 +1318,7 @@ function applyRemoteUpdate(index, data) {
 
   if (data.solved) {
     pieceEls[index]?.classList.add('solved');
+    if (faceDownPieces.has(index)) setFaceDown(index, false);
     solvedCount = pieceStates.filter(p => p.solved).length;
     updateMyProgress();
     checkCompletion();
@@ -1002,8 +1439,9 @@ async function handleRematchClick() {
 async function createRematchRoom() {
   const pieces  = meta?.pieces ?? 100;
   const hard    = meta?.hardMode ?? false;
+  const chaos   = meta?.chaosMode ?? false;
   try {
-    const res = await fetch(`/api/vs-create?pieces=${pieces}&hard=${hard}&json=1`);
+    const res = await fetch(`/api/vs-create?pieces=${pieces}&hard=${hard}&chaos=${chaos}&json=1`);
     const { roomId: newRoom } = await res.json();
     if (!newRoom) return;
 
@@ -1169,9 +1607,10 @@ function escapeHtml(str) {
 // ── Cleanup ───────────────────────────────────────────────────────────────────
 
 function cleanup() {
-  if (unsubRoom)   { unsubRoom();   unsubRoom   = null; }
-  if (unsubPieces) { unsubPieces(); unsubPieces = null; }
-  if (unsubOpp)    { unsubOpp();    unsubOpp    = null; }
+  if (unsubRoom)    { unsubRoom();    unsubRoom    = null; }
+  if (unsubPieces)  { unsubPieces();  unsubPieces  = null; }
+  if (unsubOpp)     { unsubOpp();     unsubOpp     = null; }
+  if (unsubEffects) { unsubEffects(); unsubEffects = null; }
   stopTimer();
   if (dragging?.locked) unlockVSGroup(roomId, playerId, dragging.indices);
 }

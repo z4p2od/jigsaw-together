@@ -320,6 +320,18 @@ export function updateVSGroupPosition(roomId, playerId, positions) {
   update(ref(db, `vs/${roomId}/pieces/${playerId}`), flat);
 }
 
+/** Scatter grouped pieces: write new x/y and clear groupId + lockedBy in one batch. */
+export function writeVSShufflePositions(roomId, playerId, positions) {
+  const flat = {};
+  positions.forEach(({ index, x, y }) => {
+    flat[`${index}/x`]        = x;
+    flat[`${index}/y`]        = y;
+    flat[`${index}/groupId`]  = null;
+    flat[`${index}/lockedBy`] = null;
+  });
+  return update(ref(db, `vs/${roomId}/pieces/${playerId}`), flat);
+}
+
 export function lockVSGroup(roomId, playerId, indices, lockerId) {
   const flat = {};
   indices.forEach(i => { flat[`${i}/lockedBy`] = lockerId; });
@@ -414,6 +426,23 @@ export function updateRoomsIndex(roomId, fields) {
 
 export function deleteRoomsIndex(roomId) {
   return set(ref(db, `rooms-index/${roomId}`), null);
+}
+
+// ── VS Powerups (Chaos mode) ───────────────────────────────────────────────────
+
+export function writeVSPowerupEarned(roomId, playerId, pieceIndex) {
+  return set(ref(db, `vs/${roomId}/powerups/${playerId}/${pieceIndex}`), true);
+}
+
+export function writeVSEffect(roomId, targetPlayerId, effect) {
+  return push(ref(db, `vs/${roomId}/effects/${targetPlayerId}`), effect);
+}
+
+export function onVSEffects(roomId, playerId, callback) {
+  const r = ref(db, `vs/${roomId}/effects/${playerId}`);
+  const handler = snap => { if (snap.val()) callback(snap.val()); };
+  onChildAdded(r, handler);
+  return () => off(r, 'child_added', handler);
 }
 
 /** Write a POTD completion score. Keyed by puzzleId so each game is one entry. */
