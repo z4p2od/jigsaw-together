@@ -382,6 +382,12 @@ function handleRoomUpdate(room) {
   }
 
   if (m.status === 'playing' && !gameStarted) {
+    if (m.teamMode && !players[playerId]?.teamId) {
+      // Player never picked a team — show a message and keep them on the lobby screen
+      if (vsTeamLobbyStatus) vsTeamLobbyStatus.textContent = 'Match has started — you were not assigned to a team.';
+      if (vsTeamReadyBtn) { vsTeamReadyBtn.disabled = true; vsTeamReadyBtn.textContent = 'Match in progress'; }
+      return;
+    }
     gameStarted = true;
     startedAt = m.startedAt;
     startCountdown(m.teamMode).then(() => startGame(room));
