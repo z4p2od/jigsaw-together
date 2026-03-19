@@ -1476,6 +1476,37 @@ body {
   padding: 7px 14px;
 }
 
+/* ── VS image picker grid ── */
+
+.vs-image-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 4px 2px;
+}
+
+.vs-img-thumb {
+  aspect-ratio: 1;
+  border-radius: 6px;
+  background-size: cover;
+  background-position: center;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: border-color 0.15s, transform 0.1s;
+}
+
+.vs-img-thumb:hover {
+  border-color: var(--accent);
+  transform: scale(1.04);
+}
+
+.vs-img-thumb.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
 /* ── VS open rooms list ── */
 
 .vs-room-row {

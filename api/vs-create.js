@@ -163,10 +163,20 @@ export default async function handler(req, res) {
     const hardMode = !chaosMode && query.hard === 'true';
     const teamMode = query.teamMode === 'true';
 
-    const images = await listPoolImages();
-    if (images.length === 0) return res.status(500).json({ error: 'No images available' });
+    // Creator can pin a specific image (passed from the picker on the home page)
+    let image;
+    if (query.imageUrl) {
+      image = {
+        secure_url: decodeURIComponent(query.imageUrl),
+        width:  Number(query.imageW) || 1000,
+        height: Number(query.imageH) || 800,
+      };
+    } else {
+      const images = await listPoolImages();
+      if (images.length === 0) return res.status(500).json({ error: 'No images available' });
+      image = images[Math.floor(Math.random() * images.length)];
+    }
 
-    const image = images[Math.floor(Math.random() * images.length)];
     const imgW = Number(image?.width) || 1000;
     const imgH = Number(image?.height) || 800;
 

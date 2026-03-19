@@ -89,6 +89,52 @@ loadPOTD();
 
 // ── VS Mode create ────────────────────────────────────────────────────────────
 
+let vsPickedImage = null; // { url, width, height }
+
+// Show/hide image picker when radio changes
+document.querySelectorAll('input[name="vs-image"]').forEach(radio => {
+  radio.addEventListener('change', () => {
+    const pickerEl = document.getElementById('vs-image-picker');
+    if (radio.value === 'pick' && radio.checked) {
+      pickerEl.style.display = '';
+      loadVSImagePicker();
+    } else {
+      pickerEl.style.display = 'none';
+      vsPickedImage = null;
+    }
+  });
+});
+
+async function loadVSImagePicker() {
+  const grid     = document.getElementById('vs-image-grid');
+  const statusEl = document.getElementById('vs-image-status');
+  if (grid.dataset.loaded) return; // already loaded
+  statusEl.textContent = 'Loading…';
+  try {
+    const res  = await fetch('/api/room-images');
+    const imgs = await res.json();
+    grid.innerHTML = '';
+    if (!imgs.length) { statusEl.textContent = 'No images found.'; return; }
+    imgs.forEach(img => {
+      const el = document.createElement('div');
+      el.className = 'vs-img-thumb';
+      el.style.backgroundImage = `url(${img.url})`;
+      el.title = `${img.width}×${img.height}`;
+      el.addEventListener('click', () => {
+        grid.querySelectorAll('.vs-img-thumb').forEach(t => t.classList.remove('selected'));
+        el.classList.add('selected');
+        vsPickedImage = img;
+        statusEl.textContent = '✓ Image selected';
+      });
+      grid.appendChild(el);
+    });
+    statusEl.textContent = `${imgs.length} images — click one to select`;
+    grid.dataset.loaded = '1';
+  } catch {
+    statusEl.textContent = 'Failed to load images.';
+  }
+}
+
 document.getElementById('vs-create-btn').addEventListener('click', () => {
   const pieces    = document.querySelector('input[name="vs-pieces"]:checked').value;
   const mode      = document.querySelector('input[name="vs-mode"]:checked').value;
@@ -96,7 +142,16 @@ document.getElementById('vs-create-btn').addEventListener('click', () => {
   const chaos     = mode === 'chaos';
   const teamEl    = document.querySelector('input[name="vs-type"]:checked');
   const teamMode  = teamEl ? teamEl.value === 'team' : false;
-  window.location.href = `/api/vs-create?pieces=${pieces}&hard=${hard}&chaos=${chaos}&teamMode=${teamMode}`;
+  const imageMode = document.querySelector('input[name="vs-image"]:checked')?.value ?? 'random';
+
+  let url = `/api/vs-create?pieces=${pieces}&hard=${hard}&chaos=${chaos}&teamMode=${teamMode}`;
+  if (imageMode === 'pick' && vsPickedImage) {
+    url += `&imageUrl=${encodeURIComponent(vsPickedImage.url)}&imageW=${vsPickedImage.width}&imageH=${vsPickedImage.height}`;
+  } else if (imageMode === 'pick' && !vsPickedImage) {
+    document.getElementById('vs-image-status').textContent = '⚠️ Please select an image first.';
+    return;
+  }
+  window.location.href = url;
 });
 
 // ── Image upload ──────────────────────────────────────────────────────────────
