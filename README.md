@@ -139,7 +139,7 @@ chat/{puzzleId}/{pushId}/  playerId, name, color, text, ts
 | `CLOUDINARY_API_SECRET` | api/* | |
 | `CLOUDINARY_UPLOAD_PRESET` | api/cloudinary-config.js | Unsigned upload preset |
 | `CLEANUP_SECRET` | api/cleanup.js | Bearer token Vercel sends to cron routes |
-| `FEEDBACK_ADMIN_TOKEN` | api/feedback-list.js, api/feedback-triage.js, scripts/feedback-agent.mjs | Admin token for secure feedback triage/listing |
+| `FEEDBACK_ADMIN_TOKEN` | api/feedback.js, scripts/feedback-agent.mjs | Admin token for secure feedback triage/listing |
 
 ---
 
