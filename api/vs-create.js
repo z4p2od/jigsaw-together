@@ -73,22 +73,43 @@ async function listPoolImages() {
   }
 
   const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
-  const r = await fetch(
-    // Cloudinary Admin API scopes "resources/image" listing by "prefix"
-    `https://api.cloudinary.com/v1_1/${cloudName}/resources/image/upload?prefix=${encodeURIComponent('puzzle-library')}&max_results=500`,
-    { headers: { Authorization: `Basic ${auth}` } }
-  );
 
-  // Cloudinary sometimes returns non-JSON bodies for auth/rate-limit errors.
-  // Avoid throwing on JSON parse here; treat it as "no images".
-  const text = await r.text().catch(() => '');
-  try {
-    const data = JSON.parse(text);
-    const resources = data?.resources || [];
-    return filterResourcesByFolder(resources, 'puzzle-library');
-  } catch {
-    return [];
+  async function fetchResources(url) {
+    const r = await fetch(url, { headers: { Authorization: `Basic ${auth}` } });
+    const text = await r.text().catch(() => '');
+    // Avoid throwing on JSON parse here; treat it as "no images".
+    try {
+      const data = JSON.parse(text);
+      const resources = data?.resources || data?.images || [];
+      return Array.isArray(resources) ? resources : [];
+    } catch {
+      return [];
+    }
   }
+
+  const folder = 'puzzle-library';
+  // Cloudinary Admin API listing can be scoped either via `folder` or `prefix`.
+  // Try `folder` first (more intuitive), then `prefix` as a fallback.
+  let resources = await fetchResources(
+    `https://api.cloudinary.com/v1_1/${cloudName}/resources/image/upload?folder=${encodeURIComponent(folder)}&max_results=500`
+  );
+  if (resources.length === 0) {
+    resources = await fetchResources(
+      `https://api.cloudinary.com/v1_1/${cloudName}/resources/image/upload?prefix=${encodeURIComponent(folder)}&max_results=500`
+    );
+  }
+
+  if (resources.length === 0) return [];
+
+  // Optional post-filtering for safety. If it ends up filtering everything out,
+  // fall back to the unfiltered set so the VS match creation can proceed.
+  try {
+    const filtered = filterResourcesByFolder(resources, folder);
+    if (Array.isArray(filtered) && filtered.length > 0) return filtered;
+  } catch {
+    // ignore
+  }
+  return resources;
 }
 
 function fbPut(path, value) {
