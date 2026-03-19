@@ -78,19 +78,18 @@ let invertActive = false;
 
 function mirrorCoords(clientX, clientY) {
   if (!invertActive) return { clientX, clientY };
-  const rect = myWrap.getBoundingClientRect();
   return {
-    clientX: 2 * (rect.left + rect.width  / 2) - clientX,
-    clientY: 2 * (rect.top  + rect.height / 2) - clientY,
+    clientX: 2 * (window.innerWidth  / 2) - clientX,
+    clientY: 2 * (window.innerHeight / 2) - clientY,
   };
 }
 
 function syncCursor() {
   if (invertActive) {
-    myWrap.classList.add('invert-active');
+    document.body.classList.add('invert-active');
     fakeCursor.style.display = 'block';
   } else {
-    myWrap.classList.remove('invert-active');
+    document.body.classList.remove('invert-active');
     fakeCursor.style.display = 'none';
   }
 }
@@ -109,30 +108,30 @@ function startDrag(el, board, wrap, clientX, clientY) {
   setGrabbing(true);
 }
 
-myBoard.addEventListener('mousedown', e => {
+document.addEventListener('mousedown', e => {
   const { clientX, clientY } = mirrorCoords(e.clientX, e.clientY);
-  let el;
+  let target;
   if (invertActive) {
     fakeCursor.style.display = 'none';
-    el = document.elementFromPoint(clientX, clientY)?.closest('.piece');
+    target = document.elementFromPoint(clientX, clientY);
     fakeCursor.style.display = 'block';
   } else {
-    el = e.target.closest('.piece');
+    target = e.target;
   }
+  const el = target?.closest('.piece');
   if (!el) return;
+  // Determine which board the piece belongs to
+  const wrap = myBoard.contains(el) ? myWrap : oppBoard.contains(el) ? oppWrap : null;
+  if (!wrap) return;
+  // Only apply mirrored coords for my board
+  const cx = (wrap === myWrap && invertActive) ? clientX : e.clientX;
+  const cy = (wrap === myWrap && invertActive) ? clientY : e.clientY;
   e.preventDefault();
-  startDrag(el, myBoard, myWrap, clientX, clientY);
-});
-
-oppBoard.addEventListener('mousedown', e => {
-  const el = e.target.closest('.piece');
-  if (!el) return;
-  e.preventDefault();
-  startDrag(el, oppBoard, oppWrap, e.clientX, e.clientY);
+  startDrag(el, wrap === myWrap ? myBoard : oppBoard, wrap, cx, cy);
 });
 
 window.addEventListener('mousemove', e => {
-  // Always update fake cursor
+  // Always update fake cursor position across the whole page
   if (invertActive) {
     const { clientX: mx, clientY: my } = mirrorCoords(e.clientX, e.clientY);
     fakeCursor.style.left = (mx - 9) + 'px';
@@ -160,13 +159,6 @@ window.addEventListener('mouseup', () => {
   setGrabbing(false);
 });
 
-// Hide fake cursor only when mouse leaves and invert is off
-myWrap.addEventListener('mouseleave', () => {
-  if (!invertActive) fakeCursor.style.display = 'none';
-});
-myWrap.addEventListener('mouseenter', () => {
-  if (invertActive) fakeCursor.style.display = 'block';
-});
 
 // ── Effects ───────────────────────────────────────────────────────────────────
 

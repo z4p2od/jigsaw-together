@@ -19,8 +19,8 @@ h1 span{color:var(--accent)}
 .board-wrap{position:relative;width:500px;height:380px;background:var(--surface);border-radius:var(--radius);overflow:hidden;border:2px solid var(--surface2)}
 .board-wrap.cursor-none{cursor:none}
 
-/* Cursor: force none on everything inside board when invert active */
-.invert-active,.invert-active *{cursor:none !important}
+/* Cursor: force none on entire page when invert active */
+body.invert-active,body.invert-active *{cursor:none !important}
 
 /* Piece uses a card-flip structure: .piece > .piece-inner > .piece-front + .piece-back */
 .piece{position:absolute;width:80px;height:80px;user-select:none;perspective:300px}
