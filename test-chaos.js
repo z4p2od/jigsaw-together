@@ -110,10 +110,17 @@ function startDrag(el, board, wrap, clientX, clientY) {
 }
 
 myBoard.addEventListener('mousedown', e => {
-  const el = e.target.closest('.piece');
+  const { clientX, clientY } = mirrorCoords(e.clientX, e.clientY);
+  let el;
+  if (invertActive) {
+    fakeCursor.style.display = 'none';
+    el = document.elementFromPoint(clientX, clientY)?.closest('.piece');
+    fakeCursor.style.display = 'block';
+  } else {
+    el = e.target.closest('.piece');
+  }
   if (!el) return;
   e.preventDefault();
-  const { clientX, clientY } = mirrorCoords(e.clientX, e.clientY);
   startDrag(el, myBoard, myWrap, clientX, clientY);
 });
 
