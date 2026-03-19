@@ -1,3 +1,5 @@
+import { getWhatHappenedCopy } from './feedback-copy.js';
+
 const FEEDBACK_TYPES = [
   { value: 'bug', label: 'Bug' },
   { value: 'idea', label: 'Idea' },
@@ -50,6 +52,7 @@ function createPanel() {
   panel.className = 'feedback-panel';
 
   const { contextText } = getContext();
+  const { label, placeholder } = getWhatHappenedCopy('bug');
 
   panel.innerHTML = `
     <div class="feedback-header">
@@ -66,9 +69,9 @@ function createPanel() {
         `).join('')}
       </div>
       <label class="feedback-field">
-        <span>What happened?</span>
+        <span id="feedback-what-happened-label">${label}</span>
         <textarea id="feedback-message" rows="4" maxlength="1000"
-          placeholder="Describe the bug, what you expected to happen, or your idea."></textarea>
+          placeholder="${placeholder}"></textarea>
       </label>
       <label class="feedback-field">
         <span>How can we reach you? <span class="optional">(optional)</span></span>
@@ -85,6 +88,14 @@ function createPanel() {
 
   document.body.appendChild(panel);
   return panel;
+}
+
+function syncWhatHappenedCopy(type) {
+  const { label, placeholder } = getWhatHappenedCopy(type);
+  const labelEl = document.getElementById('feedback-what-happened-label');
+  const messageEl = document.getElementById('feedback-message');
+  if (labelEl) labelEl.textContent = label;
+  if (messageEl) messageEl.placeholder = placeholder;
 }
 
 function setStatus(msg, isError = false) {
@@ -191,6 +202,17 @@ function initFeedbackWidget() {
   });
 
   if (closeBtn) closeBtn.addEventListener('click', closePanel);
+
+  if (form) {
+    // Swap textarea label/placeholder based on the selected radio type.
+    form.addEventListener('change', (e) => {
+      const target = e.target;
+      if (!target || target.name !== 'fb-type') return;
+      syncWhatHappenedCopy(target.value);
+    });
+    syncWhatHappenedCopy('bug'); // ensure correct initial copy
+  }
+
   if (form) form.addEventListener('submit', submitFeedback);
 }
 
