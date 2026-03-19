@@ -67,50 +67,73 @@ function generateEdges(cols, rows) {
 
 async function listPoolImages() {
   const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
-  const apiKey = process.env.CLOUDINARY_API_KEY;
+  const apiKey    = process.env.CLOUDINARY_API_KEY;
   const apiSecret = process.env.CLOUDINARY_API_SECRET;
   if (!cloudName || !apiKey || !apiSecret) return [];
 
-  let filterResourcesByFolder = (resources) => Array.isArray(resources) ? resources : [];
-  try {
-    const mod = await import('./cloudinary-folder-utils.mjs');
-    filterResourcesByFolder = mod?.filterResourcesByFolder || filterResourcesByFolder;
-  } catch {
-    // If the helper fails to load, skip folder filtering.
+  const auth   = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
+  const folder = 'puzzle-library';
+
+  function isPuzzleLibraryResource(r) {
+    if (!r) return false;
+    const norm = s => String(s ?? '').replace(/^\/+/, '').replace(/\/+$/, '');
+    const af = norm(r.asset_folder);
+    if (af) return af === folder || af.startsWith(folder + '/');
+    const f  = norm(r.folder);
+    if (f)  return f  === folder || f.startsWith(folder + '/');
+    const id = String(r.public_id ?? '');
+    if (id) return id === folder || id.startsWith(folder + '/');
+    const url = String(r.secure_url ?? '');
+    return url.includes('/' + folder + '/') || url.includes('/' + folder);
   }
 
-  const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
+  async function searchByAssetFolder() {
+    const resp = await fetch(
+      `https://api.cloudinary.com/v1_1/${cloudName}/resources/search`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ expression: `resource_type:image AND asset_folder:${folder}/*`, max_results: 500 }),
+      }
+    );
+    const text = await resp.text().catch(() => '');
+    if (!resp.ok) throw new Error(`search failed: ${resp.status} ${text}`);
+    const data = JSON.parse(text);
+    return Array.isArray(data?.resources) ? data.resources : [];
+  }
 
-  async function fetchResources(url) {
-    const r = await fetch(url, { headers: { Authorization: `Basic ${auth}` } });
-    const text = await r.text().catch(() => '');
+  async function fetchByPrefix(prefix) {
+    const resp = await fetch(
+      `https://api.cloudinary.com/v1_1/${cloudName}/resources/image/upload?prefix=${encodeURIComponent(prefix)}&max_results=500`,
+      { headers: { Authorization: `Basic ${auth}` } }
+    );
+    const text = await resp.text().catch(() => '');
+    if (!resp.ok) throw new Error(`prefix listing failed: ${resp.status}`);
+    const data = JSON.parse(text);
+    return Array.isArray(data?.resources) ? data.resources : [];
+  }
+
+  let resources = [];
+  try {
+    resources = await searchByAssetFolder();
+  } catch {
     try {
-      const data = JSON.parse(text);
-      const resources = data?.resources || data?.images || [];
-      return Array.isArray(resources) ? resources : [];
+      resources = await fetchByPrefix(folder + '/');
+      if (resources.length === 0) resources = await fetchByPrefix(folder);
     } catch {
       return [];
     }
   }
 
-  const folder = 'puzzle-library';
-  let resources = await fetchResources(
-    `https://api.cloudinary.com/v1_1/${cloudName}/resources/image/upload?folder=${encodeURIComponent(folder)}&max_results=500`
-  );
-  if (resources.length === 0) {
-    resources = await fetchResources(
-      `https://api.cloudinary.com/v1_1/${cloudName}/resources/image/upload?prefix=${encodeURIComponent(folder)}&max_results=500`
-    );
-  }
-  if (resources.length === 0) return [];
-
-  try {
-    const filtered = filterResourcesByFolder(resources, folder);
-    if (Array.isArray(filtered) && filtered.length > 0) return filtered;
-  } catch {
-    // ignore
-  }
-  return resources;
+  const filtered = resources.filter(isPuzzleLibraryResource);
+  return filtered
+    .filter(r => r?.secure_url)
+    .map(r => ({
+      secure_url: r.secure_url,
+      width:  typeof r.width  === 'number' ? r.width  : Number(r.width),
+      height: typeof r.height === 'number' ? r.height : Number(r.height),
+    }))
+    .filter(r => Number.isFinite(r.width) && Number.isFinite(r.height));
 }
 
 function fbPut(path, value) {
