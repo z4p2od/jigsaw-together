@@ -994,10 +994,17 @@ async function firePowerup(type, pieceIndex) {
   }
 
   if (type === 'shuffle') {
-    // Target grouped (but not fully solved) pieces — break their groups and scatter
+    // Count group sizes, only target groups with 2+ pieces
+    const groupSizes = {};
+    Object.values(oppPieceStates).forEach(p => {
+      if (p?.groupId) groupSizes[p.groupId] = (groupSizes[p.groupId] ?? 0) + 1;
+    });
     const grouped = Object.keys(oppPieceStates)
       .map(Number)
-      .filter(i => oppPieceStates[i]?.groupId && !oppPieceStates[i]?.solved);
+      .filter(i => {
+        const p = oppPieceStates[i];
+        return p?.groupId && !p?.solved && (groupSizes[p.groupId] ?? 0) > 1;
+      });
     const positions = {};
     grouped.forEach(i => {
       positions[i] = {
@@ -1016,9 +1023,9 @@ async function firePowerup(type, pieceIndex) {
 
   // Sender sees the effect on opponent's board for visual feedback
   if (oppBoard) {
-    if (type === 'bw')   { oppBoard.classList.add('board-grayscale'); setTimeout(() => oppBoard.classList.remove('board-grayscale'), 20000); }
-    if (type === 'flip') { oppBoard.classList.add('board-flip');      setTimeout(() => oppBoard.classList.remove('board-flip'),      20000); }
-    if (type === 'shake'){ oppBoard.classList.add('board-shake');     setTimeout(() => oppBoard.classList.remove('board-shake'),     10000); }
+    if (type === 'bw')   { oppBoard.classList.add('board-grayscale');              setTimeout(() => oppBoard.classList.remove('board-grayscale'), 20000); }
+    if (type === 'flip') { oppBoard.classList.add('board-flip');                   setTimeout(() => oppBoard.classList.remove('board-flip'),      20000); }
+    if (type === 'shake'){ oppBoard.parentElement.classList.add('board-shake');    setTimeout(() => oppBoard.parentElement.classList.remove('board-shake'), 10000); }
   }
 
   // Hide my marker + glow
@@ -1091,10 +1098,10 @@ function applyEffect(effect) {
   if (effect.type === 'shake') {
     const expiresAt = Math.max(effect.expiresAt, activeEffects.shakeExpiresAt ?? 0);
     activeEffects.shakeExpiresAt = expiresAt;
-    board.classList.add('board-shake');
+    board.parentElement.classList.add('board-shake');
     clearTimeout(activeEffects.shakeTimer);
     activeEffects.shakeTimer = setTimeout(() => {
-      board.classList.remove('board-shake');
+      board.parentElement.classList.remove('board-shake');
       activeEffects.shakeExpiresAt = 0;
     }, Math.max(0, expiresAt - Date.now()));
   }

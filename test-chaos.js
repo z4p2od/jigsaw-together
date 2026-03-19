@@ -228,6 +228,7 @@ function fireFlip() {
 function fireShake() {
   const expiresAt = Math.max(Date.now() + 10000, activeEffects.shakeExpiresAt ?? 0);
   activeEffects.shakeExpiresAt = expiresAt;
+  // Shake goes on the wrap so it doesn't conflict with flip's transform on the board
   oppWrap.classList.add('board-shake');
   clearTimeout(activeEffects.shakeTimer);
   activeEffects.shakeTimer = setTimeout(() => {
@@ -256,7 +257,9 @@ function resetAll() {
   });
   invertActive = false;
   syncCursor();
-  oppWrap.classList.remove('board-grayscale','board-flip','board-shake');
+  oppWrap.classList.remove('board-grayscale', 'board-flip', 'board-shake');
+  // shake is on the wrap in real game; keep both covered
+  document.getElementById('opp-wrap').classList.remove('board-shake');
   myPieces.forEach(({ el, ox, oy }) => {
     el.style.left = ox + 'px';
     el.style.top  = oy + 'px';
