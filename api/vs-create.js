@@ -8,6 +8,7 @@
  * Redirects to /vs.html?room={roomId}
  */
 import crypto from 'crypto';
+import { filterResourcesByFolder } from './cloudinary-folder-utils.mjs';
 
 const BOARD_W = 900;
 const BOARD_H = 650;
@@ -59,11 +60,13 @@ function generateEdges(cols, rows) {
 async function listPoolImages() {
   const auth = Buffer.from(`${process.env.CLOUDINARY_API_KEY}:${process.env.CLOUDINARY_API_SECRET}`).toString('base64');
   const r = await fetch(
-    `https://api.cloudinary.com/v1_1/${process.env.CLOUDINARY_CLOUD_NAME}/resources/image/upload?folder=puzzle-library&max_results=500`,
+    // Cloudinary Admin API scopes "resources/image" listing by "prefix"
+    `https://api.cloudinary.com/v1_1/${process.env.CLOUDINARY_CLOUD_NAME}/resources/image/upload?prefix=${encodeURIComponent('puzzle-library')}&max_results=500`,
     { headers: { Authorization: `Basic ${auth}` } }
   );
   const data = await r.json();
-  return data.resources || [];
+  const resources = data.resources || [];
+  return filterResourcesByFolder(resources, 'puzzle-library');
 }
 
 function fbPut(path, value) {

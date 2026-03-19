@@ -1,27 +1,34 @@
 /**
- * Returns the list of available images from the potd-pool Cloudinary folder.
+ * Returns the list of available images from the puzzle-library Cloudinary folder.
  * Used by the image picker page (/play).
  *
  * GET /api/room-images
  * Returns: [{ url, width, height }, ...]
  */
+import { filterResourcesByFolder } from './cloudinary-folder-utils.mjs';
+
 export default async function handler(req, res) {
   const auth = Buffer.from(
     `${process.env.CLOUDINARY_API_KEY}:${process.env.CLOUDINARY_API_SECRET}`
   ).toString('base64');
 
   const r = await fetch(
-    `https://api.cloudinary.com/v1_1/${process.env.CLOUDINARY_CLOUD_NAME}/resources/image/upload?folder=puzzle-library&max_results=500`,
+    // Cloudinary Admin API scopes "resources/image" listing by "prefix"
+    // (the old code used "folder=", which can return unexpected assets).
+    `https://api.cloudinary.com/v1_1/${process.env.CLOUDINARY_CLOUD_NAME}/resources/image/upload?prefix=${encodeURIComponent('puzzle-library')}&max_results=500`,
     { headers: { Authorization: `Basic ${auth}` } }
   );
   const data = await r.json();
   const resources = data.resources || [];
 
-  const images = resources.map(img => ({
-    url:    img.secure_url,
-    width:  img.width,
-    height: img.height,
-  }));
+  const filtered = filterResourcesByFolder(resources, 'puzzle-library');
+  const images = filtered
+    .filter(img => Boolean(img?.secure_url) && typeof img?.width === 'number' && typeof img?.height === 'number')
+    .map(img => ({
+      url:    img.secure_url,
+      width:  img.width,
+      height: img.height,
+    }));
 
   res.setHeader('Cache-Control', 'public, max-age=300'); // 5-min cache
   res.json(images);
