@@ -5,6 +5,7 @@ import {
   writeVSSnap, updateVSPieceRotation,
   updateVSGroupRotationAndPositions, solveVSGroup,
   setVSPlaying, setVSWinner, setVSFinished, setVSRematch, offerVSRematch,
+  getVSIndexCreatorPlayerId,
   getPlayerColor,
   sendChatMessage, onChatMessages,
   writeVSPowerupEarned, writeVSEffect, onVSEffects, writeVSShufflePositions,
@@ -34,6 +35,9 @@ let unsubOpp    = null;
 let gameStarted = false;
 let winnerDeclared = false;
 let rematchOffered = false;
+let creatorPlayerId = null;
+let canStartRematch = false;
+let currentRematchRoomId = null;
 
 const groups    = {};
 const pieceGroup = [];
@@ -226,6 +230,12 @@ async function initVS() {
     const color = getPlayerColor(playerId);
     await joinVSRoom(roomId, playerId, playerName, color);
 
+    // Used for creator-only "Start rematch" behavior.
+    creatorPlayerId = await getVSIndexCreatorPlayerId(roomId).catch(() => null);
+    if (!creatorPlayerId) {
+      creatorPlayerId = await getVSIndexCreatorPlayerId(roomId).catch(() => null);
+    }
+
     // Share link in lobby
     vsShareUrl.textContent = location.href;
     vsCopyBtn.addEventListener('click', () => {
@@ -243,8 +253,8 @@ async function initVS() {
       setVSReady(roomId, playerId);
     });
 
-    // Rematch button — offer/accept flow
-    vsRematchBtn.addEventListener('click', () => handleRematchClick());
+    // Rematch button — creator can start rematch; others can request.
+    vsRematchBtn.addEventListener('click', () => handleRematchButtonClick());
 
 
     loadingEl.style.display = 'none';
@@ -287,10 +297,18 @@ function handleRoomUpdate(room) {
 
   // Rematch offer/accept state
   if (m.status === 'done') {
+    currentRematchRoomId = m.rematchRoomId || null;
     if (m.rematchRoomId) {
-      location.href = `/vs.html?room=${m.rematchRoomId}`;
+      const offers = m.rematchOffers || {};
+      if (offers[playerId]) {
+        location.href = `/vs.html?room=${m.rematchRoomId}`;
+        return;
+      }
+      // Not opted-in: stay on this room result screen.
+      updateRematchUI(offers, players);
       return;
     }
+    currentRematchRoomId = null;
     updateRematchUI(m.rematchOffers || {}, players);
   }
 
@@ -1432,12 +1450,24 @@ function setupPeek() {
 // ── Rematch offer/accept ──────────────────────────────────────────────────────
 
 async function handleRematchClick() {
+  if (creatorPlayerId && creatorPlayerId === playerId) return;
   if (rematchOffered) return;
   rematchOffered = true;
   vsRematchBtn.disabled = true;
-  vsRematchBtn.textContent = 'Waiting for opponent…';
+  vsRematchBtn.textContent = '✅ Rematch Requested';
   await offerVSRematch(roomId, playerId);
-  // handleRoomUpdate will detect if both offered and create the room
+}
+
+async function handleRematchButtonClick() {
+  if (creatorPlayerId && creatorPlayerId === playerId) {
+    if (!canStartRematch) return;
+    if (vsRematchBtn.disabled) return;
+    vsRematchBtn.disabled = true;
+    vsRematchBtn.textContent = 'Creating rematch…';
+    await createRematchRoom();
+    return;
+  }
+  await handleRematchClick();
 }
 
 async function createRematchRoom() {
@@ -1452,15 +1482,26 @@ async function createRematchRoom() {
     // Pre-join, pre-ready and pre-start so lobby + ready screen are skipped
     const snap = await loadVSRoom(roomId);
     const currentPlayers = snap.players || {};
-    await Promise.all(Object.entries(currentPlayers).map(([pid, p]) =>
-      joinVSRoom(newRoom, pid, p.name, p.color)
-        .then(() => setVSReady(newRoom, pid))
-    ));
+    const offers = snap.meta?.rematchOffers || {};
+    const optedIn = Object.keys(currentPlayers).filter(pid => !!offers[pid]);
+    if (optedIn.length < 2) return;
+
+    // Put creator first so "first joiner becomes creator" is stable.
+    optedIn.sort((a, b) => {
+      if (a === creatorPlayerId) return -1;
+      if (b === creatorPlayerId) return 1;
+      return a.localeCompare(b);
+    });
+
+    await Promise.all(optedIn.map(pid => {
+      const p = currentPlayers[pid];
+      return joinVSRoom(newRoom, pid, p.name, p.color)
+        .then(() => setVSReady(newRoom, pid));
+    }));
     // Set status to playing immediately — no need for the ready handshake
     await setVSPlaying(newRoom);
 
     await setVSRematch(roomId, newRoom);
-    // handleRoomUpdate will see rematchRoomId and redirect both players
   } catch {
     vsRematchBtn.disabled = false;
     vsRematchBtn.textContent = '⚡ Rematch';
@@ -1471,48 +1512,49 @@ async function createRematchRoom() {
 function updateRematchUI(rematchOffers, players) {
   if (!vsRematchBtn) return;
 
-  const iOffered   = !!rematchOffers[playerId];
-  const oppId      = Object.keys(players).find(id => id !== playerId);
-  const oppOffered = oppId ? !!rematchOffers[oppId] : false;
-  const bothOffered = iOffered && oppOffered;
+  const iOffered = !!rematchOffers[playerId];
+  rematchOffered = iOffered;
 
-  if (bothOffered && !rematchOffered) {
-    // Edge case: both wrote offers simultaneously before either saw the other's
-    rematchOffered = true;
-  }
+  const presentIds = Object.keys(players || {});
+  const isCreator = creatorPlayerId && creatorPlayerId === playerId;
+  const optedIn = presentIds.filter(pid => !!rematchOffers[pid]);
 
-  if (bothOffered) {
-    // Both agreed — first player (alphabetically) creates the room once
+  canStartRematch = Boolean(
+    isCreator &&
+    presentIds.length >= 2 &&
+    optedIn.length === presentIds.length
+  );
+
+  if (currentRematchRoomId) {
     vsRematchBtn.disabled = true;
-    vsRematchBtn.textContent = 'Creating rematch…';
+    vsRematchBtn.textContent = '⚡ Rematch in progress';
     vsRematchBtn.classList.remove('rematch-accept');
-    const ids = Object.keys(players).sort();
-    if (ids[0] === playerId && !createRematchRoom._called) {
-      createRematchRoom._called = true;
-      createRematchRoom();
-    }
     return;
   }
 
-  if (iOffered) {
-    // I offered — waiting
+  if (presentIds.length < 2) {
     vsRematchBtn.disabled = true;
     vsRematchBtn.textContent = 'Waiting for opponent…';
     vsRematchBtn.classList.remove('rematch-accept');
     return;
   }
 
-  if (oppOffered) {
-    // Opponent offered — show Accept
-    vsRematchBtn.disabled = false;
-    vsRematchBtn.textContent = '✅ Accept Rematch!';
-    vsRematchBtn.classList.add('rematch-accept');
+  if (isCreator) {
+    vsRematchBtn.disabled = !canStartRematch;
+    vsRematchBtn.textContent = canStartRematch ? '⚡ Start Rematch' : 'Waiting for rematch requests…';
+    vsRematchBtn.classList.remove('rematch-accept');
     return;
   }
 
-  // Nobody offered yet
+  if (iOffered) {
+    vsRematchBtn.disabled = true;
+    vsRematchBtn.textContent = '✅ Rematch Requested';
+    vsRematchBtn.classList.remove('rematch-accept');
+    return;
+  }
+
   vsRematchBtn.disabled = false;
-  vsRematchBtn.textContent = '⚡ Rematch';
+  vsRematchBtn.textContent = '⚡ Request Rematch';
   vsRematchBtn.classList.remove('rematch-accept');
 }
 

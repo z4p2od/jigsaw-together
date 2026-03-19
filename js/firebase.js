@@ -276,11 +276,26 @@ export async function joinVSRoom(roomId, playerId, name, color) {
   const snap   = await get(idxRef);
   if (!snap.exists() || snap.val() === null) {
     await set(idxRef, name);
+    // Also set the creator's playerId for creator-only UI logic (rematch, etc.)
+    await set(ref(db, `vs-index/${roomId}/creatorPlayerId`), playerId);
+  }
+
+  // Backfill creatorPlayerId for older rooms where creatorName existed
+  // but creatorPlayerId wasn't stored yet.
+  const idxIdRef = ref(db, `vs-index/${roomId}/creatorPlayerId`);
+  const snapId = await get(idxIdRef);
+  if (!snapId.exists() || snapId.val() === null) {
+    await set(idxIdRef, playerId);
   }
 }
 
 export function setVSReady(roomId, playerId) {
   return set(ref(db, `vs/${roomId}/players/${playerId}/ready`), true);
+}
+
+export async function getVSIndexCreatorPlayerId(roomId) {
+  const snap = await get(ref(db, `vs-index/${roomId}/creatorPlayerId`));
+  return snap.exists() ? snap.val() : null;
 }
 
 export function onVSRoom(roomId, callback) {
