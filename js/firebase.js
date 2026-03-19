@@ -450,3 +450,67 @@ export function recordPOTDScore(puzzleId, difficulty, names, secs) {
   const date = new Date().toLocaleDateString('sv', { timeZone: 'Europe/Athens' });
   return set(ref(db, `potd/${difficulty}/leaderboard/${puzzleId}`), { names, secs, date });
 }
+
+// ── Landing screen feedback ─────────────────────────────────────────────────
+// The auto-fix pipeline that processes feedback relies on consistent IDs
+// and required context fields (screen/path). We write the record in two
+// steps (POST -> PATCH) so downstream tooling can observe the transition.
+
+function validateLandingFeedbackInput({ message, screen, path }) {
+  if (typeof message !== 'string' || message.trim().length < 3) {
+    throw new Error('Feedback message must be at least 3 characters.');
+  }
+  if (typeof screen !== 'string' || screen.trim().length === 0) {
+    throw new Error('Feedback screen is required.');
+  }
+  if (typeof path !== 'string' || path.trim().length === 0) {
+    throw new Error('Feedback path is required.');
+  }
+}
+
+/**
+ * Submit landing feedback to Firebase.
+ * Performs a two-step write:
+ *  1) set() (creates the child key / POST)
+ *  2) update() (adds status fields / PATCH)
+ *
+ * @param {{ message: string, path?: string, screen?: string, extra?: object }} input
+ * @returns {Promise<string>} feedbackId (Firebase child key)
+ */
+export async function submitLandingFeedback({ message, path = '/', screen = 'landing', extra = null } = {}) {
+  validateLandingFeedbackInput({ message, screen, path });
+
+  const now = Date.now();
+  const feedbackRef = push(ref(db, 'feedback'));
+  const feedbackId = feedbackRef.key;
+
+  if (!feedbackId) throw new Error('Failed to generate feedback id.');
+
+  const trimmedMessage = message.trim();
+  // Write the record first so clients/bots observing /feedback can see it.
+  await set(feedbackRef, {
+    // Stable identifiers used by downstream automation.
+    id: feedbackId,
+    feedbackId,
+
+    // Required context for routing/triage.
+    screen,
+    path,
+
+    // Payload.
+    message: trimmedMessage,
+    extra,
+
+    createdAt: now,
+    status: 'received',
+    updatedAt: now,
+  });
+
+  // Patch status fields in a second write (matches POST -> PATCH tooling flow).
+  await update(feedbackRef, {
+    status: 'submitted',
+    submittedAt: now,
+  });
+
+  return feedbackId;
+}

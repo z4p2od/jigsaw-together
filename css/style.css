@@ -175,6 +175,33 @@ body {
 
 .status.error { color: var(--accent); }
 
+/* ── Landing feedback ──────────────────────────────────────────────────── */
+.feedback-textarea {
+  width: 100%;
+  min-height: 110px;
+  resize: vertical;
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 2px solid var(--surface2);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 1rem;
+  outline: none;
+  transition: border-color 0.15s;
+  line-height: 1.4;
+}
+
+.feedback-textarea:focus { border-color: var(--accent); }
+
+.feedback-id {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  color: var(--text-muted);
+  word-break: break-all;
+  white-space: normal;
+  text-align: left;
+  font-size: 0.9rem;
+}
+
 /* ── Name modal ── */
 
 .modal-overlay {

@@ -1,4 +1,4 @@
-import { createPuzzle, getPOTD, onPOTDLeaderboard } from './firebase.js';
+import { createPuzzle, getPOTD, onPOTDLeaderboard, submitLandingFeedback } from './firebase.js';
 import { generateEdges } from './jigsaw.js';
 
 const fileInput   = document.getElementById('file-input');
@@ -246,4 +246,82 @@ function loadImage(src) {
 function setStatus(msg, isError = false) {
   statusEl.textContent = msg;
   statusEl.className = 'status' + (isError ? ' error' : '');
+}
+
+// ── Landing feedback ─────────────────────────────────────────────────────
+// Landing page only — provides context for the auto-fix pipeline.
+
+const feedbackOpenBtn    = document.getElementById('feedback-open-btn');
+const feedbackOverlay    = document.getElementById('feedback-overlay');
+const feedbackMessageEl  = document.getElementById('feedback-message');
+const feedbackStatusEl   = document.getElementById('feedback-status');
+const feedbackResultEl   = document.getElementById('feedback-result');
+const feedbackIdEl       = document.getElementById('feedback-id');
+const feedbackCloseBtn   = document.getElementById('feedback-close-btn');
+const feedbackSubmitBtn  = document.getElementById('feedback-submit-btn');
+
+function setFeedbackStatus(msg, isError = false) {
+  if (!feedbackStatusEl) return;
+  feedbackStatusEl.textContent = msg || '';
+  feedbackStatusEl.className = 'status' + (isError ? ' error' : '');
+}
+
+function openFeedbackModal() {
+  if (!feedbackOverlay) return;
+  if (feedbackResultEl) feedbackResultEl.style.display = 'none';
+  if (feedbackMessageEl) feedbackMessageEl.value = '';
+  setFeedbackStatus('');
+  if (feedbackOverlay) feedbackOverlay.style.display = 'flex';
+  feedbackMessageEl?.focus?.();
+  if (feedbackSubmitBtn) feedbackSubmitBtn.disabled = true;
+}
+
+function closeFeedbackModal() {
+  if (!feedbackOverlay) return;
+  feedbackOverlay.style.display = 'none';
+}
+
+if (feedbackOpenBtn && feedbackOverlay && feedbackMessageEl && feedbackSubmitBtn) {
+  feedbackOpenBtn.addEventListener('click', openFeedbackModal);
+  feedbackCloseBtn?.addEventListener('click', closeFeedbackModal);
+  feedbackOverlay.addEventListener('click', (e) => {
+    if (e.target === feedbackOverlay) closeFeedbackModal();
+  });
+
+  feedbackMessageEl.addEventListener('input', () => {
+    if (!feedbackSubmitBtn) return;
+    feedbackSubmitBtn.disabled = feedbackMessageEl.value.trim().length < 3;
+  });
+
+  feedbackMessageEl.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || e.shiftKey) return;
+    e.preventDefault();
+    feedbackSubmitBtn?.click?.();
+  });
+
+  feedbackSubmitBtn.addEventListener('click', async () => {
+    const msg = feedbackMessageEl.value.trim();
+    if (!msg) return;
+
+    feedbackSubmitBtn.disabled = true;
+    setFeedbackStatus('Submitting…');
+    try {
+      const feedbackId = await submitLandingFeedback({
+        screen: 'landing',
+        path: window.location.pathname,
+        message: msg,
+        extra: { userAgent: navigator.userAgent },
+      });
+
+      if (feedbackResultEl) feedbackResultEl.style.display = '';
+      if (feedbackIdEl) feedbackIdEl.textContent = feedbackId;
+      setFeedbackStatus('');
+      feedbackMessageEl.value = '';
+      feedbackSubmitBtn.disabled = true;
+    } catch (err) {
+      const message = err?.message || 'Failed to submit feedback.';
+      setFeedbackStatus(message, true);
+      feedbackSubmitBtn.disabled = false;
+    }
+  });
 }
