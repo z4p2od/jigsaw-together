@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Chaos Mode Test</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#1a1a2e;--surface:#16213e;--surface2:#0f3460;--accent:#e94560;--text:#eaeaea;--text-muted:#888;--radius:12px}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding:20px}
+a{color:var(--text-muted);text-decoration:none;font-size:0.9rem}
+a:hover{color:var(--text)}
+h1{font-size:1.8rem;font-weight:800;margin:8px 0 20px}
+h1 span{color:var(--accent)}
+
+.boards-row{display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin-bottom:20px}
+.board-panel{display:flex;flex-direction:column;gap:8px}
+.board-label{font-weight:700;font-size:0.95rem;text-align:center;color:var(--text-muted)}
+.board-wrap{position:relative;width:500px;height:380px;background:var(--surface);border-radius:var(--radius);overflow:hidden;border:2px solid var(--surface2)}
+.board-wrap.cursor-none{cursor:none}
+
+.piece{position:absolute;width:80px;height:80px;border-radius:8px;cursor:grab;display:flex;align-items:center;justify-content:center;font-size:1.4rem;font-weight:700;user-select:none;border:2px solid rgba(255,255,255,0.15);transition:filter 0.3s}
+.piece:active{cursor:grabbing}
+.piece.face-down{filter:brightness(0.25) grayscale(1) !important;cursor:pointer !important}
+.piece.face-down::after{content:'?';position:absolute;font-size:1.8rem;color:#aaa}
+
+.board-grayscale{filter:grayscale(1)}
+
+.controls{background:var(--surface);border-radius:var(--radius);padding:20px;max-width:1040px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+.control-section h3{font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:10px}
+.btn-row{display:flex;gap:10px;flex-wrap:wrap}
+button{padding:10px 18px;border:none;border-radius:8px;font-size:0.9rem;font-weight:600;cursor:pointer;transition:opacity 0.15s}
+button:hover{opacity:0.85}
+.btn-bw{background:#4b5563;color:#fff}
+.btn-invert{background:#7c3aed;color:#fff}
+.btn-scramble{background:#d97706;color:#fff}
+.btn-reset{background:var(--accent);color:#fff}
+
+.effects-list{display:flex;flex-direction:column;gap:8px}
+.effect-item{display:flex;align-items:center;gap:10px;font-size:0.9rem}
+.effect-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.effect-bar-wrap{flex:1;height:6px;background:var(--surface2);border-radius:3px;overflow:hidden}
+.effect-bar{height:100%;border-radius:3px;transition:width 0.5s linear}
+.effect-time{font-size:0.8rem;color:var(--text-muted);min-width:36px;text-align:right}
+.no-effects{color:var(--text-muted);font-size:0.9rem}
+
+#toast{position:fixed;top:20px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.85);color:#fff;padding:8px 20px;border-radius:20px;font-size:0.9rem;z-index:10000;display:none;pointer-events:none}
+#fake-cursor{position:fixed;width:20px;height:20px;pointer-events:none;z-index:9999;display:none}
+</style>
+</head>
+<body>
+<a href="/">← Back</a>
+<h1>⚡ Chaos Mode <span>Test</span></h1>
+
+<div class="boards-row">
+  <div class="board-panel">
+    <div class="board-label">Your Board (invert target)</div>
+    <div class="board-wrap" id="my-wrap"><div id="my-board"></div></div>
+  </div>
+  <div class="board-panel">
+    <div class="board-label">Opponent Board (grayscale / scramble target)</div>
+    <div class="board-wrap" id="opp-wrap"><div id="opp-board"></div></div>
+  </div>
+</div>
+
+<div class="controls">
+  <div class="control-section">
+    <h3>Fire Powerup</h3>
+    <div class="btn-row">
+      <button class="btn-bw" onclick="fireGrayscale()">👁 Grayscale (30s)</button>
+      <button class="btn-invert" onclick="fireInvert()">🔄 Invert Controls (30s)</button>
+      <button class="btn-scramble" onclick="fireScramble()">💥 Scramble</button>
+      <button class="btn-reset" onclick="resetAll()">↺ Reset</button>
+    </div>
+  </div>
+  <div class="control-section">
+    <h3>Active Effects</h3>
+    <div class="effects-list" id="effects-list">
+      <div class="no-effects" id="no-effects">No active effects</div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<div id="fake-cursor">
+  <svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+    <path d="M0 0 L0 16 L4 12 L7 19 L9 18 L6 11 L11 11 Z" fill="white" stroke="black" stroke-width="1"/>
+  </svg>
+</div>
+
+<script src="/test-chaos.js"></script>
+</body>
+</html>
