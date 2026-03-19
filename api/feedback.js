@@ -195,7 +195,8 @@ async function cursorLaunchAgentOnPR(cursorCfg, prUrl, promptText) {
       prompt: { text: promptText },
       model: cursorCfg.model,
       source: { prUrl },
-      target: { autoCreatePr: false },
+      // Use the existing draft PR head branch; don't let Cursor create a new branch/PR.
+      target: { autoCreatePr: false, autoBranch: false },
     }),
   });
 
