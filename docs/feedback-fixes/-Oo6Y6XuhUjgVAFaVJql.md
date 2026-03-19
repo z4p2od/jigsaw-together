@@ -16,10 +16,14 @@ Screen: landing
 
 ## Fix checklist
 - [ ] Reproduce issue (confirm root cause)
-- [ ] Implement fix
-- [ ] Add/update tests where possible
+- [x] Implement fix
+- [x] Add/update tests where possible
 - [ ] Verify on affected screens
 - [ ] Close out related feedback
+
+## Summary of changes
+- Updated `js/feedback.js` so the main textarea label and placeholder change based on the selected report type (Bug / Idea / Feedback) instead of always using the Bug wording.
+- Added a pure helper (`js/feedback-copy.js`) with a small Node unit test (`js/feedback-copy.test.mjs`) to prevent regressions in the per-type copy.
 
 ---
 Auto-seeded by `Jigsaw Together` feedback triage agent.
