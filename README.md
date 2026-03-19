@@ -186,6 +186,18 @@ Apply triage results back to Firebase:
 node scripts/feedback-agent.mjs triage --limit 50 --apply --reviewer "cursor-agent"
 ```
 
+Aggressive bug labeling (default):
+
+```bash
+export FEEDBACK_AGENT_MODE="aggressive"
+```
+
+More conservative labeling:
+
+```bash
+export FEEDBACK_AGENT_MODE="conservative"
+```
+
 Seed a fix branch + draft PR for one feedback item:
 
 ```bash

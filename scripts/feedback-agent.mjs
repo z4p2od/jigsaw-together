@@ -20,6 +20,7 @@ import process from 'node:process';
 
 const BASE_URL = process.env.FEEDBACK_BASE_URL || 'http://localhost:3000';
 const TOKEN = process.env.FEEDBACK_ADMIN_TOKEN || '';
+const AGENT_MODE = process.env.FEEDBACK_AGENT_MODE || 'aggressive';
 
 function parseArgs(argv) {
   const out = { _: [] };
@@ -77,16 +78,24 @@ function classify(item) {
   const hasLength = (item?.message || '').trim().length >= 60;
   const hasUncertainty = hasAny(text, ['not sure', 'maybe', 'i think', 'seems', 'probably']);
 
-  let confidence = 0.2;
-  if (decision === 'bug') confidence += 0.25;
-  if (hasReproSteps) confidence += 0.25;
-  if (hasSpecifics) confidence += 0.15;
-  if (hasConcreteErrors) confidence += 0.2;
-  if (hasLength) confidence += 0.1;
-  if (hasUncertainty) confidence -= 0.1;
+  // "Aggressive" mode labels more things as actual bugs.
+  // Still we can't guarantee reproduction, so we use confidence heuristics.
+  const tuning = AGENT_MODE === 'aggressive'
+    ? { base: 0.25, decisionBug: 0.35, repro: 0.35, specifics: 0.2, errors: 0.25, len: 0.15, uncertainty: 0.05 }
+    : { base: 0.2, decisionBug: 0.25, repro: 0.25, specifics: 0.15, errors: 0.2, len: 0.1, uncertainty: 0.1 };
+
+  let confidence = tuning.base;
+  if (decision === 'bug') confidence += tuning.decisionBug;
+  if (hasReproSteps) confidence += tuning.repro;
+  if (hasSpecifics) confidence += tuning.specifics;
+  if (hasConcreteErrors) confidence += tuning.errors;
+  if (hasLength) confidence += tuning.len;
+  if (hasUncertainty) confidence -= tuning.uncertainty;
   confidence = Math.max(0, Math.min(1, confidence));
 
-  const autoFixCandidate = decision === 'bug' && confidence >= 0.55 && (severity === 'low' || severity === 'medium');
+  const autoFixCandidate = decision === 'bug' &&
+    confidence >= (AGENT_MODE === 'aggressive' ? 0.45 : 0.55) &&
+    (severity === 'low' || severity === 'medium');
 
   const screen = item?.meta?.screen || item?.screen || 'unknown';
   const path = item?.meta?.path || item?.path || 'unknown';
@@ -96,9 +105,13 @@ function classify(item) {
   // - medium: needs one extra detail question
   // - low: not actionable yet
   let confirmationBucket = 'unconfirmed';
-  if (decision === 'bug' && confidence >= 0.7) confirmationBucket = 'likely_confirmed';
-  else if (decision === 'bug' && confidence >= 0.45) confirmationBucket = 'needs_more_info';
-  else if (decision === 'bug') confirmationBucket = 'not_actionable';
+  if (decision === 'bug' && confidence >= (AGENT_MODE === 'aggressive' ? 0.55 : 0.7)) {
+    confirmationBucket = 'likely_confirmed';
+  } else if (decision === 'bug' && confidence >= (AGENT_MODE === 'aggressive' ? 0.35 : 0.45)) {
+    confirmationBucket = 'needs_more_info';
+  } else if (decision === 'bug') {
+    confirmationBucket = 'not_actionable';
+  }
 
   const helpMessage = (() => {
     if (decision === 'idea') {
