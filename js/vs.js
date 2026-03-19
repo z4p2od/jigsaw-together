@@ -967,7 +967,6 @@ function checkPowerupTrigger(mergedIndices) {
 }
 
 async function firePowerup(type, pieceIndex) {
-  console.log('[chaos] firePowerup', type, 'oppId:', oppId, 'playerId:', playerId);
   if (!oppId) return;
   const effect = { type, fromPlayer: playerId };
 
@@ -1039,7 +1038,6 @@ async function firePowerup(type, pieceIndex) {
 function applyEffect(effect) {
   if (!effect?.type) return;
   // Ignore effects sent before this game started (onChildAdded replays old data)
-  console.log('[chaos] applyEffect', effect.type, 'sentAt:', effect.sentAt, 'startedAt:', startedAt, 'stale:', effect.sentAt && startedAt && effect.sentAt < startedAt);
   if (effect.sentAt && startedAt && effect.sentAt < startedAt) return;
   const NAMES = { bw: 'Grayscale', invert: 'Inverted Controls', scramble: 'Scramble', flip: 'Flipped!', shake: 'Shake!', shuffle: 'Shuffled!' };
   showPowerupToast(`😱 ${NAMES[effect.type] ?? effect.type}${effect.expiresAt ? ' — 30s!' : '!'}`, true);
