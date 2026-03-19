@@ -320,6 +320,18 @@ export function updateVSGroupPosition(roomId, playerId, positions) {
   update(ref(db, `vs/${roomId}/pieces/${playerId}`), flat);
 }
 
+/** Scatter grouped pieces: write new x/y and clear groupId + lockedBy in one batch. */
+export function writeVSShufflePositions(roomId, playerId, positions) {
+  const flat = {};
+  positions.forEach(({ index, x, y }) => {
+    flat[`${index}/x`]        = x;
+    flat[`${index}/y`]        = y;
+    flat[`${index}/groupId`]  = null;
+    flat[`${index}/lockedBy`] = null;
+  });
+  return update(ref(db, `vs/${roomId}/pieces/${playerId}`), flat);
+}
+
 export function lockVSGroup(roomId, playerId, indices, lockerId) {
   const flat = {};
   indices.forEach(i => { flat[`${i}/lockedBy`] = lockerId; });

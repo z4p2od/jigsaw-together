@@ -7,7 +7,7 @@ import {
   setVSPlaying, setVSWinner, setVSFinished, setVSRematch, offerVSRematch,
   getPlayerColor,
   sendChatMessage, onChatMessages,
-  writeVSPowerupEarned, writeVSEffect, onVSEffects,
+  writeVSPowerupEarned, writeVSEffect, onVSEffects, writeVSShufflePositions,
 } from './firebase.js';
 import { cutPiece, getPad } from './jigsaw.js';
 
@@ -188,7 +188,7 @@ function pickPowerupPieces(seed, totalPieces, cols, rows) {
 
   // Use a separate seeded RNG — multiply seed by large prime to get different sequence
   const rand = seededRandom((seed * 1000003) & 0xffffffff);
-  const TYPES = ['bw', 'invert', 'scramble'];
+  const TYPES = ['bw', 'invert', 'scramble', 'flip', 'shake', 'shuffle'];
   const picked = new Set();
   const excluded = new Set(); // picked indices + their direct neighbours
   const assignments = {};
@@ -972,8 +972,11 @@ async function firePowerup(type, pieceIndex) {
   const effect = { type, fromPlayer: playerId };
 
   effect.sentAt = Date.now();
-  if (type === 'bw' || type === 'invert') {
-    effect.expiresAt = Date.now() + 30000;
+  if (type === 'bw' || type === 'invert' || type === 'flip') {
+    effect.expiresAt = Date.now() + 20000;
+  }
+  if (type === 'shake') {
+    effect.expiresAt = Date.now() + 10000;
   }
 
   if (type === 'scramble') {
@@ -990,15 +993,32 @@ async function firePowerup(type, pieceIndex) {
     effect.positions = positions;
   }
 
+  if (type === 'shuffle') {
+    // Target grouped (but not fully solved) pieces — break their groups and scatter
+    const grouped = Object.keys(oppPieceStates)
+      .map(Number)
+      .filter(i => oppPieceStates[i]?.groupId && !oppPieceStates[i]?.solved);
+    const positions = {};
+    grouped.forEach(i => {
+      positions[i] = {
+        x: Math.random() * (BOARD_W - meta._displayW),
+        y: Math.random() * (BOARD_H - meta._displayH),
+      };
+    });
+    effect.positions = positions;
+  }
+
   await writeVSPowerupEarned(roomId, playerId, pieceIndex);
   await writeVSEffect(roomId, oppId, effect);
 
-  showPowerupToast(`🎉 ${type === 'bw' ? 'Grayscale' : type === 'invert' ? 'Invert' : 'Scramble'} sent!`, false);
+  const SENT_NAMES = { bw: 'Grayscale', invert: 'Invert', scramble: 'Scramble', flip: 'Flip', shake: 'Shake', shuffle: 'Shuffle' };
+  showPowerupToast(`🎉 ${SENT_NAMES[type] ?? type} sent!`, false);
 
-  // Sender also sees opponent's board go grayscale for visual feedback
-  if (type === 'bw' && oppBoard) {
-    oppBoard.classList.add('board-grayscale');
-    setTimeout(() => oppBoard.classList.remove('board-grayscale'), 30000);
+  // Sender sees the effect on opponent's board for visual feedback
+  if (oppBoard) {
+    if (type === 'bw')   { oppBoard.classList.add('board-grayscale'); setTimeout(() => oppBoard.classList.remove('board-grayscale'), 20000); }
+    if (type === 'flip') { oppBoard.classList.add('board-flip');      setTimeout(() => oppBoard.classList.remove('board-flip'),      20000); }
+    if (type === 'shake'){ oppBoard.classList.add('board-shake');     setTimeout(() => oppBoard.classList.remove('board-shake'),     10000); }
   }
 
   // Hide my marker + glow
@@ -1014,7 +1034,7 @@ function applyEffect(effect) {
   // Ignore effects sent before this game started (onChildAdded replays old data)
   console.log('[chaos] applyEffect', effect.type, 'sentAt:', effect.sentAt, 'startedAt:', startedAt, 'stale:', effect.sentAt && startedAt && effect.sentAt < startedAt);
   if (effect.sentAt && startedAt && effect.sentAt < startedAt) return;
-  const NAMES = { bw: 'Grayscale', invert: 'Inverted Controls', scramble: 'Scramble' };
+  const NAMES = { bw: 'Grayscale', invert: 'Inverted Controls', scramble: 'Scramble', flip: 'Flipped!', shake: 'Shake!', shuffle: 'Shuffled!' };
   showPowerupToast(`😱 ${NAMES[effect.type] ?? effect.type}${effect.expiresAt ? ' — 30s!' : '!'}`, true);
 
   if (effect.type === 'bw') {
@@ -1054,9 +1074,47 @@ function applyEffect(effect) {
       setFaceDown(i, true);
       batchPositions.push({ index: i, x: pos.x, y: pos.y });
     });
-    if (batchPositions.length) {
-      updateVSGroupPosition(roomId, playerId, batchPositions);
-    }
+    if (batchPositions.length) updateVSGroupPosition(roomId, playerId, batchPositions);
+  }
+
+  if (effect.type === 'flip') {
+    const expiresAt = Math.max(effect.expiresAt, activeEffects.flipExpiresAt ?? 0);
+    activeEffects.flipExpiresAt = expiresAt;
+    board.classList.add('board-flip');
+    clearTimeout(activeEffects.flipTimer);
+    activeEffects.flipTimer = setTimeout(() => {
+      board.classList.remove('board-flip');
+      activeEffects.flipExpiresAt = 0;
+    }, Math.max(0, expiresAt - Date.now()));
+  }
+
+  if (effect.type === 'shake') {
+    const expiresAt = Math.max(effect.expiresAt, activeEffects.shakeExpiresAt ?? 0);
+    activeEffects.shakeExpiresAt = expiresAt;
+    board.classList.add('board-shake');
+    clearTimeout(activeEffects.shakeTimer);
+    activeEffects.shakeTimer = setTimeout(() => {
+      board.classList.remove('board-shake');
+      activeEffects.shakeExpiresAt = 0;
+    }, Math.max(0, expiresAt - Date.now()));
+  }
+
+  if (effect.type === 'shuffle' && effect.positions) {
+    const batchPositions = [];
+    Object.entries(effect.positions).forEach(([idxStr, pos]) => {
+      const i = Number(idxStr);
+      if (pieceStates[i]?.solved) return;
+      const oldGroup = pieceGroup[i];
+      if (oldGroup && groups[oldGroup]) {
+        groups[oldGroup].delete(i);
+        if (groups[oldGroup].size === 0) delete groups[oldGroup];
+      }
+      pieceGroup[i] = null;
+      pieceStates[i] = { ...pieceStates[i], x: pos.x, y: pos.y, groupId: null, lockedBy: null };
+      movePieceEl(i, pos.x, pos.y);
+      batchPositions.push({ index: i, x: pos.x, y: pos.y });
+    });
+    if (batchPositions.length) writeVSShufflePositions(roomId, playerId, batchPositions);
   }
 }
 

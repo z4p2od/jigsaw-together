@@ -211,14 +211,52 @@ function fireScramble() {
   showToast('💥 Some opponent pieces scrambled!');
 }
 
+function fireFlip() {
+  const expiresAt = Math.max(Date.now() + 20000, activeEffects.flipExpiresAt ?? 0);
+  activeEffects.flipExpiresAt = expiresAt;
+  oppWrap.classList.add('board-flip');
+  clearTimeout(activeEffects.flipTimer);
+  activeEffects.flipTimer = setTimeout(() => {
+    oppWrap.classList.remove('board-flip');
+    activeEffects.flipExpiresAt = 0;
+    updateEffectsUI();
+  }, expiresAt - Date.now());
+  showToast('🪞 Opponent board flipped!');
+  updateEffectsUI();
+}
+
+function fireShake() {
+  const expiresAt = Math.max(Date.now() + 10000, activeEffects.shakeExpiresAt ?? 0);
+  activeEffects.shakeExpiresAt = expiresAt;
+  oppWrap.classList.add('board-shake');
+  clearTimeout(activeEffects.shakeTimer);
+  activeEffects.shakeTimer = setTimeout(() => {
+    oppWrap.classList.remove('board-shake');
+    activeEffects.shakeExpiresAt = 0;
+    updateEffectsUI();
+  }, expiresAt - Date.now());
+  showToast('📳 Opponent board shaking!');
+  updateEffectsUI();
+}
+
+function fireShuffle() {
+  // Scatter all pieces on opp board (simulating grouped pieces being broken apart)
+  oppPieces.forEach(({ el }) => {
+    const p = randomPos();
+    el.style.left = p.x + 'px';
+    el.style.top  = p.y + 'px';
+  });
+  showToast('🔀 Opponent groups shuffled!');
+}
+
 function resetAll() {
-  clearTimeout(activeEffects.bwTimer);
-  clearTimeout(activeEffects.invertTimer);
-  activeEffects.bwExpiresAt = 0;
-  activeEffects.invertExpiresAt = 0;
+  ['bw','invert','flip','shake'].forEach(k => {
+    clearTimeout(activeEffects[k + 'Timer']);
+    activeEffects[k + 'ExpiresAt'] = 0;
+  });
   invertActive = false;
   syncCursor();
-  oppWrap.classList.remove('board-grayscale');
+  oppWrap.classList.remove('board-grayscale','board-flip','board-shake');
   myPieces.forEach(({ el, ox, oy }) => {
     el.style.left = ox + 'px';
     el.style.top  = oy + 'px';
@@ -239,8 +277,10 @@ const effectsList = document.getElementById('effects-list');
 const noEffects   = document.getElementById('no-effects');
 
 const EFFECT_DEFS = [
-  { key: 'bw',     label: 'Grayscale',        color: '#6b7280', barColor: '#9ca3af' },
-  { key: 'invert', label: 'Inverted Controls', color: '#7c3aed', barColor: '#a78bfa' },
+  { key: 'bw',     label: 'Grayscale',        color: '#6b7280', barColor: '#9ca3af', duration: 20000 },
+  { key: 'invert', label: 'Inverted Controls', color: '#7c3aed', barColor: '#a78bfa', duration: 20000 },
+  { key: 'flip',   label: 'Flipped',           color: '#ef4444', barColor: '#f87171', duration: 20000 },
+  { key: 'shake',  label: 'Shake',             color: '#ea580c', barColor: '#fb923c', duration: 10000 },
 ];
 
 function updateEffectsUI() {
@@ -273,7 +313,7 @@ setInterval(() => {
     if (!timeEl || !barEl) return;
     const ms  = Math.max(0, expiresAt - now);
     timeEl.textContent = Math.ceil(ms / 1000) + 's';
-    barEl.style.width  = Math.min(100, (ms / 30000) * 100) + '%';
+    barEl.style.width  = Math.min(100, (ms / (d.duration ?? 20000)) * 100) + '%';
   });
 }, 200);
 

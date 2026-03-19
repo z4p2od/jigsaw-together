@@ -30,6 +30,9 @@ body.invert-active,body.invert-active *{cursor:none !important}
 .piece-back{background:#1e293b;transform:rotateY(180deg);border-color:rgba(255,255,255,0.08)}
 
 .board-grayscale{filter:grayscale(1)}
+.board-flip{transform:scaleX(-1)}
+.board-shake{animation:board-shake 0.15s ease-in-out infinite}
+@keyframes board-shake{0%,100%{transform:translate(0,0)}20%{transform:translate(-6px,3px)}40%{transform:translate(6px,-3px)}60%{transform:translate(-4px,-4px)}80%{transform:translate(4px,2px)}}
 
 .controls{background:var(--surface);border-radius:var(--radius);padding:20px;max-width:1040px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
 .control-section h3{font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:10px}
@@ -39,7 +42,10 @@ button:hover{opacity:0.85}
 .btn-bw{background:#4b5563;color:#fff}
 .btn-invert{background:#7c3aed;color:#fff}
 .btn-scramble{background:#d97706;color:#fff}
-.btn-reset{background:var(--accent);color:#fff}
+.btn-flip{background:#ef4444;color:#fff}
+.btn-shake{background:#ea580c;color:#fff}
+.btn-shuffle{background:#059669;color:#fff}
+.btn-reset{background:#6b21a8;color:#fff}
 
 .effects-list{display:flex;flex-direction:column;gap:8px}
 .effect-item{display:flex;align-items:center;gap:10px;font-size:0.9rem}
@@ -72,9 +78,12 @@ button:hover{opacity:0.85}
   <div class="control-section">
     <h3>Fire Powerup</h3>
     <div class="btn-row">
-      <button class="btn-bw" onclick="fireGrayscale()">👁 Grayscale (30s)</button>
-      <button class="btn-invert" onclick="fireInvert()">🔄 Invert Controls (30s)</button>
+      <button class="btn-bw" onclick="fireGrayscale()">👁 Grayscale (20s)</button>
+      <button class="btn-invert" onclick="fireInvert()">🔄 Invert Controls (20s)</button>
       <button class="btn-scramble" onclick="fireScramble()">💥 Scramble</button>
+      <button class="btn-flip" onclick="fireFlip()">🪞 Flip (20s)</button>
+      <button class="btn-shake" onclick="fireShake()">📳 Shake (10s)</button>
+      <button class="btn-shuffle" onclick="fireShuffle()">🔀 Shuffle Groups</button>
       <button class="btn-reset" onclick="resetAll()">↺ Reset</button>
     </div>
   </div>
