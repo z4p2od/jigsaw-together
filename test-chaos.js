@@ -214,10 +214,10 @@ function fireScramble() {
 function fireFlip() {
   const expiresAt = Math.max(Date.now() + 20000, activeEffects.flipExpiresAt ?? 0);
   activeEffects.flipExpiresAt = expiresAt;
-  oppWrap.classList.add('board-flip');
+  oppBoard.classList.add('board-flip');
   clearTimeout(activeEffects.flipTimer);
   activeEffects.flipTimer = setTimeout(() => {
-    oppWrap.classList.remove('board-flip');
+    oppBoard.classList.remove('board-flip');
     activeEffects.flipExpiresAt = 0;
     updateEffectsUI();
   }, expiresAt - Date.now());
@@ -257,9 +257,8 @@ function resetAll() {
   });
   invertActive = false;
   syncCursor();
-  oppWrap.classList.remove('board-grayscale', 'board-flip', 'board-shake');
-  // shake is on the wrap in real game; keep both covered
-  document.getElementById('opp-wrap').classList.remove('board-shake');
+  oppWrap.classList.remove('board-grayscale', 'board-shake');
+  oppBoard.classList.remove('board-flip');
   myPieces.forEach(({ el, ox, oy }) => {
     el.style.left = ox + 'px';
     el.style.top  = oy + 'px';
