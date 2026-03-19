@@ -57,13 +57,28 @@ function generateEdges(cols, rows) {
 }
 
 async function listPoolImages() {
+  const expectedBase = 'puzzle-library';
+  const expectedPrefix = `${expectedBase}/`;
+
   const auth = Buffer.from(`${process.env.CLOUDINARY_API_KEY}:${process.env.CLOUDINARY_API_SECRET}`).toString('base64');
   const r = await fetch(
-    `https://api.cloudinary.com/v1_1/${process.env.CLOUDINARY_CLOUD_NAME}/resources/image/upload?folder=puzzle-library&max_results=500`,
+    `https://api.cloudinary.com/v1_1/${process.env.CLOUDINARY_CLOUD_NAME}/resources/image/upload?prefix=${encodeURIComponent(expectedPrefix)}&max_results=500`,
     { headers: { Authorization: `Basic ${auth}` } }
   );
   const data = await r.json();
-  return data.resources || [];
+  const resources = data.resources || [];
+
+  // Defensive filter: ensure we never pick an image outside puzzle-library.
+  return resources.filter(img => {
+    const publicId = String(img?.public_id || '');
+    const secureUrl = String(img?.secure_url || '');
+    if (publicId.startsWith(expectedPrefix)) return true;
+    if (publicId === expectedBase) return true;
+    return secureUrl.includes(`/${expectedBase}/`) ||
+      secureUrl.includes(expectedPrefix) ||
+      secureUrl.includes(`/${expectedBase}`) ||
+      secureUrl.includes(expectedBase);
+  });
 }
 
 function fbPut(path, value) {
