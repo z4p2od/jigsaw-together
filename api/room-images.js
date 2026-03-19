@@ -30,16 +30,6 @@ export default async function handler(req, res) {
     return false;
   }
 
-  // Optionally reuse helper if it loads, but never fall back to “unfiltered”
-  // because that would make `/play` show images from other folders.
-  let filterResourcesByFolder = (resources) => Array.isArray(resources) ? resources : [];
-  try {
-    const mod = await import('./cloudinary-folder-utils.mjs');
-    filterResourcesByFolder = mod?.filterResourcesByFolder || filterResourcesByFolder;
-  } catch {
-    // ignore; we'll still use the inline isResourceInPuzzleLibrary below
-  }
-
   async function fetchResources(url) {
     const r = await fetch(url, { headers: { Authorization: `Basic ${auth}` } });
     const text = await r.text().catch(() => '');
@@ -72,16 +62,7 @@ export default async function handler(req, res) {
   // Strict post-filtering: only puzzle-library resources should be exposed to /play.
   // If filtering results in 0, we return 0 (and /play will show "No images available"),
   // rather than leaking unrelated images.
-  let filtered = [];
-  try {
-    const maybe = filterResourcesByFolder(resources, folder);
-    filtered = Array.isArray(maybe) ? maybe : [];
-  } catch {
-    filtered = [];
-  }
-  if (!filtered.length) {
-    filtered = (resources || []).filter(isResourceInPuzzleLibrary);
-  }
+  const filtered = (resources || []).filter(isResourceInPuzzleLibrary);
 
   console.log('room-images debug', {
     cloudName,
