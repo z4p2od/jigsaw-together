@@ -153,6 +153,15 @@ function getGithubConfig() {
   };
 }
 
+function getCursorConfig() {
+  const apiKey = process.env.CURSOR_API_KEY || '';
+  if (!apiKey) return null;
+  return {
+    apiKey,
+    model: process.env.CURSOR_MODEL || 'default',
+  };
+}
+
 async function githubRequest(cfg, method, endpoint, body) {
   const url = `https://api.github.com${endpoint}`;
   const res = await fetch(url, {
@@ -167,6 +176,32 @@ async function githubRequest(cfg, method, endpoint, body) {
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new Error(`GitHub ${method} ${endpoint} failed: ${res.status} ${text}`);
+  }
+  return res.json();
+}
+
+async function cursorLaunchAgentOnPR(cursorCfg, prUrl, promptText) {
+  if (!cursorCfg) return null;
+
+  const auth = Buffer.from(`${cursorCfg.apiKey}:`).toString('base64');
+
+  const res = await fetch('https://api.cursor.com/v0/agents', {
+    method: 'POST',
+    headers: {
+      Authorization: `Basic ${auth}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      prompt: { text: promptText },
+      model: cursorCfg.model,
+      source: { prUrl },
+      target: { autoCreatePr: false },
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Cursor agent launch failed: ${res.status} ${text}`);
   }
   return res.json();
 }
@@ -403,12 +438,55 @@ export default async function handler(req, res) {
 
           if (shouldOpenPR) {
             const prUrl = await createGithubPR(githubCfg, feedbackId, { ...payload, createdAt: now }, triage);
+
+            // If Cursor is configured, ask it to implement the fix directly on this draft PR.
+            const cursorCfg = getCursorConfig();
+            if (cursorCfg) {
+              try {
+                const promptText = [
+                  'You are a coding agent working in this repository.',
+                  'Implement a fix for the bug described below.',
+                  '',
+                  'Bug report:',
+                  safeStr(payload.message || ''),
+                  '',
+                  'Context:',
+                  safeStr(payload.context || 'n/a'),
+                  '',
+                  `Feedback id: ${feedbackId}`,
+                  `Screen: ${payload?.meta?.screen || 'unknown'}`,
+                  `Path: ${payload?.meta?.path || 'unknown'}`,
+                  '',
+                  'Triage notes from the submission agent:',
+                  safeStr(triage.notes || ''),
+                  '',
+                  'Requirements:',
+                  '- Update code so the bug is fixed.',
+                  '- Add or update tests if this repo has a relevant test harness (otherwise add a small sanity check where appropriate).',
+                  '- Keep changes focused.',
+                  '- Update docs/feedback-fixes/' + feedbackId + '.md with a short summary of what you changed and why.',
+                ].join('\n');
+
+                const agent = await cursorLaunchAgentOnPR(cursorCfg, prUrl, promptText);
+                await fbPatch(`feedback/${feedbackId}`, {
+                  triage: {
+                    ...triageWrite,
+                    github: { prUrl: prUrl || null, type: 'pr' },
+                    cursor: { agentId: agent?.id || null, type: 'cursor-cloud-agent' },
+                  },
+                });
+              } catch (err) {
+                // Cursor is best-effort; keep the GitHub draft PR scaffold even if this fails.
+                console.error('Cursor automation failed', err);
+              }
+            } else {
             await fbPatch(`feedback/${feedbackId}`, {
               triage: {
                 ...triageWrite,
                 github: { prUrl: prUrl || null, type: 'pr' },
               },
             });
+            }
           } else {
             const issueUrl = await createGithubIssue(githubCfg, feedbackId, { ...payload, createdAt: now }, triage);
             await fbPatch(`feedback/${feedbackId}`, {

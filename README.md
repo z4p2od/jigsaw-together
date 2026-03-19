@@ -221,3 +221,12 @@ When `POST /api/feedback` receives a `type=bug` submission, the server attempts:
 
 - If confidence is high: open a **draft PR** with a scaffold fix brief under `docs/feedback-fixes/`
 - Otherwise: open a **GitHub issue** with the report + triage explanation
+
+### Cursor Cloud Agent auto-fix (optional)
+
+If you also set `CURSOR_API_KEY`, the server will additionally launch a Cursor Cloud Agent **on the created draft PR** so Cursor can implement the fix.
+
+```bash
+export CURSOR_API_KEY="from Cursor Dashboard (Cloud Agents)"
+export CURSOR_MODEL="default" # optional
+```
