@@ -13,13 +13,31 @@ export default async function handler(req, res) {
   const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
   const folder = 'puzzle-library';
 
-  // Default to “no filtering” if helper cannot be loaded in the current runtime.
+  const target = String(folder);
+  const normalize = (f) => String(f ?? '').replace(/^\/+/, '').replace(/\/+$/, '');
+
+  function isResourceInPuzzleLibrary(resource) {
+    if (!resource) return false;
+    const resFolder = normalize(resource?.folder);
+    if (resFolder) return resFolder === target || resFolder.startsWith(target + '/');
+
+    const publicId = String(resource?.public_id ?? '');
+    if (publicId) return publicId === target || publicId.startsWith(target + '/');
+
+    const url = String(resource?.secure_url ?? '');
+    if (url) return url.includes('/' + target + '/') || url.includes('/' + target);
+
+    return false;
+  }
+
+  // Optionally reuse helper if it loads, but never fall back to “unfiltered”
+  // because that would make `/play` show images from other folders.
   let filterResourcesByFolder = (resources) => Array.isArray(resources) ? resources : [];
   try {
     const mod = await import('./cloudinary-folder-utils.mjs');
     filterResourcesByFolder = mod?.filterResourcesByFolder || filterResourcesByFolder;
   } catch {
-    // ignore
+    // ignore; we'll still use the inline isResourceInPuzzleLibrary below
   }
 
   async function fetchResources(url) {
@@ -47,13 +65,18 @@ export default async function handler(req, res) {
     }
   }
 
-  // Optional post-filtering for safety. If it filters everything out, fall back.
+  // Strict post-filtering: only puzzle-library resources should be exposed to /play.
+  // If filtering results in 0, we return 0 (and /play will show "No images available"),
+  // rather than leaking unrelated images.
   let filtered = [];
   try {
-    filtered = filterResourcesByFolder(resources, folder);
-    if (!Array.isArray(filtered) || filtered.length === 0) filtered = resources;
+    const maybe = filterResourcesByFolder(resources, folder);
+    filtered = Array.isArray(maybe) ? maybe : [];
   } catch {
-    filtered = resources;
+    filtered = [];
+  }
+  if (!filtered.length) {
+    filtered = (resources || []).filter(isResourceInPuzzleLibrary);
   }
 
   const images = filtered
