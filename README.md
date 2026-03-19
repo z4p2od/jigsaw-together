@@ -160,6 +160,7 @@ Requires a `.env` file (or Vercel environment variables) with the vars above.
 The app includes:
 
 - `POST /api/feedback` — stores player bug/feedback submissions
+  - For `type=bug`, it also auto-triages immediately and attempts GitHub automation (draft PR if confident, otherwise an issue)
 - `GET /api/feedback-list?limit=50` — admin-only list endpoint
 - `POST /api/feedback-triage` — admin-only triage status updater
 - `POST /api/feedback-delete` — admin-only archive+delete a resolved report
@@ -205,3 +206,18 @@ node scripts/feedback-agent.mjs seed-pr --id "<feedbackId>"
 ```
 
 This creates a branch, adds a fix brief in `docs/feedback-fixes/`, pushes the branch, opens a draft PR via `gh`, and marks the report as `in_progress`.
+
+### GitHub automation env vars (for auto PR/issue)
+
+Set these in Vercel:
+
+```bash
+export GITHUB_TOKEN="ghp_... (PAT) with repo access"
+export GITHUB_REPO="owner/jigsaw-together"
+export GITHUB_BASE_BRANCH="main" # optional (default: main)
+```
+
+When `POST /api/feedback` receives a `type=bug` submission, the server attempts:
+
+- If confidence is high: open a **draft PR** with a scaffold fix brief under `docs/feedback-fixes/`
+- Otherwise: open a **GitHub issue** with the report + triage explanation
