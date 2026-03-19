@@ -139,6 +139,7 @@ chat/{puzzleId}/{pushId}/  playerId, name, color, text, ts
 | `CLOUDINARY_API_SECRET` | api/* | |
 | `CLOUDINARY_UPLOAD_PRESET` | api/cloudinary-config.js | Unsigned upload preset |
 | `CLEANUP_SECRET` | api/cleanup.js | Bearer token Vercel sends to cron routes |
+| `FEEDBACK_ADMIN_TOKEN` | api/feedback-list.js, api/feedback-triage.js, scripts/feedback-agent.mjs | Admin token for secure feedback triage/listing |
 
 ---
 
@@ -151,3 +152,43 @@ npx vercel dev
 ```
 
 Requires a `.env` file (or Vercel environment variables) with the vars above.
+
+---
+
+## Feedback Triage Automation
+
+The app includes:
+
+- `POST /api/feedback` — stores player bug/feedback submissions
+- `GET /api/feedback-list?limit=50` — admin-only list endpoint
+- `POST /api/feedback-triage` — admin-only triage status updater
+- `scripts/feedback-agent.mjs` — local CLI helper for triage + PR scaffolding
+
+### Run the triage helper
+
+Set env vars:
+
+```bash
+export FEEDBACK_BASE_URL="http://localhost:3000"
+export FEEDBACK_ADMIN_TOKEN="your-shared-admin-token"
+```
+
+Dry-run classification:
+
+```bash
+node scripts/feedback-agent.mjs triage --limit 50
+```
+
+Apply triage results back to Firebase:
+
+```bash
+node scripts/feedback-agent.mjs triage --limit 50 --apply --reviewer "cursor-agent"
+```
+
+Seed a fix branch + draft PR for one feedback item:
+
+```bash
+node scripts/feedback-agent.mjs seed-pr --id "<feedbackId>"
+```
+
+This creates a branch, adds a fix brief in `docs/feedback-fixes/`, pushes the branch, opens a draft PR via `gh`, and marks the report as `in_progress`.
