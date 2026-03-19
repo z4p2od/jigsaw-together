@@ -481,17 +481,27 @@ export async function submitLandingFeedback({ message, path = '/', screen = 'lan
   validateLandingFeedbackInput({ message, screen, path });
 
   const now = Date.now();
-  const feedbackRef = push(ref(db, 'feedback'));
-  const feedbackId = feedbackRef.key;
+  // Generate a stable "feedbackId" (the id used by downstream tooling / doc
+  // filenames) separately from the Firebase child key used for the record.
+  // This matches the observed flow: POST /feedback.json (child key),
+  // PATCH /feedback/<childKey>.json (same record), while doc naming uses
+  // the stable feedbackId stored in the record.
+  const feedbackIdRef = push(ref(db, 'feedback-id-temp'));
+  const feedbackId = feedbackIdRef.key;
 
-  if (!feedbackId) throw new Error('Failed to generate feedback id.');
+  const feedbackRef = push(ref(db, 'feedback'));
+  const feedbackChildKey = feedbackRef.key;
+
+  if (!feedbackId) throw new Error('Failed to generate stable feedback id.');
+  if (!feedbackChildKey) throw new Error('Failed to generate feedback record key.');
 
   const trimmedMessage = message.trim();
   // Write the record first so clients/bots observing /feedback can see it.
   await set(feedbackRef, {
-    // Stable identifiers used by downstream automation.
+    // Stable identifiers used by downstream automation (doc filenames, etc).
     id: feedbackId,
     feedbackId,
+    feedbackChildKey,
 
     // Required context for routing/triage.
     screen,
