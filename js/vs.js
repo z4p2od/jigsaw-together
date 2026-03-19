@@ -9,6 +9,7 @@ import {
   sendChatMessage, onChatMessages,
   writeVSPowerupEarned, writeVSEffect, onVSEffects, writeVSShufflePositions,
 } from './firebase.js';
+import { getLobbySlotPids } from './vs-lobby-slots.js';
 import { cutPiece, getPad } from './jigsaw.js';
 
 const BOARD_W   = 900;
@@ -297,9 +298,12 @@ function handleRoomUpdate(room) {
 }
 
 function updateLobbyUI(players) {
-  const ids = Object.keys(players);
+  const ids = Object.keys(players || {});
+  const [slot0Pid, slot1Pid] = getLobbySlotPids(players, playerId);
+  const slotPids = [slot0Pid, slot1Pid];
+
   for (let slot = 0; slot < 2; slot++) {
-    const pid  = ids[slot];
+    const pid  = slotPids[slot];
     const p    = pid ? players[pid] : null;
     const avatarEl = document.getElementById(`vs-avatar-${slot}`);
     const nameEl   = document.getElementById(`vs-name-${slot}`);
@@ -327,8 +331,8 @@ function updateLobbyUI(players) {
   // Show my name in progress bar
   const me = players[playerId];
   if (me) vspMeName.textContent = me.name + ' (you)';
-  const oppId = Object.keys(players).find(id => id !== playerId);
-  if (oppId) vspOppName.textContent = players[oppId].name;
+  const oppId = slot1Pid;
+  if (oppId) vspOppName.textContent = players[oppId]?.name ?? '';
 }
 
 function startCountdown() {
