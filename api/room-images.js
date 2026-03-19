@@ -13,13 +13,18 @@ export default async function handler(req, res) {
   const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
   const folder = 'puzzle-library';
 
-  const target = String(folder);
   const normalize = (f) => String(f ?? '').replace(/^\/+/, '').replace(/\/+$/, '');
+  const target = String(folder);
 
-  function isResourceInPuzzleLibrary(resource) {
+  function isPuzzleLibraryResource(resource) {
     if (!resource) return false;
-    const resFolder = normalize(resource?.folder);
-    if (resFolder) return resFolder === target || resFolder.startsWith(target + '/');
+
+    // Cloudinary search resources use `asset_folder` (per docs). Older listing uses `folder`.
+    const af = normalize(resource?.asset_folder);
+    if (af) return af === target || af.startsWith(target + '/');
+
+    const f = normalize(resource?.folder);
+    if (f) return f === target || f.startsWith(target + '/');
 
     const publicId = String(resource?.public_id ?? '');
     if (publicId) return publicId === target || publicId.startsWith(target + '/');
@@ -30,46 +35,69 @@ export default async function handler(req, res) {
     return false;
   }
 
-  async function fetchResources(url) {
-    const r = await fetch(url, { headers: { Authorization: `Basic ${auth}` } });
-    const text = await r.text().catch(() => '');
-    try {
-      const data = JSON.parse(text);
-      const resources = data?.resources || [];
-      return Array.isArray(resources) ? resources : [];
-    } catch {
-      return [];
-    }
+  async function searchResourcesByAssetFolder() {
+    // Admin Search API (more reliable than resources/image/upload with prefix/folder).
+    // If your Cloudinary tier doesn't support this, it will throw and we'll fall back.
+    const expression = `resource_type:image AND asset_folder:${target}/*`;
+    const resp = await fetch(
+      `https://api.cloudinary.com/v1_1/${cloudName}/resources/search`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Basic ${auth}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({
+          expression,
+          max_results: 500,
+        }),
+      }
+    );
+
+    const text = await resp.text().catch(() => '');
+    if (!resp.ok) throw new Error(`Cloudinary search failed: ${resp.status} ${text}`);
+
+    const data = JSON.parse(text);
+    return Array.isArray(data?.resources) ? data.resources : [];
+  }
+
+  async function fetchResourcesUploadPrefix(prefix) {
+    const resp = await fetch(
+      `https://api.cloudinary.com/v1_1/${cloudName}/resources/image/upload?prefix=${encodeURIComponent(prefix)}&max_results=500`,
+      { headers: { Authorization: `Basic ${auth}` } }
+    );
+    const text = await resp.text().catch(() => '');
+    if (!resp.ok) throw new Error(`Cloudinary upload listing failed: ${resp.status}`);
+
+    const data = JSON.parse(text);
+    return Array.isArray(data?.resources) ? data.resources : [];
   }
 
   let resources = [];
-  if (cloudName) {
-    // IMPORTANT: only use `prefix` for scoping.
-    // `folder=` isn't consistently honored by Cloudinary's resources listing,
-    // which is why we were leaking non-puzzle-library images to `/play`.
-    const prefixA = `${folder}/`;
-    const prefixB = folder;
-    resources = await fetchResources(
-      `https://api.cloudinary.com/v1_1/${cloudName}/resources/image/upload?prefix=${encodeURIComponent(prefixA)}&max_results=500`
-    );
-    if (resources.length === 0) {
-      resources = await fetchResources(
-        `https://api.cloudinary.com/v1_1/${cloudName}/resources/image/upload?prefix=${encodeURIComponent(prefixB)}&max_results=500`
-      );
+  try {
+    if (cloudName) resources = await searchResourcesByAssetFolder();
+  } catch (err) {
+    // Fallback to the legacy upload listing endpoint (still strictly filtered below).
+    try {
+      const prefixA = `${folder}/`;
+      const prefixB = folder;
+      resources = await fetchResourcesUploadPrefix(prefixA);
+      if (resources.length === 0) resources = await fetchResourcesUploadPrefix(prefixB);
+    } catch (fallbackErr) {
+      console.error('room-images fallback failed', { err, fallbackErr });
+      resources = [];
     }
   }
 
-  // Strict post-filtering: only puzzle-library resources should be exposed to /play.
-  // If filtering results in 0, we return 0 (and /play will show "No images available"),
-  // rather than leaking unrelated images.
-  const filtered = (resources || []).filter(isResourceInPuzzleLibrary);
+  const filtered = (resources || []).filter(isPuzzleLibraryResource);
 
   console.log('room-images debug', {
     cloudName,
     fetched: resources.length,
     filtered: filtered.length,
     sample: resources[0]
-      ? { public_id: resources[0].public_id, folder: resources[0].folder, url: resources[0].secure_url }
+      ? { public_id: resources[0].public_id, asset_folder: resources[0].asset_folder, folder: resources[0].folder, url: resources[0].secure_url }
       : null,
   });
 
