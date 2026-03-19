@@ -62,9 +62,20 @@ async function listPoolImages() {
   const apiSecret = process.env.CLOUDINARY_API_SECRET;
   if (!cloudName || !apiKey || !apiSecret) return [];
 
+  // Vercel may treat this handler as CommonJS internally; using a dynamic import
+  // avoids ERR_REQUIRE_ESM when loading our `.mjs` helper.
+  let filterResourcesByFolder = (resources) => Array.isArray(resources) ? resources : [];
+  try {
+    const mod = await import('./cloudinary-folder-utils.mjs');
+    filterResourcesByFolder = mod?.filterResourcesByFolder || filterResourcesByFolder;
+  } catch {
+    // If the helper fails to load, just skip folder filtering.
+  }
+
   const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
   const r = await fetch(
-    `https://api.cloudinary.com/v1_1/${cloudName}/resources/image/upload?folder=puzzle-library&max_results=500`,
+    // Cloudinary Admin API scopes "resources/image" listing by "prefix"
+    `https://api.cloudinary.com/v1_1/${cloudName}/resources/image/upload?prefix=${encodeURIComponent('puzzle-library')}&max_results=500`,
     { headers: { Authorization: `Basic ${auth}` } }
   );
 
@@ -73,7 +84,8 @@ async function listPoolImages() {
   const text = await r.text().catch(() => '');
   try {
     const data = JSON.parse(text);
-    return data?.resources || [];
+    const resources = data?.resources || [];
+    return filterResourcesByFolder(resources, 'puzzle-library');
   } catch {
     return [];
   }
