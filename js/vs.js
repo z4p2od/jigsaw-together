@@ -111,6 +111,7 @@ const vsShareUrl     = document.getElementById('vs-share-url');
 const vsCopyBtn      = document.getElementById('vs-copy-btn');
 const vsLobbyStatus  = document.getElementById('vs-lobby-status');
 const vsTeamLobbyStatus = document.getElementById('vs-team-lobby-status');
+const vsTeamReadyBtn    = document.getElementById('vs-team-ready-btn');
 const vsTeamStartBtn    = document.getElementById('vs-team-start-btn');
 const myBoardLabelEl    = document.getElementById('my-board-label');
 const vsBoardAvatarsMe  = document.getElementById('vs-board-avatars-me');
@@ -277,11 +278,8 @@ async function initVS() {
         }
       });
 
-      // Start match button (creator only)
+      // Wire up action buttons once — visibility is driven by updateTeamLobbyUI
       if (vsTeamStartBtn) {
-        if (creatorPlayerId === playerId) {
-          vsTeamStartBtn.style.display = '';
-        }
         vsTeamStartBtn.addEventListener('click', () => {
           if (vsTeamStartBtn.disabled) return;
           vsTeamStartBtn.disabled = true;
@@ -289,13 +287,17 @@ async function initVS() {
           setVSPlaying(roomId);
         });
       }
-
-      // Auto-join Team A if no team set yet
-      const currentRoom = await loadVSRoom(roomId);
-      if (!currentRoom.players?.[playerId]?.teamId) {
-        await joinTeam('A');
+      if (vsTeamReadyBtn) {
+        vsTeamReadyBtn.disabled = true;
+        vsTeamReadyBtn.addEventListener('click', () => {
+          if (vsTeamReadyBtn.disabled) return;
+          vsTeamReadyBtn.disabled = true;
+          vsTeamReadyBtn.textContent = '✓ Ready!';
+          setVSReady(roomId, playerId);
+        });
       }
 
+      // Do NOT auto-join a team — let the player choose
       if (room.meta.status === 'playing') {
         vsTeamLobby.style.display = 'none';
       } else {
@@ -452,64 +454,91 @@ function updateLobbyUI(players) {
 }
 
 function updateTeamLobbyUI(players, m) {
-  if (vsTeamLobby.style.display === 'none' && m.status !== 'waiting' && m.status !== 'ready') return;
-  if (vsTeamLobby.style.display !== 'none') {
-    // Update team name labels
-    ['A', 'B'].forEach(tid => {
-      const nameEl = document.getElementById(`team-name-${tid}`);
-      if (nameEl) nameEl.textContent = m.teamNames?.[tid] || `Team ${tid}`;
+  // Progress bar labels — update even while game is running
+  const me = players[playerId];
+  if (me?.teamId) {
+    const teamName = m.teamNames?.[me.teamId] || `Team ${me.teamId}`;
+    if (vspMeName) vspMeName.textContent = teamName + ' (your team)';
+  }
+
+  // Only update lobby widgets when lobby is visible
+  if (vsTeamLobby.style.display === 'none') return;
+
+  const myTeamInLobby = players[playerId]?.teamId || null;
+  const isCreator     = creatorPlayerId === playerId;
+  const teamAPlayers  = Object.values(players).filter(p => p.teamId === 'A');
+  const teamBPlayers  = Object.values(players).filter(p => p.teamId === 'B');
+
+  // Team name labels
+  ['A', 'B'].forEach(tid => {
+    const nameEl = document.getElementById(`team-name-${tid}`);
+    if (nameEl) nameEl.textContent = m.teamNames?.[tid] || `Team ${tid}`;
+  });
+
+  // Player chips per team
+  ['A', 'B'].forEach(tid => {
+    const container = document.getElementById(`team-avatars-${tid}`);
+    if (!container) return;
+    container.innerHTML = '';
+    Object.entries(players).forEach(([pid, p]) => {
+      if (p.teamId !== tid) return;
+      const chip = document.createElement('div');
+      chip.className = 'team-player-chip';
+      const readyMark = p.ready ? ' ✓' : '';
+      chip.innerHTML = `<div class="team-player-circle" style="background:${p.color}">${(p.name[0] || '?').toUpperCase()}</div>
+        <span class="team-player-name">${pid === playerId ? `${p.name} (you)` : p.name}${readyMark}</span>`;
+      container.appendChild(chip);
     });
+  });
 
-    // Render player chips per team
-    ['A', 'B'].forEach(tid => {
-      const container = document.getElementById(`team-avatars-${tid}`);
-      if (!container) return;
-      container.innerHTML = '';
-      Object.entries(players).forEach(([pid, p]) => {
-        if ((p.teamId || 'A') !== tid) return;
-        const chip = document.createElement('div');
-        chip.className = 'team-player-chip';
-        chip.innerHTML = `<div class="team-player-circle" style="background:${p.color}">${(p.name[0] || '?').toUpperCase()}</div>
-          <span class="team-player-name">${pid === playerId ? `${p.name} (you)` : p.name}</span>`;
-        container.appendChild(chip);
-      });
-    });
+  // Join buttons — hide for my current team, show both when unassigned
+  const btnA = document.getElementById('team-join-A');
+  const btnB = document.getElementById('team-join-B');
+  if (btnA) btnA.style.display = myTeamInLobby === 'A' ? 'none' : '';
+  if (btnB) btnB.style.display = myTeamInLobby === 'B' ? 'none' : '';
 
-    // Update join buttons — hide the one for my current team
-    const myTeamInLobby = players[playerId]?.teamId || 'A';
-    const btnA = document.getElementById('team-join-A');
-    const btnB = document.getElementById('team-join-B');
-    if (btnA) btnA.style.display = myTeamInLobby === 'A' ? 'none' : '';
-    if (btnB) btnB.style.display = myTeamInLobby === 'B' ? 'none' : '';
+  // Rename buttons — creator can rename A; any Team B member can rename B
+  const renBtnA = document.getElementById('team-rename-A');
+  const renBtnB = document.getElementById('team-rename-B');
+  if (renBtnA) renBtnA.style.display = isCreator ? '' : 'none';
+  if (renBtnB) renBtnB.style.display = myTeamInLobby === 'B' ? '' : 'none';
 
-    // Only creator can rename Team A; Team B members can rename Team B
-    const isCreator = creatorPlayerId === playerId;
-    const renBtnA = document.getElementById('team-rename-A');
-    const renBtnB = document.getElementById('team-rename-B');
-    if (renBtnA) renBtnA.style.display = isCreator ? '' : 'none';
-    if (renBtnB) renBtnB.style.display = myTeamInLobby === 'B' ? '' : 'none';
-
-    // Start button state (creator only)
-    if (vsTeamStartBtn && isCreator) {
-      const teamA = Object.values(players).filter(p => (p.teamId || 'A') === 'A');
-      const teamB = Object.values(players).filter(p => p.teamId === 'B');
-      const canStart = teamA.length >= 1 && teamB.length >= 1;
+  // Show Start (creator) or Ready (non-creator) — never both
+  if (isCreator) {
+    if (vsTeamReadyBtn) vsTeamReadyBtn.style.display = 'none';
+    if (vsTeamStartBtn) {
+      vsTeamStartBtn.style.display = '';
+      const canStart = teamAPlayers.length >= 1 && teamBPlayers.length >= 1;
       vsTeamStartBtn.disabled = !canStart;
       vsTeamStartBtn.textContent = canStart ? 'Start Match' : 'Need at least 1 player per team';
     }
-
-    // Status label
-    if (vsTeamLobbyStatus) {
-      const total = Object.keys(players).length;
-      const teamA = Object.values(players).filter(p => (p.teamId || 'A') === 'A').length;
-      const teamB = Object.values(players).filter(p => p.teamId === 'B').length;
-      vsTeamLobbyStatus.textContent = `${total} player${total !== 1 ? 's' : ''} joined (${teamA}v${teamB})`;
+  } else {
+    if (vsTeamStartBtn) vsTeamStartBtn.style.display = 'none';
+    if (vsTeamReadyBtn) {
+      vsTeamReadyBtn.style.display = '';
+      const alreadyReady = players[playerId]?.ready;
+      if (alreadyReady) {
+        vsTeamReadyBtn.disabled = true;
+        vsTeamReadyBtn.textContent = '✓ Ready!';
+      } else if (myTeamInLobby) {
+        vsTeamReadyBtn.disabled = false;
+        vsTeamReadyBtn.textContent = 'Ready';
+      } else {
+        vsTeamReadyBtn.disabled = true;
+        vsTeamReadyBtn.textContent = 'Join a team first';
+      }
     }
   }
 
-  // Progress bar labels (update even after game starts)
-  const me = players[playerId];
-  if (me) vspMeName.textContent = (m.teamNames?.[me.teamId || 'A'] || `Team ${me.teamId || 'A'}`) + ' (your team)';
+  // Status label
+  if (vsTeamLobbyStatus) {
+    if (!myTeamInLobby) {
+      vsTeamLobbyStatus.textContent = 'Pick a team to join!';
+    } else {
+      const total = Object.keys(players).length;
+      vsTeamLobbyStatus.textContent = `${total} player${total !== 1 ? 's' : ''} joined (${teamAPlayers.length}v${teamBPlayers.length})`;
+    }
+  }
 }
 
 function startCountdown(teamMode) {
