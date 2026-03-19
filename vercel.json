@@ -10,7 +10,9 @@
   "rewrites": [
     { "source": "/puzzle", "destination": "/puzzle.html" },
     { "source": "/vs",       "destination": "/vs.html"       },
-    { "source": "/vs-rooms", "destination": "/vs-rooms.html" }
+    { "source": "/vs-rooms", "destination": "/vs-rooms.html" },
+    { "source": "/play",     "destination": "/play.html"     },
+    { "source": "/rooms",    "destination": "/rooms.html"    }
   ],
   "crons": [
     { "path": "/api/cleanup", "schedule": "0 21 * * *" },

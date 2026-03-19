@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pick a Puzzle — Jigsaw Together</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <main class="landing">
+    <div>
+      <h1>Jigsaw <span>Together</span></h1>
+    </div>
+
+    <div class="card" style="gap:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <p class="field-label" style="margin:0">🧩 Pick an Image</p>
+        <a href="/" style="font-size:0.82rem;color:var(--text-muted)">← Back</a>
+      </div>
+
+      <div id="image-grid-wrap">
+        <p id="images-loading" style="color:var(--text-muted);font-size:0.9rem;text-align:center">Loading images…</p>
+        <div id="image-grid" class="play-image-grid" style="display:none"></div>
+      </div>
+
+      <div class="piece-section">
+        <p class="field-label">Pieces</p>
+        <div class="piece-options">
+          <label><input type="radio" name="play-pieces" value="24" /> <span>24</span></label>
+          <label><input type="radio" name="play-pieces" value="100" checked /> <span>100</span></label>
+          <label><input type="radio" name="play-pieces" value="250" /> <span>250</span></label>
+          <label><input type="radio" name="play-pieces" value="500" /> <span>500</span></label>
+          <label><input type="radio" name="play-pieces" value="1000" /> <span>1000</span></label>
+        </div>
+      </div>
+
+      <div class="piece-section">
+        <p class="field-label">Mode</p>
+        <div class="piece-options">
+          <label><input type="radio" name="play-mode" value="normal" checked /> <span>Normal</span></label>
+          <label><input type="radio" name="play-mode" value="hard" /> <span>Hard 🔥</span></label>
+        </div>
+      </div>
+
+      <div class="piece-section">
+        <p class="field-label">Visibility</p>
+        <div class="piece-options">
+          <label><input type="radio" name="play-visibility" value="private" checked /> <span>Private</span></label>
+          <label><input type="radio" name="play-visibility" value="public" /> <span>Public</span></label>
+        </div>
+        <p class="mode-hint" id="public-hint" style="display:none">Anyone can find and join this room from the <a href="/rooms" style="color:var(--accent)">public lobby</a>.</p>
+      </div>
+
+      <button class="btn" id="start-btn" disabled>Start Puzzle</button>
+      <p class="status" id="play-status"></p>
+    </div>
+  </main>
+
+  <script type="module" src="/js/play.js"></script>
+</body>
+</html>

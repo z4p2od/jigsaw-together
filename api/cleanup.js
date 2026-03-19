@@ -58,6 +58,8 @@ export default async function handler(req, res) {
     }
 
     await fetch(`${dbUrl}/puzzles/${id}.json?auth=${secret}`, { method: 'DELETE' });
+    // Also remove from rooms-index if it was a public room
+    await fetch(`${dbUrl}/rooms-index/${id}.json?auth=${secret}`, { method: 'DELETE' });
     deleted++;
   }));
 

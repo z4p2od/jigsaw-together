@@ -18,6 +18,7 @@ import {
   onPOTDLeaderboard,
   sendChatMessage,
   onChatMessages,
+  updateRoomsIndex,
 } from './firebase.js';
 import { cutPiece, getPad } from './jigsaw.js';
 
@@ -64,6 +65,9 @@ let chatUnread    = 0;
 let chatOpen      = false;
 const lastPlayerPos = {}; // playerId → { x, y } last known board position
 let startedAt     = null;
+
+// Rooms-index sync (public rooms only)
+let lastRoomsSolvedSync = 0;
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 
@@ -772,6 +776,7 @@ function applyRemoteUpdate(index, data) {
     setPieceAvatar(index, null);
     solvedCount++;
     updateProgress();
+    syncRoomsSolvedCount();
     checkCompletion();
     return;
   }
@@ -796,10 +801,20 @@ function updateProgress() {
   progressEl.textContent = `${placed} / ${totalPieces} pieces`;
 }
 
+function syncRoomsSolvedCount() {
+  if (!meta?.isPublic) return;
+  const now = Date.now();
+  if (now - lastRoomsSolvedSync < 2000) return;
+  lastRoomsSolvedSync = now;
+  updateRoomsIndex(puzzleId, { solvedCount });
+}
+
 function checkCompletion() {
   const done = solvedCount >= totalPieces ||
     (() => { const gids = new Set(pieceGroup.filter(Boolean)); return gids.size === 1 && groups[[...gids][0]]?.size === totalPieces; })();
   if (!done) return;
+
+  if (meta?.isPublic) updateRoomsIndex(puzzleId, { status: 'done', solvedCount });
 
   if (unsubscribe) { unsubscribe(); unsubscribe = null; }
   stopTimer();
@@ -987,6 +1002,14 @@ function renderPlayers(players) {
     if (id === playerId) dot.classList.add('me');
     playersListEl.appendChild(dot);
   });
+
+  if (meta?.isPublic) {
+    const count = Object.keys(playersMap).length;
+    // Set creatorName on first player join if not set yet
+    const updates = { playerCount: count };
+    if (count === 1 && players[playerId]) updates.creatorName = playerName;
+    updateRoomsIndex(puzzleId, updates);
+  }
 }
 
 // avatarEls[index] = the avatar div for pieces locked by other players

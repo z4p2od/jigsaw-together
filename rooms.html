@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Open Rooms — Jigsaw Together</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <main class="landing">
+    <div>
+      <h1>Jigsaw <span>Together</span></h1>
+    </div>
+
+    <div class="card" style="gap:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <p class="field-label" style="margin:0">🧩 Open Rooms</p>
+        <a href="/" style="font-size:0.82rem;color:var(--text-muted)">← Back</a>
+      </div>
+
+      <div id="rooms-list">
+        <p id="rooms-empty" style="color:var(--text-muted);font-size:0.9rem;text-align:center">
+          No open rooms right now.
+        </p>
+      </div>
+
+      <div style="border-top:1px solid var(--border);padding-top:12px;text-align:center">
+        <p style="color:var(--text-muted);font-size:0.85rem;margin:0 0 10px">Or start your own</p>
+        <a href="/play" class="btn" style="display:inline-block">🧩 Pick an Image</a>
+      </div>
+    </div>
+  </main>
+
+  <script type="module" src="/js/rooms.js"></script>
+</body>
+</html>
