@@ -16,10 +16,15 @@ Screen: vs · Room: 936d6b35-ebe8-440b-bbca-2a3b1ba21705
 
 ## Fix checklist
 - [ ] Reproduce issue (confirm root cause)
-- [ ] Implement fix
-- [ ] Add/update tests where possible
+- [x] Implement fix
+- [x] Add/update tests where possible
 - [ ] Verify on affected screens
 - [ ] Close out related feedback
+
+## Fix summary
+- Fixed VS lobby left/right consistency by removing reliance on `Object.keys(players)` ordering.
+  - Added `getLobbySlotPids()` (`js/vs-lobby-slots.js`) to pin the current user (“you”) to lobby slot 0 (left) across Firebase snapshots.
+- Added a small sanity/unit test (`js/vs-lobby-slots.test.mjs`) covering the “opponent inserted first” case that previously caused the avatar swap.
 
 ---
 Auto-seeded by `Jigsaw Together` feedback triage agent.
