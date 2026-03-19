@@ -1,10 +1,8 @@
 /**
- * Creates a VS mode room — two players race the same puzzle.
- * Picks a random image from the POTD pool, generates shared grid/edges,
- * and writes the room to Firebase. Piece positions are generated client-side
- * from the seed to avoid writing 200 pieces server-side.
+ * Creates a VS mode room — two players race the same puzzle,
+ * or multiple players split into two teams sharing a board.
  *
- * GET /api/vs-create
+ * GET /api/vs-create?pieces=N&hard=bool&chaos=bool&teamMode=bool
  * Redirects to /vs.html?room={roomId}
  */
 import crypto from 'crypto';
@@ -12,6 +10,17 @@ import crypto from 'crypto';
 const BOARD_W = 900;
 const BOARD_H = 650;
 const ALLOWED_PIECES = [4, 24, 40, 100, 250, 500, 1000];
+
+const TEAM_NAMES = [
+  'Tabbers', 'Blanks', 'Snappers', 'Edgers', 'Connectors', 'Cornerers',
+  'Interlocks', 'Fitters', 'Shufflers', 'Sorters', 'Clickers', 'Framers',
+  'Grippers', 'Slotters', 'Linkers', 'Turners', 'Fixers', 'Matchers',
+];
+
+function pickTeamNames() {
+  const shuffled = [...TEAM_NAMES].sort(() => Math.random() - 0.5);
+  return { A: shuffled[0], B: shuffled[1] };
+}
 
 function calculateGrid(pieceCount, imgWidth, imgHeight) {
   const aspect = imgWidth / imgHeight;
@@ -62,14 +71,12 @@ async function listPoolImages() {
   const apiSecret = process.env.CLOUDINARY_API_SECRET;
   if (!cloudName || !apiKey || !apiSecret) return [];
 
-  // Vercel may treat this handler as CommonJS internally; using a dynamic import
-  // avoids ERR_REQUIRE_ESM when loading our `.mjs` helper.
   let filterResourcesByFolder = (resources) => Array.isArray(resources) ? resources : [];
   try {
     const mod = await import('./cloudinary-folder-utils.mjs');
     filterResourcesByFolder = mod?.filterResourcesByFolder || filterResourcesByFolder;
   } catch {
-    // If the helper fails to load, just skip folder filtering.
+    // If the helper fails to load, skip folder filtering.
   }
 
   const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
@@ -77,7 +84,6 @@ async function listPoolImages() {
   async function fetchResources(url) {
     const r = await fetch(url, { headers: { Authorization: `Basic ${auth}` } });
     const text = await r.text().catch(() => '');
-    // Avoid throwing on JSON parse here; treat it as "no images".
     try {
       const data = JSON.parse(text);
       const resources = data?.resources || data?.images || [];
@@ -88,8 +94,6 @@ async function listPoolImages() {
   }
 
   const folder = 'puzzle-library';
-  // Cloudinary Admin API listing can be scoped either via `folder` or `prefix`.
-  // Try `folder` first (more intuitive), then `prefix` as a fallback.
   let resources = await fetchResources(
     `https://api.cloudinary.com/v1_1/${cloudName}/resources/image/upload?folder=${encodeURIComponent(folder)}&max_results=500`
   );
@@ -98,11 +102,8 @@ async function listPoolImages() {
       `https://api.cloudinary.com/v1_1/${cloudName}/resources/image/upload?prefix=${encodeURIComponent(folder)}&max_results=500`
     );
   }
-
   if (resources.length === 0) return [];
 
-  // Optional post-filtering for safety. If it ends up filtering everything out,
-  // fall back to the unfiltered set so the VS match creation can proceed.
   try {
     const filtered = filterResourcesByFolder(resources, folder);
     if (Array.isArray(filtered) && filtered.length > 0) return filtered;
@@ -137,6 +138,7 @@ export default async function handler(req, res) {
     const PIECE_COUNT = ALLOWED_PIECES.includes(rawPieces) ? rawPieces : 100;
     const chaosMode = query.chaos === 'true';
     const hardMode = !chaosMode && query.hard === 'true';
+    const teamMode = query.teamMode === 'true';
 
     const images = await listPoolImages();
     if (images.length === 0) return res.status(500).json({ error: 'No images available' });
@@ -153,27 +155,24 @@ export default async function handler(req, res) {
     const displayH = Math.floor(pieceH * scale);
 
     const edges = generateEdges(cols, rows);
-    const seed = (Math.random() * 1e9) | 0; // shared scatter seed
+    const seed = (Math.random() * 1e9) | 0;
     const roomId = crypto.randomUUID();
-
     const createdAt = Date.now();
+
+    const teamNames = teamMode ? pickTeamNames() : null;
 
     await fbPut(`vs/${roomId}`, {
       meta: {
         imageUrl: image?.secure_url || null,
-        cols,
-        rows,
-        pieceW,
-        pieceH,
-        displayW,
-        displayH,
-        edges,
-        seed,
+        cols, rows, pieceW, pieceH, displayW, displayH,
+        edges, seed,
         pieces: PIECE_COUNT,
-        hardMode,
-        chaosMode,
+        hardMode, chaosMode,
+        teamMode: teamMode || null,
+        teamNames: teamNames || null,
         status: 'waiting',
         winner: null,
+        winnerTeamId: null,
         winnerSecs: null,
         createdAt,
       },
@@ -181,11 +180,10 @@ export default async function handler(req, res) {
       pieces: {},
     });
 
-    // Write a lightweight index entry for the open rooms browser
     await fbPatch(`vs-index/${roomId}`, {
       pieces: PIECE_COUNT,
-      hardMode,
-      chaosMode,
+      hardMode, chaosMode,
+      teamMode: teamMode || null,
       status: 'waiting',
       createdAt,
       creatorName: null,

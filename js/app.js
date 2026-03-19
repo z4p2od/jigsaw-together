@@ -90,11 +90,13 @@ loadPOTD();
 // ── VS Mode create ────────────────────────────────────────────────────────────
 
 document.getElementById('vs-create-btn').addEventListener('click', () => {
-  const pieces = document.querySelector('input[name="vs-pieces"]:checked').value;
-  const mode   = document.querySelector('input[name="vs-mode"]:checked').value;
-  const hard   = mode === 'hard';
-  const chaos  = mode === 'chaos';
-  window.location.href = `/api/vs-create?pieces=${pieces}&hard=${hard}&chaos=${chaos}`;
+  const pieces    = document.querySelector('input[name="vs-pieces"]:checked').value;
+  const mode      = document.querySelector('input[name="vs-mode"]:checked').value;
+  const hard      = mode === 'hard';
+  const chaos     = mode === 'chaos';
+  const teamEl    = document.querySelector('input[name="vs-type"]:checked');
+  const teamMode  = teamEl ? teamEl.value === 'team' : false;
+  window.location.href = `/api/vs-create?pieces=${pieces}&hard=${hard}&chaos=${chaos}&teamMode=${teamMode}`;
 });
 
 // ── Image upload ──────────────────────────────────────────────────────────────

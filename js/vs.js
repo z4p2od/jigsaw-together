@@ -1,13 +1,14 @@
 import {
   loadVSRoom, joinVSRoom, setVSReady, onVSRoom,
-  initVSPieces, onVSPieces, onVSOpponentPieces,
+  initVSPieces, getVSPiecesOnce, onVSPieces, onVSOpponentPieces,
   updateVSGroupPosition, lockVSGroup, unlockVSGroup,
   writeVSSnap, updateVSPieceRotation,
   updateVSGroupRotationAndPositions, solveVSGroup,
-  setVSPlaying, setVSWinner, setVSFinished, setVSRematch, offerVSRematch,
-  getPlayerColor,
+  setVSPlaying, setVSWinner, setVSWinnerTeam, setVSFinished, setVSRematch, offerVSRematch,
+  getPlayerColor, getVSIndexCreatorPlayerId,
+  setVSTeamId, renameVSTeam,
   sendChatMessage, onChatMessages,
-  writeVSPowerupEarned, writeVSEffect, onVSEffects, writeVSShufflePositions,
+  writeVSPowerupEarned, writeVSEffect, onVSEffects, onVSPowerups, writeVSShufflePositions,
 } from './firebase.js';
 import { getLobbySlotPids } from './vs-lobby-slots.js';
 import { cutPiece, getPad } from './jigsaw.js';
@@ -35,6 +36,17 @@ let gameStarted = false;
 let winnerDeclared = false;
 let rematchOffered = false;
 
+// Team mode state
+let myTeamId      = null;   // 'A' | 'B'
+let oppTeamId     = null;   // 'A' | 'B'
+let myBoardKey    = playerId;  // teamId (team mode) | playerId (1v1)
+let oppBoardKey   = null;      // teamId (team mode) | oppPlayerId (1v1)
+let amTeamLeader  = false;     // deterministic first player on my team (for shared writes)
+let creatorPlayerId = null;    // who created the room
+let canStartRematch = false;
+let currentRematchRoomId = null;
+let latestPlayers = {};        // latest snapshot from handleRoomUpdate
+
 const groups    = {};
 const pieceGroup = [];
 let dragging    = null;
@@ -55,7 +67,7 @@ let invertActive     = false;
 const faceDownPieces = new Set(); // indices currently face-down
 const activeEffects  = {};        // timers
 let unsubEffects     = null;
-let oppId            = null;      // set during startGame
+let oppId            = null;      // 1v1 opponent playerId — set during startGame
 
 // Win counter (persisted in sessionStorage for rematch series)
 // key: sorted pair of playerIds joined by '|'
@@ -93,10 +105,16 @@ const peekBtn        = document.getElementById('peek-btn');
 const boxCover       = document.getElementById('box-cover');
 const boxCoverImg    = document.getElementById('box-cover-img');
 const vsLobby        = document.getElementById('vs-lobby');
+const vsTeamLobby    = document.getElementById('vs-team-lobby');
 const vsReadyBtn     = document.getElementById('vs-ready-btn');
 const vsShareUrl     = document.getElementById('vs-share-url');
 const vsCopyBtn      = document.getElementById('vs-copy-btn');
 const vsLobbyStatus  = document.getElementById('vs-lobby-status');
+const vsTeamLobbyStatus = document.getElementById('vs-team-lobby-status');
+const vsTeamStartBtn    = document.getElementById('vs-team-start-btn');
+const myBoardLabelEl    = document.getElementById('my-board-label');
+const vsBoardAvatarsMe  = document.getElementById('vs-board-avatars-me');
+const vsBoardAvatarsOpp = document.getElementById('vs-board-avatars-opp');
 const vsCountdown    = document.getElementById('vs-countdown');
 const vsCountNum     = document.getElementById('vs-countdown-num');
 const vsResult       = document.getElementById('vs-result');
@@ -220,32 +238,88 @@ async function initVS() {
     const room = await loadVSRoom(roomId);
     meta = room.meta;
 
-    // Hide lobby immediately if room is already playing (rematch)
-    if (room.meta.status === 'playing') vsLobby.style.display = 'none';
+    creatorPlayerId = await getVSIndexCreatorPlayerId(roomId);
 
     const color = getPlayerColor(playerId);
     await joinVSRoom(roomId, playerId, playerName, color);
 
-    // Share link in lobby
-    vsShareUrl.textContent = location.href;
-    vsCopyBtn.addEventListener('click', () => {
-      navigator.clipboard.writeText(location.href).then(() => {
-        vsCopyBtn.textContent = 'Copied!';
-        setTimeout(() => (vsCopyBtn.textContent = 'Copy Link'), 2000);
+    // Re-fetch creatorPlayerId in case we just became creator
+    if (!creatorPlayerId) creatorPlayerId = await getVSIndexCreatorPlayerId(roomId);
+
+    if (meta.teamMode) {
+      // ── Team lobby setup ──────────────────────────────────────────────────
+      // Hide 1v1 lobby, show team lobby
+      vsLobby.style.display = 'none';
+
+      // Share link
+      const shareUrlEl = document.getElementById('vs-team-share-url');
+      if (shareUrlEl) shareUrlEl.textContent = location.href;
+      const copyBtn2 = document.getElementById('vs-team-copy-btn');
+      if (copyBtn2) {
+        copyBtn2.addEventListener('click', () => {
+          navigator.clipboard.writeText(location.href).then(() => {
+            copyBtn2.textContent = 'Copied!';
+            setTimeout(() => (copyBtn2.textContent = 'Copy Link'), 2000);
+          });
+        });
+      }
+
+      // Team join buttons
+      ['A', 'B'].forEach(tid => {
+        const btn = document.getElementById(`team-join-${tid}`);
+        if (btn) {
+          btn.addEventListener('click', () => joinTeam(tid));
+        }
+        // Rename button
+        const renBtn = document.getElementById(`team-rename-${tid}`);
+        if (renBtn) {
+          renBtn.addEventListener('click', () => promptTeamRename(tid));
+        }
       });
-    });
 
-    // Ready button
-    vsReadyBtn.disabled = false;
-    vsReadyBtn.addEventListener('click', () => {
-      vsReadyBtn.disabled = true;
-      vsReadyBtn.textContent = 'Waiting…';
-      setVSReady(roomId, playerId);
-    });
+      // Start match button (creator only)
+      if (vsTeamStartBtn) {
+        if (creatorPlayerId === playerId) {
+          vsTeamStartBtn.style.display = '';
+        }
+        vsTeamStartBtn.addEventListener('click', () => {
+          if (vsTeamStartBtn.disabled) return;
+          vsTeamStartBtn.disabled = true;
+          vsTeamStartBtn.textContent = 'Starting…';
+          setVSPlaying(roomId);
+        });
+      }
 
-    // Rematch button — offer/accept flow
-    vsRematchBtn.addEventListener('click', () => handleRematchClick());
+      // Auto-join Team A if no team set yet
+      const currentRoom = await loadVSRoom(roomId);
+      if (!currentRoom.players?.[playerId]?.teamId) {
+        await joinTeam('A');
+      }
 
+      if (room.meta.status === 'playing') {
+        vsTeamLobby.style.display = 'none';
+      }
+    } else {
+      // ── 1v1 lobby setup ──────────────────────────────────────────────────
+      if (room.meta.status === 'playing') vsLobby.style.display = 'none';
+
+      vsShareUrl.textContent = location.href;
+      vsCopyBtn.addEventListener('click', () => {
+        navigator.clipboard.writeText(location.href).then(() => {
+          vsCopyBtn.textContent = 'Copied!';
+          setTimeout(() => (vsCopyBtn.textContent = 'Copy Link'), 2000);
+        });
+      });
+
+      vsReadyBtn.disabled = false;
+      vsReadyBtn.addEventListener('click', () => {
+        vsReadyBtn.disabled = true;
+        vsReadyBtn.textContent = 'Waiting…';
+        setVSReady(roomId, playerId);
+      });
+    }
+
+    vsRematchBtn.addEventListener('click', handleRematchButtonClick);
 
     loadingEl.style.display = 'none';
 
@@ -257,40 +331,80 @@ async function initVS() {
   }
 }
 
+async function joinTeam(teamId) {
+  await setVSTeamId(roomId, playerId, teamId);
+}
+
+async function promptTeamRename(teamId) {
+  // Only creator can rename Team A; any member of Team B can rename Team B
+  const room = await loadVSRoom(roomId);
+  const players = room.players || {};
+  const isCreator = creatorPlayerId === playerId;
+  const isOnTeam  = players[playerId]?.teamId === teamId;
+
+  if (teamId === 'A' && !isCreator) return;
+  if (teamId === 'B' && !isOnTeam) return;
+
+  const current = room.meta?.teamNames?.[teamId] || `Team ${teamId}`;
+  const newName  = window.prompt(`Rename team:`, current);
+  if (newName && newName.trim()) {
+    await renameVSTeam(roomId, teamId, newName.trim().slice(0, 20));
+  }
+}
+
 let prevStatus = null;
 
 function handleRoomUpdate(room) {
   if (!room) return;
-  const { meta: m, players = {}, pieces = {} } = room;
+  const { meta: m, players = {} } = room;
+  latestPlayers = players;
 
-  updateLobbyUI(players);
+  if (m.teamMode) {
+    updateTeamLobbyUI(players, m);
+  } else {
+    updateLobbyUI(players);
+  }
 
   if (m.status === 'waiting' || m.status === 'ready') {
-    // Check if all present players are ready → start countdown
-    const playerList = Object.values(players);
-    if (playerList.length === 2 && playerList.every(p => p.ready) && prevStatus !== 'playing' && prevStatus !== 'done') {
-      // Only one player triggers the countdown + setVSPlaying to avoid double-fire
-      const ids = Object.keys(players).sort();
-      if (ids[0] === playerId) setVSPlaying(roomId);
+    if (!m.teamMode) {
+      // 1v1: both ready → auto-start
+      const playerList = Object.values(players);
+      if (playerList.length === 2 && playerList.every(p => p.ready) && prevStatus !== 'playing' && prevStatus !== 'done') {
+        const ids = Object.keys(players).sort();
+        if (ids[0] === playerId) setVSPlaying(roomId);
+      }
     }
+    // Team mode: creator manually starts via vsTeamStartBtn
   }
 
   if (m.status === 'playing' && !gameStarted) {
     gameStarted = true;
     startedAt = m.startedAt;
-    startCountdown().then(() => startGame(room));
+    startCountdown(m.teamMode).then(() => startGame(room));
   }
 
   if (m.status === 'done' && prevStatus !== 'done') {
     showResult(room);
   }
 
-  // Rematch offer/accept state
+  // Rematch state
   if (m.status === 'done') {
+    currentRematchRoomId = m.rematchRoomId || null;
     if (m.rematchRoomId) {
-      location.href = `/vs.html?room=${m.rematchRoomId}`;
+      const isTeam = Boolean(m.teamMode);
+      if (!isTeam) {
+        location.href = `/vs.html?room=${m.rematchRoomId}`;
+        return;
+      }
+      const offers = m.rematchOffers || {};
+      if (offers[playerId]) {
+        location.href = `/vs.html?room=${m.rematchRoomId}`;
+        return;
+      }
+      updateRematchUI(m.rematchOffers || {}, players);
       return;
     }
+    currentRematchRoomId = null;
     updateRematchUI(m.rematchOffers || {}, players);
   }
 
@@ -335,9 +449,74 @@ function updateLobbyUI(players) {
   if (oppId) vspOppName.textContent = players[oppId]?.name ?? '';
 }
 
-function startCountdown() {
+function updateTeamLobbyUI(players, m) {
+  if (vsTeamLobby.style.display === 'none' && m.status !== 'waiting' && m.status !== 'ready') return;
+  if (vsTeamLobby.style.display !== 'none') {
+    // Update team name labels
+    ['A', 'B'].forEach(tid => {
+      const nameEl = document.getElementById(`team-name-${tid}`);
+      if (nameEl) nameEl.textContent = m.teamNames?.[tid] || `Team ${tid}`;
+    });
+
+    // Render player chips per team
+    ['A', 'B'].forEach(tid => {
+      const container = document.getElementById(`team-avatars-${tid}`);
+      if (!container) return;
+      container.innerHTML = '';
+      Object.entries(players).forEach(([pid, p]) => {
+        if ((p.teamId || 'A') !== tid) return;
+        const chip = document.createElement('div');
+        chip.className = 'team-player-chip';
+        chip.innerHTML = `<div class="team-player-circle" style="background:${p.color}">${(p.name[0] || '?').toUpperCase()}</div>
+          <span class="team-player-name">${pid === playerId ? `${p.name} (you)` : p.name}</span>`;
+        container.appendChild(chip);
+      });
+    });
+
+    // Update join buttons — hide the one for my current team
+    const myTeamInLobby = players[playerId]?.teamId || 'A';
+    const btnA = document.getElementById('team-join-A');
+    const btnB = document.getElementById('team-join-B');
+    if (btnA) btnA.style.display = myTeamInLobby === 'A' ? 'none' : '';
+    if (btnB) btnB.style.display = myTeamInLobby === 'B' ? 'none' : '';
+
+    // Only creator can rename Team A; Team B members can rename Team B
+    const isCreator = creatorPlayerId === playerId;
+    const renBtnA = document.getElementById('team-rename-A');
+    const renBtnB = document.getElementById('team-rename-B');
+    if (renBtnA) renBtnA.style.display = isCreator ? '' : 'none';
+    if (renBtnB) renBtnB.style.display = myTeamInLobby === 'B' ? '' : 'none';
+
+    // Start button state (creator only)
+    if (vsTeamStartBtn && isCreator) {
+      const teamA = Object.values(players).filter(p => (p.teamId || 'A') === 'A');
+      const teamB = Object.values(players).filter(p => p.teamId === 'B');
+      const canStart = teamA.length >= 1 && teamB.length >= 1;
+      vsTeamStartBtn.disabled = !canStart;
+      vsTeamStartBtn.textContent = canStart ? 'Start Match' : 'Need at least 1 player per team';
+    }
+
+    // Status label
+    if (vsTeamLobbyStatus) {
+      const total = Object.keys(players).length;
+      const teamA = Object.values(players).filter(p => (p.teamId || 'A') === 'A').length;
+      const teamB = Object.values(players).filter(p => p.teamId === 'B').length;
+      vsTeamLobbyStatus.textContent = `${total} player${total !== 1 ? 's' : ''} joined (${teamA}v${teamB})`;
+    }
+  }
+
+  // Progress bar labels (update even after game starts)
+  const me = players[playerId];
+  if (me) vspMeName.textContent = (m.teamNames?.[me.teamId || 'A'] || `Team ${me.teamId || 'A'}`) + ' (your team)';
+}
+
+function startCountdown(teamMode) {
   return new Promise(resolve => {
-    vsLobby.style.display = 'none';
+    if (teamMode) {
+      vsTeamLobby.style.display = 'none';
+    } else {
+      vsLobby.style.display = 'none';
+    }
     vsCountdown.style.display = 'flex';
     const steps = ['3', '2', '1', 'GO!'];
     let i = 0;
@@ -354,24 +533,65 @@ function startCountdown() {
 async function startGame(room) {
   const { meta: m, pieces: existingPieces = {}, players = {} } = room;
   meta = m;
+  latestPlayers = players;
 
   vsGame.style.display = '';
-
-  // Compute split-board scale so both boards fit side by side
   scale = computeSplitScale();
 
   const count     = m.cols * m.rows;
   totalPieces     = count;
   const scattered = scatterFromSeed(m.seed, count, m.displayW, m.displayH, m.hardMode);
 
-  // Init my pieces in Firebase only if not already there
-  if (!existingPieces[playerId]) {
-    await initVSPieces(roomId, playerId, scattered);
-  }
+  if (m.teamMode) {
+    // ── Team mode board setup ────────────────────────────────────────────────
+    myTeamId  = players[playerId]?.teamId || 'A';
+    oppTeamId = myTeamId === 'A' ? 'B' : 'A';
+    myBoardKey  = myTeamId;
+    oppBoardKey = oppTeamId;
 
-  pieceStates = (existingPieces[playerId]
-    ? Object.values(existingPieces[playerId])
-    : scattered.map(p => ({ ...p, solved: false })));
+    // Deterministic team leader: alphabetically first player on my team
+    const teammates = Object.keys(players)
+      .filter(pid => (players[pid].teamId || 'A') === myTeamId)
+      .sort();
+    amTeamLeader = teammates[0] === playerId;
+
+    // Only team leader initialises the board if it doesn't exist yet
+    const existingTeamPieces = existingPieces[myBoardKey] || await getVSPiecesOnce(roomId, myBoardKey);
+    if (!existingTeamPieces && amTeamLeader) {
+      await initVSPieces(roomId, myBoardKey, scattered);
+    }
+
+    // Short wait for Firebase write to propagate if we just inited
+    const freshPieces = existingTeamPieces || (await getVSPiecesOnce(roomId, myBoardKey));
+    pieceStates = freshPieces
+      ? Object.values(freshPieces)
+      : scattered.map(p => ({ ...p, solved: false }));
+
+    // Board label row
+    const myTeamName  = m.teamNames?.[myTeamId]  || `Team ${myTeamId}`;
+    const oppTeamName = m.teamNames?.[oppTeamId] || `Team ${oppTeamId}`;
+    if (myBoardLabelEl) myBoardLabelEl.textContent = `${myTeamName} (your team)`;
+    if (oppBoardLabel)  oppBoardLabel.textContent  = oppTeamName;
+    if (vspMeName)      vspMeName.textContent      = myTeamName + ' (your team)';
+    if (vspOppName)     vspOppName.textContent     = oppTeamName;
+
+    renderBoardAvatars(players);
+  } else {
+    // ── 1v1 board setup ──────────────────────────────────────────────────────
+    myBoardKey = playerId;
+    amTeamLeader = true;
+
+    if (!existingPieces[playerId]) {
+      await initVSPieces(roomId, playerId, scattered);
+    }
+
+    pieceStates = (existingPieces[playerId]
+      ? Object.values(existingPieces[playerId])
+      : scattered.map(p => ({ ...p, solved: false })));
+
+    oppId = Object.keys(players).find(id => id !== playerId) ?? null;
+    oppBoardKey = oppId;
+  }
 
   solvedCount = pieceStates.filter(p => p.solved).length;
 
@@ -398,23 +618,25 @@ async function startGame(room) {
 
   updateMyProgress();
 
-  // Subscribe to my own piece changes
-  unsubPieces = onVSPieces(roomId, playerId, applyRemoteUpdate);
+  // Subscribe to my board changes (handles both teammates and solo)
+  unsubPieces = onVSPieces(roomId, myBoardKey, applyRemoteUpdate);
 
   // Set up opponent board
-  oppId = Object.keys(players).find(id => id !== playerId) ?? null;
-  if (oppId) {
-    const oppName = players[oppId]?.name || 'Opponent';
-    if (oppBoardLabel) oppBoardLabel.textContent = oppName;
-    vspOppName.textContent = oppName;
+  if (oppBoardKey) {
+    if (!m.teamMode) {
+      const oppName = players[oppId]?.name || 'Opponent';
+      if (oppBoardLabel) oppBoardLabel.textContent = oppName;
+      vspOppName.textContent = oppName;
+    }
 
     setupOppBoard();
-    const initialOppPieces = existingPieces[oppId]
-      ? Object.values(existingPieces[oppId])
+    const rawOppPieces = existingPieces[oppBoardKey] || await getVSPiecesOnce(roomId, oppBoardKey);
+    const initialOppPieces = rawOppPieces
+      ? Object.values(rawOppPieces)
       : scattered.map(p => ({ ...p, solved: false }));
     await renderOppPieces(initialOppPieces);
 
-    unsubOpp = onVSOpponentPieces(roomId, oppId, applyOppUpdate);
+    unsubOpp = onVSOpponentPieces(roomId, oppBoardKey, applyOppUpdate);
 
     if (m.chaosMode) {
       renderOppPowerupMarkers();
@@ -422,13 +644,34 @@ async function startGame(room) {
   }
 
   // Subscribe to incoming powerup effects (chaos mode)
+  // In team mode, effects are keyed by teamId so all team members receive them
   if (m.chaosMode) {
-    unsubEffects = onVSEffects(roomId, playerId, effect => {
+    const effectKey = m.teamMode ? myTeamId : playerId;
+    unsubEffects = onVSEffects(roomId, effectKey, effect => {
       applyEffect(effect);
     });
   }
 
   window.addEventListener('beforeunload', cleanup);
+}
+
+function renderBoardAvatars(players) {
+  if (!vsBoardAvatarsMe || !vsBoardAvatarsOpp) return;
+  vsBoardAvatarsMe.innerHTML  = '';
+  vsBoardAvatarsOpp.innerHTML = '';
+  Object.entries(players).forEach(([pid, p]) => {
+    const tid = p.teamId || 'A';
+    const circle = document.createElement('div');
+    circle.className = 'vs-board-avatar';
+    circle.style.background = p.color;
+    circle.title = p.name;
+    circle.textContent = (p.name[0] || '?').toUpperCase();
+    if (tid === myTeamId) {
+      vsBoardAvatarsMe.appendChild(circle);
+    } else {
+      vsBoardAvatarsOpp.appendChild(circle);
+    }
+  });
 }
 
 // ── Board + Rendering ─────────────────────────────────────────────────────────
@@ -727,7 +970,7 @@ function rotateAtIndex(index) {
   if (indices.length === 1) {
     pieceStates[index].rotation = newRot;
     movePieceEl(index, pieceStates[index].x, pieceStates[index].y);
-    updateVSPieceRotation(roomId, playerId, index, newRot);
+    updateVSPieceRotation(roomId, myBoardKey, index, newRot);
     return;
   }
 
@@ -745,7 +988,7 @@ function rotateAtIndex(index) {
     movePieceEl(i, newX, newY);
     positions.push({ index: i, x: newX, y: newY });
   });
-  updateVSGroupRotationAndPositions(roomId, playerId, positions, newRot);
+  updateVSGroupRotationAndPositions(roomId, myBoardKey, positions, newRot);
 }
 
 function onMouseDown(e) {
@@ -784,7 +1027,7 @@ function onMouseMove(e) {
   const { indices, relOffsets } = dragging;
   if (!dragging.locked) {
     dragging.locked = true;
-    lockVSGroup(roomId, playerId, indices, playerId);
+    lockVSGroup(roomId, myBoardKey, indices, playerId);
     indices.forEach(i => { pieceStates[i].lockedBy = playerId; });
     indices.forEach(i => {
       pieceEls[i]?.classList.add('dragging');
@@ -812,7 +1055,7 @@ function onMouseMove(e) {
     movePieceEl(i, x, y);
     positions.push({ index: i, x, y });
   });
-  updateVSGroupPosition(roomId, playerId, positions);
+  updateVSGroupPosition(roomId, myBoardKey, positions);
 }
 
 async function onMouseUp(e) {
@@ -854,13 +1097,13 @@ async function onMouseUp(e) {
     });
     mergeGroups(allIndices);
     const gid = pieceGroup[allIndices[0]];
-    await writeVSSnap(roomId, playerId, positions, gid);
+    await writeVSSnap(roomId, myBoardKey, positions, gid);
     checkSolvedState();
     checkPowerupTrigger(allIndices);
     updateMyProgress();
     checkCompletion();
   } else {
-    await unlockVSGroup(roomId, playerId, indices);
+    await unlockVSGroup(roomId, myBoardKey, indices);
     indices.forEach(i => { pieceStates[i].lockedBy = null; });
   }
 }
@@ -868,7 +1111,7 @@ async function onMouseUp(e) {
 function onTouchStart(e) {
   if (e.touches.length === 2) {
     if (dragging) {
-      if (dragging.locked) unlockVSGroup(roomId, playerId, dragging.indices);
+      if (dragging.locked) unlockVSGroup(roomId, myBoardKey, dragging.indices);
       dragging.indices.forEach(i => { pieceEls[i]?.classList.remove('dragging'); if (pieceEls[i]) pieceEls[i].style.zIndex = ''; });
       dragging = null;
     }
@@ -971,7 +1214,8 @@ function checkPowerupTrigger(mergedIndices) {
 }
 
 async function firePowerup(type, pieceIndex) {
-  if (!oppId) return;
+  const targetKey = meta.teamMode ? oppTeamId : oppId;
+  if (!targetKey) return;
   const effect = { type, fromPlayer: playerId };
 
   effect.sentAt = Date.now();
@@ -997,7 +1241,6 @@ async function firePowerup(type, pieceIndex) {
   }
 
   if (type === 'shuffle') {
-    // Count group sizes, only target groups with 2+ pieces
     const groupSizes = {};
     Object.values(oppPieceStates).forEach(p => {
       if (p?.groupId) groupSizes[p.groupId] = (groupSizes[p.groupId] ?? 0) + 1;
@@ -1018,8 +1261,8 @@ async function firePowerup(type, pieceIndex) {
     effect.positions = positions;
   }
 
-  await writeVSPowerupEarned(roomId, playerId, pieceIndex);
-  await writeVSEffect(roomId, oppId, effect);
+  await writeVSPowerupEarned(roomId, myBoardKey, pieceIndex);
+  await writeVSEffect(roomId, targetKey, effect);
 
   const SENT_NAMES = { bw: 'Grayscale', invert: 'Invert', scramble: 'Scramble', flip: 'Flip', shake: 'Shake', shuffle: 'Shuffle' };
   showPowerupToast(`🎉 ${SENT_NAMES[type] ?? type} sent!`, false);
@@ -1084,7 +1327,7 @@ function applyEffect(effect) {
       setFaceDown(i, true);
       batchPositions.push({ index: i, x: pos.x, y: pos.y });
     });
-    if (batchPositions.length) updateVSGroupPosition(roomId, playerId, batchPositions);
+    if (batchPositions.length && amTeamLeader) updateVSGroupPosition(roomId, myBoardKey, batchPositions);
   }
 
   if (effect.type === 'flip') {
@@ -1126,7 +1369,7 @@ function applyEffect(effect) {
       movePieceEl(i, pos.x, pos.y);
       batchPositions.push({ index: i, x: pos.x, y: pos.y });
     });
-    if (batchPositions.length) writeVSShufflePositions(roomId, playerId, batchPositions);
+    if (batchPositions.length && amTeamLeader) writeVSShufflePositions(roomId, myBoardKey, batchPositions);
   }
 
   updateEffectTimers();
@@ -1264,7 +1507,7 @@ function checkSolvedState() {
         updates[j] = { x: pieceStates[j].x, y: pieceStates[j].y };
       });
       solvedCount = totalPieces;
-      solveVSGroup(roomId, playerId, updates);
+      solveVSGroup(roomId, myBoardKey, updates);
       return;
     }
     return;
@@ -1351,36 +1594,57 @@ function checkCompletion() {
   const finishedAt = Date.now();
   const secs = Math.floor((finishedAt - startedAt) / 1000);
   setVSFinished(roomId, playerId, finishedAt);
-  setVSWinner(roomId, playerId, secs);
+  if (meta.teamMode && myTeamId) {
+    setVSWinnerTeam(roomId, myTeamId, secs);
+  } else {
+    setVSWinner(roomId, playerId, secs);
+  }
 }
 
 function showResult(room) {
   stopTimer();
   const { meta: m, players = {} } = room;
-  const winnerId = m.winner;
-  const iWon     = winnerId === playerId;
-  const oppId    = Object.keys(players).find(id => id !== playerId);
 
   vsResult.style.display = 'flex';
   vsGame.style.opacity   = '0.4';
 
-  vsResultTitle.textContent = iWon ? '🏆 You Won!' : '😔 You Lost';
+  if (m.teamMode && m.winnerTeamId) {
+    // Team mode result
+    const myT   = players[playerId]?.teamId || myTeamId || 'A';
+    const iWon  = myT === m.winnerTeamId;
+    const winnerName = m.teamNames?.[m.winnerTeamId] || `Team ${m.winnerTeamId}`;
+    const loserTeam  = m.winnerTeamId === 'A' ? 'B' : 'A';
+    const loserName  = m.teamNames?.[loserTeam] || `Team ${loserTeam}`;
 
-  const lines = [];
-  Object.entries(players).forEach(([pid, p]) => {
-    if (p.finishedAt && startedAt) {
-      const s = Math.floor((p.finishedAt - startedAt) / 1000);
-      lines.push(`${pid === playerId ? '⭐ ' : ''}${p.name}: ${formatTime(s)}`);
+    vsResultTitle.textContent = iWon ? `🏆 ${winnerName} Won!` : `😔 ${loserName} Lost`;
+    const secs = m.winnerSecs;
+    vsResultTimes.textContent = secs
+      ? `${winnerName} finished in ${formatTime(secs)}`
+      : `${winnerName} finished first!`;
+    vsScoreBoard.style.display = 'none';
+  } else {
+    // 1v1 result
+    const winnerId = m.winner;
+    const iWon     = winnerId === playerId;
+    const oppIdRes = Object.keys(players).find(id => id !== playerId);
+
+    vsResultTitle.textContent = iWon ? '🏆 You Won!' : '😔 You Lost';
+
+    const lines = [];
+    Object.entries(players).forEach(([pid, p]) => {
+      if (p.finishedAt && startedAt) {
+        const s = Math.floor((p.finishedAt - startedAt) / 1000);
+        lines.push(`${pid === playerId ? '⭐ ' : ''}${p.name}: ${formatTime(s)}`);
+      }
+    });
+    vsResultTimes.textContent = lines.join('  ·  ');
+
+    if (oppIdRes) {
+      const wins = recordWin(winnerId, oppIdRes);
+      vsScoreMe.textContent  = wins[playerId]   ?? 0;
+      vsScoreOpp.textContent = wins[oppIdRes]   ?? 0;
+      vsScoreBoard.style.display = '';
     }
-  });
-  vsResultTimes.textContent = lines.join('  ·  ');
-
-  // Win counter
-  if (oppId) {
-    const wins = recordWin(winnerId, oppId);
-    vsScoreMe.textContent  = wins[playerId]  ?? 0;
-    vsScoreOpp.textContent = wins[oppId]     ?? 0;
-    vsScoreBoard.style.display = '';
   }
 }
 
@@ -1429,73 +1693,63 @@ function setupPeek() {
   boxCover.addEventListener('click', hide);
 }
 
-// ── Rematch offer/accept ──────────────────────────────────────────────────────
+// ── Rematch ───────────────────────────────────────────────────────────────────
 
-async function handleRematchClick() {
+function isTeamModeRoom() { return Boolean(meta?.teamMode); }
+
+async function handleRematchButtonClick() {
+  if (isTeamModeRoom()) {
+    if (creatorPlayerId && creatorPlayerId === playerId) {
+      if (!canStartRematch || vsRematchBtn.disabled) return;
+      vsRematchBtn.disabled = true;
+      vsRematchBtn.textContent = 'Creating rematch…';
+      await createRematchRoomTeam();
+    } else {
+      await handleRematchClickTeam();
+    }
+  } else {
+    await handleRematchClick1v1();
+  }
+}
+
+function updateRematchUI(rematchOffers, players) {
+  if (isTeamModeRoom()) return updateRematchUITeam(rematchOffers, players);
+  return updateRematchUI1v1(rematchOffers, players);
+}
+
+// ── 1v1 rematch ───────────────────────────────────────────────────────────────
+
+async function handleRematchClick1v1() {
   if (rematchOffered) return;
   rematchOffered = true;
   vsRematchBtn.disabled = true;
   vsRematchBtn.textContent = 'Waiting for opponent…';
   await offerVSRematch(roomId, playerId);
-  // handleRoomUpdate will detect if both offered and create the room
 }
 
-async function createRematchRoom() {
-  const pieces  = meta?.pieces ?? 100;
-  const hard    = meta?.hardMode ?? false;
-  const chaos   = meta?.chaosMode ?? false;
-  try {
-    const res = await fetch(`/api/vs-create?pieces=${pieces}&hard=${hard}&chaos=${chaos}&json=1`);
-    const { roomId: newRoom } = await res.json();
-    if (!newRoom) return;
-
-    // Pre-join, pre-ready and pre-start so lobby + ready screen are skipped
-    const snap = await loadVSRoom(roomId);
-    const currentPlayers = snap.players || {};
-    await Promise.all(Object.entries(currentPlayers).map(([pid, p]) =>
-      joinVSRoom(newRoom, pid, p.name, p.color)
-        .then(() => setVSReady(newRoom, pid))
-    ));
-    // Set status to playing immediately — no need for the ready handshake
-    await setVSPlaying(newRoom);
-
-    await setVSRematch(roomId, newRoom);
-    // handleRoomUpdate will see rematchRoomId and redirect both players
-  } catch {
-    vsRematchBtn.disabled = false;
-    vsRematchBtn.textContent = '⚡ Rematch';
-    rematchOffered = false;
-  }
-}
-
-function updateRematchUI(rematchOffers, players) {
+function updateRematchUI1v1(rematchOffers, players) {
   if (!vsRematchBtn) return;
 
-  const iOffered   = !!rematchOffers[playerId];
-  const oppId      = Object.keys(players).find(id => id !== playerId);
-  const oppOffered = oppId ? !!rematchOffers[oppId] : false;
+  const iOffered    = !!rematchOffers[playerId];
+  const oppIdR      = Object.keys(players).find(id => id !== playerId);
+  const oppOffered  = oppIdR ? !!rematchOffers[oppIdR] : false;
   const bothOffered = iOffered && oppOffered;
 
-  if (bothOffered && !rematchOffered) {
-    // Edge case: both wrote offers simultaneously before either saw the other's
-    rematchOffered = true;
-  }
+  if (bothOffered && !rematchOffered) rematchOffered = true;
 
   if (bothOffered) {
-    // Both agreed — first player (alphabetically) creates the room once
     vsRematchBtn.disabled = true;
     vsRematchBtn.textContent = 'Creating rematch…';
     vsRematchBtn.classList.remove('rematch-accept');
     const ids = Object.keys(players).sort();
-    if (ids[0] === playerId && !createRematchRoom._called) {
-      createRematchRoom._called = true;
-      createRematchRoom();
+    if (ids[0] === playerId && !createRematchRoom1v1._called) {
+      createRematchRoom1v1._called = true;
+      createRematchRoom1v1();
     }
     return;
   }
 
   if (iOffered) {
-    // I offered — waiting
     vsRematchBtn.disabled = true;
     vsRematchBtn.textContent = 'Waiting for opponent…';
     vsRematchBtn.classList.remove('rematch-accept');
@@ -1503,17 +1757,132 @@ function updateRematchUI(rematchOffers, players) {
   }
 
   if (oppOffered) {
-    // Opponent offered — show Accept
     vsRematchBtn.disabled = false;
     vsRematchBtn.textContent = '✅ Accept Rematch!';
     vsRematchBtn.classList.add('rematch-accept');
     return;
   }
 
-  // Nobody offered yet
   vsRematchBtn.disabled = false;
   vsRematchBtn.textContent = '⚡ Rematch';
   vsRematchBtn.classList.remove('rematch-accept');
+}
+
+async function createRematchRoom1v1() {
+  const pieces = meta?.pieces ?? 100;
+  const hard   = meta?.hardMode ?? false;
+  const chaos  = meta?.chaosMode ?? false;
+  try {
+    const res = await fetch(`/api/vs-create?pieces=${pieces}&hard=${hard}&chaos=${chaos}&json=1`);
+    const { roomId: newRoom } = await res.json();
+    if (!newRoom) return;
+
+    const snap = await loadVSRoom(roomId);
+    const currentPlayers = snap.players || {};
+    await Promise.all(Object.entries(currentPlayers).map(([pid, p]) =>
+      joinVSRoom(newRoom, pid, p.name, p.color).then(() => setVSReady(newRoom, pid))
+    ));
+    await setVSPlaying(newRoom);
+    await setVSRematch(roomId, newRoom);
+  } catch {
+    vsRematchBtn.disabled = false;
+    vsRematchBtn.textContent = '⚡ Rematch';
+    rematchOffered = false;
+  }
+}
+
+// ── Team rematch (opt-in + creator-only start) ────────────────────────────────
+
+async function handleRematchClickTeam() {
+  if (creatorPlayerId && creatorPlayerId === playerId) return;
+  if (rematchOffered) return;
+  rematchOffered = true;
+  vsRematchBtn.disabled = true;
+  vsRematchBtn.textContent = '✅ Rematch Requested';
+  await offerVSRematch(roomId, playerId);
+}
+
+function updateRematchUITeam(rematchOffers, players) {
+  if (!vsRematchBtn) return;
+
+  const iOffered   = !!rematchOffers[playerId];
+  rematchOffered   = iOffered;
+  const presentIds = Object.keys(players || {});
+  const isCreator  = creatorPlayerId && creatorPlayerId === playerId;
+  const optedIn    = presentIds.filter(pid => !!rematchOffers[pid]);
+  const optedInOthers = optedIn.filter(pid => pid !== creatorPlayerId);
+
+  canStartRematch = Boolean(isCreator && presentIds.length >= 2 && optedInOthers.length >= 1);
+
+  if (currentRematchRoomId) {
+    vsRematchBtn.disabled = true;
+    vsRematchBtn.textContent = '⚡ Rematch in progress';
+    vsRematchBtn.classList.remove('rematch-accept');
+    return;
+  }
+
+  if (presentIds.length < 2) {
+    vsRematchBtn.disabled = true;
+    vsRematchBtn.textContent = 'Waiting for opponent…';
+    vsRematchBtn.classList.remove('rematch-accept');
+    return;
+  }
+
+  if (isCreator) {
+    vsRematchBtn.disabled = !canStartRematch;
+    vsRematchBtn.textContent = canStartRematch ? '⚡ Start Rematch' : 'Waiting for rematch requests…';
+    vsRematchBtn.classList.remove('rematch-accept');
+    return;
+  }
+
+  if (iOffered) {
+    vsRematchBtn.disabled = true;
+    vsRematchBtn.textContent = '✅ Rematch Requested';
+    vsRematchBtn.classList.remove('rematch-accept');
+    return;
+  }
+
+  vsRematchBtn.disabled = false;
+  vsRematchBtn.textContent = '⚡ Request Rematch';
+  vsRematchBtn.classList.remove('rematch-accept');
+}
+
+async function createRematchRoomTeam() {
+  const pieces   = meta?.pieces ?? 100;
+  const hard     = meta?.hardMode ?? false;
+  const chaos    = meta?.chaosMode ?? false;
+  const teamMode = true;
+  try {
+    const res = await fetch(`/api/vs-create?pieces=${pieces}&hard=${hard}&chaos=${chaos}&teamMode=${teamMode}&json=1`);
+    const { roomId: newRoom } = await res.json();
+    if (!newRoom) return;
+
+    const snap = await loadVSRoom(roomId);
+    const currentPlayers = snap.players || {};
+    const offers = snap.meta?.rematchOffers || {};
+    const optedIn = Object.keys(currentPlayers).filter(pid => !!offers[pid]);
+    if (creatorPlayerId && !optedIn.includes(creatorPlayerId)) optedIn.push(creatorPlayerId);
+    if (optedIn.length < 2) return;
+
+    optedIn.sort((a, b) => {
+      if (a === creatorPlayerId) return -1;
+      if (b === creatorPlayerId) return 1;
+      return a.localeCompare(b);
+    });
+
+    await Promise.all(optedIn.map(pid => {
+      const p = currentPlayers[pid];
+      return joinVSRoom(newRoom, pid, p.name, p.color)
+        .then(() => p.teamId ? setVSTeamId(newRoom, pid, p.teamId) : Promise.resolve())
+        .then(() => setVSReady(newRoom, pid));
+    }));
+    await setVSPlaying(newRoom);
+    await setVSRematch(roomId, newRoom);
+  } catch {
+    vsRematchBtn.disabled = false;
+    vsRematchBtn.textContent = '⚡ Rematch';
+    rematchOffered = false;
+  }
 }
 
 // ── Chat ──────────────────────────────────────────────────────────────────────
@@ -1616,5 +1985,5 @@ function cleanup() {
   if (unsubOpp)     { unsubOpp();     unsubOpp     = null; }
   if (unsubEffects) { unsubEffects(); unsubEffects = null; }
   stopTimer();
-  if (dragging?.locked) unlockVSGroup(roomId, playerId, dragging.indices);
+  if (dragging?.locked) unlockVSGroup(roomId, myBoardKey, dragging.indices);
 }
