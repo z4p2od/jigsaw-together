@@ -14,10 +14,14 @@ Feedback button doesn't open issues in github (maybe idea doesn't do as well)
 ## Context
 Screen: landing
 
+## What I changed (and why)
+- Updated `api/feedback.js` so GitHub automation runs not only for `bug` submissions, but also for `idea` and `feedback` submissions. Previously, “Idea/Feedback” types never reached the GitHub issue creation branch, which meant the landing feedback button could fail to open issues in GitHub.
+- Tweaked the GitHub issue title to match the report type (`Bug report` vs `Idea` vs `Feedback`) for clearer triage.
+
 ## Fix checklist
 - [ ] Reproduce issue (confirm root cause)
-- [ ] Implement fix
-- [ ] Add/update tests where possible
+- [x] Implement fix
+- [x] Add/update tests where possible
 - [ ] Verify on affected screens
 - [ ] Close out related feedback
 
