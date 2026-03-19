@@ -628,8 +628,8 @@ function getOrCreateFakeCursor() {
   if (fakeCursor) return fakeCursor;
   fakeCursor = document.createElement('div');
   fakeCursor.id = 'fake-cursor';
-  fakeCursor.style.cssText = 'position:fixed;width:20px;height:20px;pointer-events:none;z-index:9999;display:none;' +
-    'background:url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'20\' height=\'20\' viewBox=\'0 0 20 20\'%3E%3Cpath d=\'M0 0 L0 16 L4 12 L7 19 L9 18 L6 11 L11 11 Z\' fill=\'white\' stroke=\'black\' stroke-width=\'1\'/%3E%3C/svg%3E") no-repeat';
+  fakeCursor.style.cssText = 'position:fixed;width:24px;height:24px;pointer-events:none;z-index:9999;display:none';
+  fakeCursor.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9 3 C9 2 10 1 11 1 C12 1 13 2 13 3 L13 10 L14.5 8.5 C15 8 16 8 16.5 8.5 C17 9 17 10 16.5 10.5 L14 13 C14 13 14 17 12 19 C10.5 20.5 8 21 6 19.5 C4 18 4 15 4 13 L4 8 C4 7 5 6 6 6 C7 6 8 7 8 8 L8 3 C8 2 8.5 1.5 9 1.5 Z" fill="white" stroke="black" stroke-width="1" stroke-linejoin="round"/></svg>';
   document.body.appendChild(fakeCursor);
   return fakeCursor;
 }
@@ -654,8 +654,8 @@ function updateFakeCursor(clientX, clientY) {
     return;
   }
   const { clientX: mx, clientY: my } = mirrorCoords(clientX, clientY);
-  fc.style.left = (mx - 2) + 'px';
-  fc.style.top  = (my - 2) + 'px';
+  fc.style.left = (mx - 9) + 'px';
+  fc.style.top  = (my - 1) + 'px';
   syncCursorVisibility();
 }
 

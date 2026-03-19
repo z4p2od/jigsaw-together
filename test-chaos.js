@@ -128,8 +128,8 @@ window.addEventListener('mousemove', e => {
   // Always update fake cursor
   if (invertActive) {
     const { clientX: mx, clientY: my } = mirrorCoords(e.clientX, e.clientY);
-    fakeCursor.style.left = (mx - 4) + 'px';
-    fakeCursor.style.top  = (my - 4) + 'px';
+    fakeCursor.style.left = (mx - 9) + 'px';
+    fakeCursor.style.top  = (my - 1) + 'px';
   }
 
   if (!dragging) return;
