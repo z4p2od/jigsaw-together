@@ -1052,7 +1052,7 @@ function applyEffect(effect) {
     clearTimeout(activeEffects.bwTimer);
     activeEffects.bwTimer = setTimeout(() => {
       board.classList.remove('board-grayscale');
-      activeEffects.bwExpiresAt = 0;
+      activeEffects.bwExpiresAt = 0; updateEffectTimers();
     }, Math.max(0, expiresAt - Date.now()));
   }
 
@@ -1067,6 +1067,7 @@ function applyEffect(effect) {
       invertActive = false;
       activeEffects.invertExpiresAt = 0;
       syncCursorVisibility();
+      updateEffectTimers();
     }, Math.max(0, expiresAt - Date.now()));
   }
 
@@ -1092,6 +1093,7 @@ function applyEffect(effect) {
     activeEffects.flipTimer = setTimeout(() => {
       board.classList.remove('board-flip');
       activeEffects.flipExpiresAt = 0;
+      updateEffectTimers();
     }, Math.max(0, expiresAt - Date.now()));
   }
 
@@ -1103,6 +1105,7 @@ function applyEffect(effect) {
     activeEffects.shakeTimer = setTimeout(() => {
       board.parentElement.classList.remove('board-shake');
       activeEffects.shakeExpiresAt = 0;
+      updateEffectTimers();
     }, Math.max(0, expiresAt - Date.now()));
   }
 
@@ -1123,6 +1126,8 @@ function applyEffect(effect) {
     });
     if (batchPositions.length) writeVSShufflePositions(roomId, playerId, batchPositions);
   }
+
+  updateEffectTimers();
 }
 
 function setFaceDown(index, faceDown) {
@@ -1137,8 +1142,48 @@ function setFaceDown(index, faceDown) {
   }
 }
 
-const powerupToastEl = document.getElementById('powerup-toast');
+const powerupToastEl  = document.getElementById('powerup-toast');
+const effectTimersEl  = document.getElementById('vs-effect-timers');
 let toastTimer = null;
+
+const EFFECT_TIMER_DEFS = [
+  { key: 'bw',     label: 'Grayscale',  color: '#6b7280', bar: '#9ca3af', duration: 20000 },
+  { key: 'invert', label: 'Invert',     color: '#7c3aed', bar: '#a78bfa', duration: 20000 },
+  { key: 'flip',   label: 'Flip',       color: '#ef4444', bar: '#f87171', duration: 20000 },
+  { key: 'shake',  label: 'Shake',      color: '#ea580c', bar: '#fb923c', duration: 10000 },
+];
+
+function updateEffectTimers() {
+  if (!effectTimersEl) return;
+  const now    = Date.now();
+  const active = EFFECT_TIMER_DEFS.filter(d => (activeEffects[d.key + 'ExpiresAt'] ?? 0) > now);
+  effectTimersEl.style.display = active.length ? '' : 'none';
+  EFFECT_TIMER_DEFS.forEach(d => { document.getElementById('vset-' + d.key)?.remove(); });
+  active.forEach(d => {
+    const item = document.createElement('div');
+    item.className = 'vs-effect-item';
+    item.id = 'vset-' + d.key;
+    item.innerHTML = `<div class="vs-effect-dot" style="background:${d.color}"></div>`
+      + `<span>${d.label}</span>`
+      + `<div class="vs-effect-track"><div class="vs-effect-fill" id="vsef-${d.key}" style="background:${d.bar}"></div></div>`
+      + `<span class="vs-effect-time" id="vset-time-${d.key}"></span>`;
+    effectTimersEl.appendChild(item);
+  });
+}
+
+setInterval(() => {
+  if (!effectTimersEl) return;
+  const now = Date.now();
+  EFFECT_TIMER_DEFS.forEach(d => {
+    const expiresAt = activeEffects[d.key + 'ExpiresAt'] ?? 0;
+    const fillEl = document.getElementById('vsef-' + d.key);
+    const timeEl = document.getElementById('vset-time-' + d.key);
+    if (!fillEl || !timeEl) return;
+    const ms = Math.max(0, expiresAt - now);
+    fillEl.style.width = Math.min(100, (ms / d.duration) * 100) + '%';
+    timeEl.textContent = Math.ceil(ms / 1000) + 's';
+  });
+}, 200);
 
 function showPowerupToast(msg, isReceived) {
   if (!powerupToastEl) return;
