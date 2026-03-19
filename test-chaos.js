@@ -9,7 +9,14 @@ const myBoard    = document.getElementById('my-board');
 const oppBoard   = document.getElementById('opp-board');
 const myWrap     = document.getElementById('my-wrap');
 const oppWrap    = document.getElementById('opp-wrap');
-const fakeCursor = document.getElementById('fake-cursor');
+const fakeCursor   = document.getElementById('fake-cursor');
+const cursorOpen   = document.getElementById('cursor-open');
+const cursorGrab   = document.getElementById('cursor-grab');
+
+function setGrabbing(on) {
+  cursorOpen.style.display = on ? 'none' : '';
+  cursorGrab.style.display = on ? '' : 'none';
+}
 
 myBoard.style.cssText  = 'position:absolute;inset:0';
 oppBoard.style.cssText = 'position:absolute;inset:0';
@@ -99,6 +106,7 @@ function startDrag(el, board, wrap, clientX, clientY) {
   const offY = clientY - rect.top  - parseInt(el.style.top);
   dragging = { el, offX, offY, wrap };
   el.style.zIndex = 1000;
+  setGrabbing(true);
 }
 
 myBoard.addEventListener('mousedown', e => {
@@ -142,6 +150,7 @@ window.addEventListener('mouseup', () => {
   if (!dragging) return;
   dragging.el.style.zIndex = '';
   dragging = null;
+  setGrabbing(false);
 });
 
 // Hide fake cursor only when mouse leaves and invert is off
