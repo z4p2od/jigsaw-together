@@ -57,13 +57,26 @@ function generateEdges(cols, rows) {
 }
 
 async function listPoolImages() {
-  const auth = Buffer.from(`${process.env.CLOUDINARY_API_KEY}:${process.env.CLOUDINARY_API_SECRET}`).toString('base64');
+  const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+  const apiKey = process.env.CLOUDINARY_API_KEY;
+  const apiSecret = process.env.CLOUDINARY_API_SECRET;
+  if (!cloudName || !apiKey || !apiSecret) return [];
+
+  const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
   const r = await fetch(
-    `https://api.cloudinary.com/v1_1/${process.env.CLOUDINARY_CLOUD_NAME}/resources/image/upload?folder=puzzle-library&max_results=500`,
+    `https://api.cloudinary.com/v1_1/${cloudName}/resources/image/upload?folder=puzzle-library&max_results=500`,
     { headers: { Authorization: `Basic ${auth}` } }
   );
-  const data = await r.json();
-  return data.resources || [];
+
+  // Cloudinary sometimes returns non-JSON bodies for auth/rate-limit errors.
+  // Avoid throwing on JSON parse here; treat it as "no images".
+  const text = await r.text().catch(() => '');
+  try {
+    const data = JSON.parse(text);
+    return data?.resources || [];
+  } catch {
+    return [];
+  }
 }
 
 function fbPut(path, value) {
@@ -85,60 +98,72 @@ function fbPatch(path, value) {
 }
 
 export default async function handler(req, res) {
-  const rawPieces  = parseInt(req.query.pieces, 10);
-  const PIECE_COUNT = ALLOWED_PIECES.includes(rawPieces) ? rawPieces : 100;
-  const chaosMode  = req.query.chaos === 'true';
-  const hardMode   = !chaosMode && req.query.hard === 'true';
+  try {
+    const query = req.query || {};
+    const rawPieces = parseInt(query.pieces, 10);
+    const PIECE_COUNT = ALLOWED_PIECES.includes(rawPieces) ? rawPieces : 100;
+    const chaosMode = query.chaos === 'true';
+    const hardMode = !chaosMode && query.hard === 'true';
 
-  const images = await listPoolImages();
-  if (images.length === 0) return res.status(500).json({ error: 'No images available' });
+    const images = await listPoolImages();
+    if (images.length === 0) return res.status(500).json({ error: 'No images available' });
 
-  const image = images[Math.floor(Math.random() * images.length)];
-  const imgW  = image.width;
-  const imgH  = image.height;
+    const image = images[Math.floor(Math.random() * images.length)];
+    const imgW = Number(image?.width) || 1000;
+    const imgH = Number(image?.height) || 800;
 
-  const { cols, rows } = calculateGrid(PIECE_COUNT, imgW, imgH);
-  const pieceW   = Math.floor(imgW / cols);
-  const pieceH   = Math.floor(imgH / rows);
-  const scale    = Math.min((BOARD_W * 0.55) / imgW, (BOARD_H * 0.55) / imgH, 1);
-  const displayW = Math.floor(pieceW * scale);
-  const displayH = Math.floor(pieceH * scale);
+    const { cols, rows } = calculateGrid(PIECE_COUNT, imgW, imgH);
+    const pieceW = Math.floor(imgW / cols);
+    const pieceH = Math.floor(imgH / rows);
+    const scale = Math.min((BOARD_W * 0.55) / imgW, (BOARD_H * 0.55) / imgH, 1);
+    const displayW = Math.floor(pieceW * scale);
+    const displayH = Math.floor(pieceH * scale);
 
-  const edges  = generateEdges(cols, rows);
-  const seed   = (Math.random() * 1e9) | 0; // shared scatter seed
-  const roomId = crypto.randomUUID();
+    const edges = generateEdges(cols, rows);
+    const seed = (Math.random() * 1e9) | 0; // shared scatter seed
+    const roomId = crypto.randomUUID();
 
-  const createdAt = Date.now();
+    const createdAt = Date.now();
 
-  await fbPut(`vs/${roomId}`, {
-    meta: {
-      imageUrl: image.secure_url,
-      cols, rows, pieceW, pieceH, displayW, displayH,
-      edges, seed,
+    await fbPut(`vs/${roomId}`, {
+      meta: {
+        imageUrl: image?.secure_url || null,
+        cols,
+        rows,
+        pieceW,
+        pieceH,
+        displayW,
+        displayH,
+        edges,
+        seed,
+        pieces: PIECE_COUNT,
+        hardMode,
+        chaosMode,
+        status: 'waiting',
+        winner: null,
+        winnerSecs: null,
+        createdAt,
+      },
+      players: {},
+      pieces: {},
+    });
+
+    // Write a lightweight index entry for the open rooms browser
+    await fbPatch(`vs-index/${roomId}`, {
       pieces: PIECE_COUNT,
       hardMode,
       chaosMode,
       status: 'waiting',
-      winner: null,
-      winnerSecs: null,
       createdAt,
-    },
-    players: {},
-    pieces:  {},
-  });
+      creatorName: null,
+    });
 
-  // Write a lightweight index entry for the open rooms browser
-  await fbPatch(`vs-index/${roomId}`, {
-    pieces: PIECE_COUNT,
-    hardMode,
-    chaosMode,
-    status: 'waiting',
-    createdAt,
-    creatorName: null,
-  });
-
-  if (req.query.json === '1') {
-    return res.json({ roomId });
+    if (query.json === '1') {
+      return res.json({ roomId });
+    }
+    res.redirect(302, `/vs.html?room=${roomId}`);
+  } catch (err) {
+    console.error('vs-create failed', err);
+    return res.status(500).json({ error: 'Failed to create VS room' });
   }
-  res.redirect(302, `/vs.html?room=${roomId}`);
 }
