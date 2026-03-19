@@ -139,6 +139,7 @@ chat/{puzzleId}/{pushId}/  playerId, name, color, text, ts
 | `CLOUDINARY_API_SECRET` | api/* | |
 | `CLOUDINARY_UPLOAD_PRESET` | api/cloudinary-config.js | Unsigned upload preset |
 | `CLEANUP_SECRET` | api/cleanup.js | Bearer token Vercel sends to cron routes |
+| `FEEDBACK_ADMIN_TOKEN` | api/feedback-list.js, api/feedback-triage.js, scripts/feedback-agent.mjs | Admin token for secure feedback triage/listing |
 
 ---
 
@@ -151,3 +152,81 @@ npx vercel dev
 ```
 
 Requires a `.env` file (or Vercel environment variables) with the vars above.
+
+---
+
+## Feedback Triage Automation
+
+The app includes:
+
+- `POST /api/feedback` — stores player bug/feedback submissions
+  - For `type=bug`, it also auto-triages immediately and attempts GitHub automation (draft PR if confident, otherwise an issue)
+- `GET /api/feedback-list?limit=50` — admin-only list endpoint
+- `POST /api/feedback-triage` — admin-only triage status updater
+- `POST /api/feedback-delete` — admin-only archive+delete a resolved report
+- `scripts/feedback-agent.mjs` — local CLI helper for triage + PR scaffolding
+
+### Run the triage helper
+
+Set env vars:
+
+```bash
+export FEEDBACK_BASE_URL="http://localhost:3000"
+export FEEDBACK_ADMIN_TOKEN="your-shared-admin-token"
+```
+
+Dry-run classification:
+
+```bash
+node scripts/feedback-agent.mjs triage --limit 50
+```
+
+Apply triage results back to Firebase:
+
+```bash
+node scripts/feedback-agent.mjs triage --limit 50 --apply --reviewer "cursor-agent"
+```
+
+Aggressive bug labeling (default):
+
+```bash
+export FEEDBACK_AGENT_MODE="aggressive"
+```
+
+More conservative labeling:
+
+```bash
+export FEEDBACK_AGENT_MODE="conservative"
+```
+
+Seed a fix branch + draft PR for one feedback item:
+
+```bash
+node scripts/feedback-agent.mjs seed-pr --id "<feedbackId>"
+```
+
+This creates a branch, adds a fix brief in `docs/feedback-fixes/`, pushes the branch, opens a draft PR via `gh`, and marks the report as `in_progress`.
+
+### GitHub automation env vars (for auto PR/issue)
+
+Set these in Vercel:
+
+```bash
+export GITHUB_TOKEN="ghp_... (PAT) with repo access"
+export GITHUB_REPO="owner/jigsaw-together"
+export GITHUB_BASE_BRANCH="main" # optional (default: main)
+```
+
+When `POST /api/feedback` receives a `type=bug` submission, the server attempts:
+
+- If confidence is high: open a **draft PR** with a scaffold fix brief under `docs/feedback-fixes/`
+- Otherwise: open a **GitHub issue** with the report + triage explanation
+
+### Cursor Cloud Agent auto-fix (optional)
+
+If you also set `CURSOR_API_KEY`, the server will additionally launch a Cursor Cloud Agent **on the created draft PR** so Cursor can implement the fix.
+
+```bash
+export CURSOR_API_KEY="from Cursor Dashboard (Cloud Agents)"
+export CURSOR_MODEL="default" # optional
+```
