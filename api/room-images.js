@@ -54,13 +54,17 @@ export default async function handler(req, res) {
 
   let resources = [];
   if (cloudName) {
-    // Try `folder` first (more intuitive), then `prefix` as a fallback.
+    // IMPORTANT: only use `prefix` for scoping.
+    // `folder=` isn't consistently honored by Cloudinary's resources listing,
+    // which is why we were leaking non-puzzle-library images to `/play`.
+    const prefixA = `${folder}/`;
+    const prefixB = folder;
     resources = await fetchResources(
-      `https://api.cloudinary.com/v1_1/${cloudName}/resources/image/upload?folder=${encodeURIComponent(folder)}&max_results=500`
+      `https://api.cloudinary.com/v1_1/${cloudName}/resources/image/upload?prefix=${encodeURIComponent(prefixA)}&max_results=500`
     );
     if (resources.length === 0) {
       resources = await fetchResources(
-        `https://api.cloudinary.com/v1_1/${cloudName}/resources/image/upload?prefix=${encodeURIComponent(folder)}&max_results=500`
+        `https://api.cloudinary.com/v1_1/${cloudName}/resources/image/upload?prefix=${encodeURIComponent(prefixB)}&max_results=500`
       );
     }
   }
@@ -79,6 +83,15 @@ export default async function handler(req, res) {
     filtered = (resources || []).filter(isResourceInPuzzleLibrary);
   }
 
+  console.log('room-images debug', {
+    cloudName,
+    fetched: resources.length,
+    filtered: filtered.length,
+    sample: resources[0]
+      ? { public_id: resources[0].public_id, folder: resources[0].folder, url: resources[0].secure_url }
+      : null,
+  });
+
   const images = filtered
     // Some Cloudinary responses store width/height as strings.
     .filter(img => Boolean(img?.secure_url))
@@ -89,6 +102,7 @@ export default async function handler(req, res) {
     }))
     .filter(img => Number.isFinite(img.width) && Number.isFinite(img.height));
 
-  res.setHeader('Cache-Control', 'public, max-age=300'); // 5-min cache
+  // Avoid browser caching masking changes while debugging.
+  res.setHeader('Cache-Control', 'no-store, max-age=0');
   res.json(images);
 }
