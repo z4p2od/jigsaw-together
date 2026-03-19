@@ -299,12 +299,19 @@ function handleRoomUpdate(room) {
   if (m.status === 'done') {
     currentRematchRoomId = m.rematchRoomId || null;
     if (m.rematchRoomId) {
+      const isTeamMode = Boolean(m.teamMode);
+      if (!isTeamMode) {
+        // 1v1: keep original behavior (redirect everyone).
+        location.href = `/vs.html?room=${m.rematchRoomId}`;
+        return;
+      }
+
+      // Team mode: redirect only opted-in players.
       const offers = m.rematchOffers || {};
       if (offers[playerId]) {
         location.href = `/vs.html?room=${m.rematchRoomId}`;
         return;
       }
-      // Not opted-in: stay on this room result screen.
       updateRematchUI(offers, players);
       return;
     }
@@ -1449,28 +1456,72 @@ function setupPeek() {
 
 // ── Rematch offer/accept ──────────────────────────────────────────────────────
 
-async function handleRematchClick() {
-  if (creatorPlayerId && creatorPlayerId === playerId) return;
+function isTeamMode() {
+  // Team mode is enabled when meta.teamMode is true.
+  // Existing rooms that don't have this field use the original 1v1 rematch logic.
+  return Boolean(meta?.teamMode);
+}
+
+// ── 1v1 rematch (original behavior) ──────────────────────────────────────────
+
+async function handleRematchClick1v1() {
   if (rematchOffered) return;
   rematchOffered = true;
   vsRematchBtn.disabled = true;
-  vsRematchBtn.textContent = '✅ Rematch Requested';
+  vsRematchBtn.textContent = 'Waiting for opponent…';
   await offerVSRematch(roomId, playerId);
+  // handleRoomUpdate will detect if both offered and create the room
 }
 
-async function handleRematchButtonClick() {
-  if (creatorPlayerId && creatorPlayerId === playerId) {
-    if (!canStartRematch) return;
-    if (vsRematchBtn.disabled) return;
+function updateRematchUI1v1(rematchOffers, players) {
+  if (!vsRematchBtn) return;
+
+  const iOffered   = !!rematchOffers[playerId];
+  const oppId      = Object.keys(players).find(id => id !== playerId);
+  const oppOffered = oppId ? !!rematchOffers[oppId] : false;
+  const bothOffered = iOffered && oppOffered;
+
+  if (bothOffered && !rematchOffered) {
+    // Edge case: both wrote offers simultaneously before either saw the other's
+    rematchOffered = true;
+  }
+
+  if (bothOffered) {
+    // Both agreed — first player (alphabetically) creates the room once
     vsRematchBtn.disabled = true;
     vsRematchBtn.textContent = 'Creating rematch…';
-    await createRematchRoom();
+    vsRematchBtn.classList.remove('rematch-accept');
+    const ids = Object.keys(players).sort();
+    if (ids[0] === playerId && !createRematchRoom1v1._called) {
+      createRematchRoom1v1._called = true;
+      createRematchRoom1v1();
+    }
     return;
   }
-  await handleRematchClick();
+
+  if (iOffered) {
+    // I offered — waiting
+    vsRematchBtn.disabled = true;
+    vsRematchBtn.textContent = 'Waiting for opponent…';
+    vsRematchBtn.classList.remove('rematch-accept');
+    return;
+  }
+
+  if (oppOffered) {
+    // Opponent offered — show Accept
+    vsRematchBtn.disabled = false;
+    vsRematchBtn.textContent = '✅ Accept Rematch!';
+    vsRematchBtn.classList.add('rematch-accept');
+    return;
+  }
+
+  // Nobody offered yet
+  vsRematchBtn.disabled = false;
+  vsRematchBtn.textContent = '⚡ Rematch';
+  vsRematchBtn.classList.remove('rematch-accept');
 }
 
-async function createRematchRoom() {
+async function createRematchRoom1v1() {
   const pieces  = meta?.pieces ?? 100;
   const hard    = meta?.hardMode ?? false;
   const chaos   = meta?.chaosMode ?? false;
@@ -1482,26 +1533,15 @@ async function createRematchRoom() {
     // Pre-join, pre-ready and pre-start so lobby + ready screen are skipped
     const snap = await loadVSRoom(roomId);
     const currentPlayers = snap.players || {};
-    const offers = snap.meta?.rematchOffers || {};
-    const optedIn = Object.keys(currentPlayers).filter(pid => !!offers[pid]);
-    if (optedIn.length < 2) return;
-
-    // Put creator first so "first joiner becomes creator" is stable.
-    optedIn.sort((a, b) => {
-      if (a === creatorPlayerId) return -1;
-      if (b === creatorPlayerId) return 1;
-      return a.localeCompare(b);
-    });
-
-    await Promise.all(optedIn.map(pid => {
-      const p = currentPlayers[pid];
-      return joinVSRoom(newRoom, pid, p.name, p.color)
-        .then(() => setVSReady(newRoom, pid));
-    }));
+    await Promise.all(Object.entries(currentPlayers).map(([pid, p]) =>
+      joinVSRoom(newRoom, pid, p.name, p.color)
+        .then(() => setVSReady(newRoom, pid))
+    ));
     // Set status to playing immediately — no need for the ready handshake
     await setVSPlaying(newRoom);
 
     await setVSRematch(roomId, newRoom);
+    // handleRoomUpdate will see rematchRoomId and redirect both players
   } catch {
     vsRematchBtn.disabled = false;
     vsRematchBtn.textContent = '⚡ Rematch';
@@ -1509,7 +1549,19 @@ async function createRematchRoom() {
   }
 }
 
-function updateRematchUI(rematchOffers, players) {
+// ── Team rematch (opt-in + creator-only start) ───────────────────────────────
+
+async function handleRematchClickTeam() {
+  // Non-creators request; creator starts.
+  if (creatorPlayerId && creatorPlayerId === playerId) return;
+  if (rematchOffered) return;
+  rematchOffered = true;
+  vsRematchBtn.disabled = true;
+  vsRematchBtn.textContent = '✅ Rematch Requested';
+  await offerVSRematch(roomId, playerId);
+}
+
+function updateRematchUITeam(rematchOffers, players) {
   if (!vsRematchBtn) return;
 
   const iOffered = !!rematchOffers[playerId];
@@ -1519,10 +1571,13 @@ function updateRematchUI(rematchOffers, players) {
   const isCreator = creatorPlayerId && creatorPlayerId === playerId;
   const optedIn = presentIds.filter(pid => !!rematchOffers[pid]);
 
+  // MVP gating: creator can start when at least one *other* player opted in.
+  // (When teamId exists, we can tighten this to "at least 1 per team".)
+  const optedInOthers = optedIn.filter(pid => pid !== creatorPlayerId);
   canStartRematch = Boolean(
     isCreator &&
     presentIds.length >= 2 &&
-    optedIn.length === presentIds.length
+    optedInOthers.length >= 1
   );
 
   if (currentRematchRoomId) {
@@ -1556,6 +1611,70 @@ function updateRematchUI(rematchOffers, players) {
   vsRematchBtn.disabled = false;
   vsRematchBtn.textContent = '⚡ Request Rematch';
   vsRematchBtn.classList.remove('rematch-accept');
+}
+
+async function createRematchRoomTeam() {
+  const pieces  = meta?.pieces ?? 100;
+  const hard    = meta?.hardMode ?? false;
+  const chaos   = meta?.chaosMode ?? false;
+  try {
+    const res = await fetch(`/api/vs-create?pieces=${pieces}&hard=${hard}&chaos=${chaos}&json=1`);
+    const { roomId: newRoom } = await res.json();
+    if (!newRoom) return;
+
+    // Move only opted-in players; creator must be included implicitly.
+    const snap = await loadVSRoom(roomId);
+    const currentPlayers = snap.players || {};
+    const offers = snap.meta?.rematchOffers || {};
+    const optedIn = Object.keys(currentPlayers).filter(pid => !!offers[pid]);
+    if (creatorPlayerId && !optedIn.includes(creatorPlayerId)) optedIn.push(creatorPlayerId);
+    if (optedIn.length < 2) return;
+
+    // Put creator first so "first joiner becomes creator" is stable.
+    optedIn.sort((a, b) => {
+      if (a === creatorPlayerId) return -1;
+      if (b === creatorPlayerId) return 1;
+      return a.localeCompare(b);
+    });
+
+    await Promise.all(optedIn.map(pid => {
+      const p = currentPlayers[pid];
+      return joinVSRoom(newRoom, pid, p.name, p.color)
+        .then(() => setVSReady(newRoom, pid));
+    }));
+
+    // Set status to playing immediately — no need for the ready handshake
+    await setVSPlaying(newRoom);
+
+    await setVSRematch(roomId, newRoom);
+  } catch {
+    vsRematchBtn.disabled = false;
+    vsRematchBtn.textContent = '⚡ Rematch';
+    rematchOffered = false;
+  }
+}
+
+async function handleRematchButtonClick() {
+  if (isTeamMode()) {
+    if (creatorPlayerId && creatorPlayerId === playerId) {
+      if (!canStartRematch) return;
+      if (vsRematchBtn.disabled) return;
+      vsRematchBtn.disabled = true;
+      vsRematchBtn.textContent = 'Creating rematch…';
+      await createRematchRoomTeam();
+      return;
+    }
+    await handleRematchClickTeam();
+    return;
+  }
+
+  // 1v1
+  await handleRematchClick1v1();
+}
+
+function updateRematchUI(rematchOffers, players) {
+  if (isTeamMode()) return updateRematchUITeam(rematchOffers, players);
+  return updateRematchUI1v1(rematchOffers, players);
 }
 
 // ── Chat ──────────────────────────────────────────────────────────────────────
