@@ -18,8 +18,8 @@ Screen: vs · Room: 8fea6a3f-5c90-4098-b157-ed4553c15231
 - [x] Reproduce issue (confirm root cause)
 - [x] Implement fix
 - [x] Add/update tests where possible
-- [ ] Verify on affected screens
-- [ ] Close out related feedback
+- [x] Verify on affected screens
+- [x] Close out related feedback
 
 ---
 Auto-seeded by `Jigsaw Together` feedback triage agent.
