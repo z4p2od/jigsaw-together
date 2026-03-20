@@ -104,7 +104,7 @@ async function listPOTDImages() {
       {
         method: 'POST',
         headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ expression: `resource_type:image AND asset_folder:${folder}/*`, max_results: 500 }),
+        body: JSON.stringify({ expression: `resource_type:image AND (asset_folder="${folder}" OR asset_folder:${folder}/*)`, max_results: 500 }),
       }
     );
     const text = await resp.text().catch(() => '');
