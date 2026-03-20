@@ -79,13 +79,54 @@ function generateEdges(cols, rows) {
 // ── Cloudinary helpers ────────────────────────────────────────────────────────
 
 async function listPOTDImages() {
+  const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
   const auth = Buffer.from(`${process.env.CLOUDINARY_API_KEY}:${process.env.CLOUDINARY_API_SECRET}`).toString('base64');
-  const r = await fetch(
-    `https://api.cloudinary.com/v1_1/${process.env.CLOUDINARY_CLOUD_NAME}/resources/image/upload?folder=potd-pool&max_results=500`,
-    { headers: { Authorization: `Basic ${auth}` } }
-  );
-  const data = await r.json();
-  return data.resources || [];
+  const folder = 'potd-pool';
+
+  function isPOTDResource(r) {
+    if (!r) return false;
+    const norm = s => String(s ?? '').replace(/^\/+/, '').replace(/\/+$/, '');
+    const af = norm(r.asset_folder);
+    if (af) return af === folder || af.startsWith(folder + '/');
+    const f  = norm(r.folder);
+    if (f)  return f  === folder || f.startsWith(folder + '/');
+    const id = String(r.public_id ?? '');
+    if (id) return id === folder || id.startsWith(folder + '/');
+    const url = String(r.secure_url ?? '');
+    return url.includes('/' + folder + '/') || url.includes('/' + folder);
+  }
+
+  let resources = [];
+  try {
+    // Admin Search API — reliable folder filtering
+    const resp = await fetch(
+      `https://api.cloudinary.com/v1_1/${cloudName}/resources/search`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ expression: `resource_type:image AND asset_folder:${folder}/*`, max_results: 500 }),
+      }
+    );
+    const text = await resp.text().catch(() => '');
+    if (!resp.ok) throw new Error(`search failed: ${resp.status} ${text}`);
+    const data = JSON.parse(text);
+    resources = Array.isArray(data?.resources) ? data.resources : [];
+  } catch {
+    // Fallback to legacy prefix listing
+    try {
+      const resp = await fetch(
+        `https://api.cloudinary.com/v1_1/${cloudName}/resources/image/upload?prefix=${encodeURIComponent(folder + '/')}&max_results=500`,
+        { headers: { Authorization: `Basic ${auth}` } }
+      );
+      const text = await resp.text().catch(() => '');
+      const data = JSON.parse(text);
+      resources = Array.isArray(data?.resources) ? data.resources : [];
+    } catch {
+      return [];
+    }
+  }
+
+  return resources.filter(isPOTDResource);
 }
 
 // ── Firebase REST helpers ─────────────────────────────────────────────────────
