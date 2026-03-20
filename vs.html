@@ -37,7 +37,7 @@
     <p class="box-cover-hint">Click anywhere to close</p>
   </div>
 
-  <!-- Lobby overlay -->
+  <!-- 1v1 Lobby overlay -->
   <div id="vs-lobby" class="vs-lobby">
     <div class="vs-lobby-card">
       <h2>⚡ VS Mode</h2>
@@ -64,6 +64,53 @@
         </div>
       </div>
       <p id="vs-lobby-status" class="vs-lobby-status">Waiting for opponent to join…</p>
+    </div>
+  </div>
+
+  <!-- Team vs Team lobby overlay -->
+  <div id="vs-team-lobby" class="vs-lobby" style="display:none">
+    <div class="vs-lobby-card vs-team-lobby-card">
+      <h2>⚡ Team VS Mode</h2>
+      <p class="vs-lobby-sub">Two teams, one board each — first team to finish wins!</p>
+
+      <div class="team-columns">
+        <!-- Team A -->
+        <div class="team-column" id="team-col-A">
+          <div class="team-header">
+            <span class="team-badge team-badge-A">A</span>
+            <span class="team-name-display" id="team-name-A">Loading…</span>
+            <button class="team-rename-btn icon-btn" id="team-rename-A" title="Rename team">✏️</button>
+          </div>
+          <div class="team-avatars" id="team-avatars-A"></div>
+          <button class="btn btn-sm team-switch-btn" id="team-join-A">Join Team A</button>
+        </div>
+
+        <div class="team-vs-sep">VS</div>
+
+        <!-- Team B -->
+        <div class="team-column" id="team-col-B">
+          <div class="team-header">
+            <span class="team-badge team-badge-B">B</span>
+            <span class="team-name-display" id="team-name-B">Loading…</span>
+            <button class="team-rename-btn icon-btn" id="team-rename-B" title="Rename team">✏️</button>
+          </div>
+          <div class="team-avatars" id="team-avatars-B"></div>
+          <button class="btn btn-sm team-switch-btn" id="team-join-B">Join Team B</button>
+        </div>
+      </div>
+
+      <div class="vs-share-row" style="margin-top:16px">
+        <p class="vs-share-label">Invite players:</p>
+        <div class="share-box">
+          <span id="vs-team-share-url"></span>
+          <button id="vs-team-copy-btn">Copy Link</button>
+        </div>
+      </div>
+
+      <p id="vs-team-lobby-status" class="vs-lobby-status">Pick a team to join!</p>
+      <!-- Non-creator: ready button. Creator: start button. -->
+      <button id="vs-team-ready-btn" class="btn" disabled>Join a team first</button>
+      <button id="vs-team-start-btn" class="btn" style="display:none" disabled>Start Match</button>
     </div>
   </div>
 
@@ -119,14 +166,20 @@
     <!-- Split boards -->
     <div class="vs-boards-wrap">
       <div class="vs-board-panel">
-        <div class="vs-board-label">You</div>
+        <div class="vs-board-label-row">
+          <span class="vs-board-label" id="my-board-label">You</span>
+          <div class="vs-board-avatars" id="vs-board-avatars-me"></div>
+        </div>
         <div class="puzzle-board-wrap">
           <div id="puzzle-board"></div>
         </div>
       </div>
       <div class="vs-board-divider"></div>
       <div class="vs-board-panel">
-        <div class="vs-board-label" id="opp-board-label">Opponent</div>
+        <div class="vs-board-label-row">
+          <span class="vs-board-label" id="opp-board-label">Opponent</span>
+          <div class="vs-board-avatars" id="vs-board-avatars-opp"></div>
+        </div>
         <div class="puzzle-board-wrap opp-wrap">
           <div id="puzzle-board-opp"></div>
         </div>

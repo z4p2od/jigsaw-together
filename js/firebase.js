@@ -262,6 +262,11 @@ export function onChatMessages(puzzleId, callback) {
 }
 
 // ── VS Mode ───────────────────────────────────────────────────────────────────
+//
+// "boardKey" in the piece functions below is:
+//   • 1v1 mode  → playerId  (same as before)
+//   • Team mode → teamId ('A' or 'B')
+// This lets shared team boards live at vs/{roomId}/pieces/{teamId}.
 
 export async function loadVSRoom(roomId) {
   const snap = await get(ref(db, `vs/${roomId}`));
@@ -271,16 +276,34 @@ export async function loadVSRoom(roomId) {
 
 export async function joinVSRoom(roomId, playerId, name, color) {
   await update(ref(db, `vs/${roomId}/players/${playerId}`), { name, color, ready: false, finishedAt: null });
-  // Set creatorName in vs-index if not already set (first joiner becomes creator)
+  // First joiner becomes creator — record in vs-index
   const idxRef = ref(db, `vs-index/${roomId}/creatorName`);
   const snap   = await get(idxRef);
   if (!snap.exists() || snap.val() === null) {
     await set(idxRef, name);
+    // Also persist the creatorPlayerId for creator-gated UI
+    await set(ref(db, `vs-index/${roomId}/creatorPlayerId`), playerId);
+    await update(ref(db, `vs/${roomId}/meta`), { creatorPlayerId: playerId });
   }
+}
+
+export async function getVSIndexCreatorPlayerId(roomId) {
+  const snap = await get(ref(db, `vs-index/${roomId}/creatorPlayerId`));
+  return snap.exists() ? snap.val() : null;
 }
 
 export function setVSReady(roomId, playerId) {
   return set(ref(db, `vs/${roomId}/players/${playerId}/ready`), true);
+}
+
+/** Record a player's chosen team ('A' or 'B'). */
+export function setVSTeamId(roomId, playerId, teamId) {
+  return update(ref(db, `vs/${roomId}/players/${playerId}`), { teamId });
+}
+
+/** Rename a team (writes to meta.teamNames). */
+export function renameVSTeam(roomId, teamId, name) {
+  return update(ref(db, `vs/${roomId}/meta/teamNames`), { [teamId]: name });
 }
 
 export function onVSRoom(roomId, callback) {
@@ -290,38 +313,44 @@ export function onVSRoom(roomId, callback) {
   return () => off(r, 'value', handler);
 }
 
-export function initVSPieces(roomId, playerId, pieces) {
+export function initVSPieces(roomId, boardKey, pieces) {
   const flat = {};
   pieces.forEach((p, i) => { flat[i] = { x: p.x, y: p.y, rotation: 0, solved: false }; });
-  return set(ref(db, `vs/${roomId}/pieces/${playerId}`), flat);
+  return set(ref(db, `vs/${roomId}/pieces/${boardKey}`), flat);
 }
 
-export function onVSPieces(roomId, playerId, callback) {
-  const r = ref(db, `vs/${roomId}/pieces/${playerId}`);
+/** Returns a snapshot of all pieces for a board key (one-time). */
+export async function getVSPiecesOnce(roomId, boardKey) {
+  const snap = await get(ref(db, `vs/${roomId}/pieces/${boardKey}`));
+  return snap.exists() ? snap.val() : null;
+}
+
+export function onVSPieces(roomId, boardKey, callback) {
+  const r = ref(db, `vs/${roomId}/pieces/${boardKey}`);
   const handler = snap => callback(Number(snap.key), snap.val());
   onChildChanged(r, handler);
   return () => off(r, 'child_changed', handler);
 }
 
-export function onVSOpponentPieces(roomId, playerId, callback) {
-  const r = ref(db, `vs/${roomId}/pieces/${playerId}`);
+export function onVSOpponentPieces(roomId, boardKey, callback) {
+  const r = ref(db, `vs/${roomId}/pieces/${boardKey}`);
   const handler = snap => callback(snap.val() || {});
   onValue(r, handler);
   return () => off(r, 'value', handler);
 }
 
 let lastVSGroupWrite = 0;
-export function updateVSGroupPosition(roomId, playerId, positions) {
+export function updateVSGroupPosition(roomId, boardKey, positions) {
   const now = Date.now();
   if (now - lastVSGroupWrite < 50) return;
   lastVSGroupWrite = now;
   const flat = {};
   positions.forEach(({ index, x, y }) => { flat[`${index}/x`] = x; flat[`${index}/y`] = y; });
-  update(ref(db, `vs/${roomId}/pieces/${playerId}`), flat);
+  update(ref(db, `vs/${roomId}/pieces/${boardKey}`), flat);
 }
 
 /** Scatter grouped pieces: write new x/y and clear groupId + lockedBy in one batch. */
-export function writeVSShufflePositions(roomId, playerId, positions) {
+export function writeVSShufflePositions(roomId, boardKey, positions) {
   const flat = {};
   positions.forEach(({ index, x, y }) => {
     flat[`${index}/x`]        = x;
@@ -329,22 +358,22 @@ export function writeVSShufflePositions(roomId, playerId, positions) {
     flat[`${index}/groupId`]  = null;
     flat[`${index}/lockedBy`] = null;
   });
-  return update(ref(db, `vs/${roomId}/pieces/${playerId}`), flat);
+  return update(ref(db, `vs/${roomId}/pieces/${boardKey}`), flat);
 }
 
-export function lockVSGroup(roomId, playerId, indices, lockerId) {
+export function lockVSGroup(roomId, boardKey, indices, lockerId) {
   const flat = {};
   indices.forEach(i => { flat[`${i}/lockedBy`] = lockerId; });
-  return update(ref(db, `vs/${roomId}/pieces/${playerId}`), flat);
+  return update(ref(db, `vs/${roomId}/pieces/${boardKey}`), flat);
 }
 
-export function unlockVSGroup(roomId, playerId, indices) {
+export function unlockVSGroup(roomId, boardKey, indices) {
   const flat = {};
   indices.forEach(i => { flat[`${i}/lockedBy`] = null; });
-  return update(ref(db, `vs/${roomId}/pieces/${playerId}`), flat);
+  return update(ref(db, `vs/${roomId}/pieces/${boardKey}`), flat);
 }
 
-export function writeVSSnap(roomId, playerId, positions, groupId) {
+export function writeVSSnap(roomId, boardKey, positions, groupId) {
   const flat = {};
   positions.forEach(({ index, x, y }) => {
     flat[`${index}/x`]        = x;
@@ -352,28 +381,28 @@ export function writeVSSnap(roomId, playerId, positions, groupId) {
     flat[`${index}/lockedBy`] = null;
     flat[`${index}/groupId`]  = groupId;
   });
-  return update(ref(db, `vs/${roomId}/pieces/${playerId}`), flat);
+  return update(ref(db, `vs/${roomId}/pieces/${boardKey}`), flat);
 }
 
-export function updateVSPieceRotation(roomId, playerId, index, rotation) {
-  return update(ref(db, `vs/${roomId}/pieces/${playerId}/${index}`), { rotation });
+export function updateVSPieceRotation(roomId, boardKey, index, rotation) {
+  return update(ref(db, `vs/${roomId}/pieces/${boardKey}/${index}`), { rotation });
 }
 
-export function updateVSGroupRotationAndPositions(roomId, playerId, positions, rotation) {
+export function updateVSGroupRotationAndPositions(roomId, boardKey, positions, rotation) {
   const flat = {};
   positions.forEach(({ index, x, y }) => {
     flat[`${index}/x`] = x; flat[`${index}/y`] = y; flat[`${index}/rotation`] = rotation;
   });
-  return update(ref(db, `vs/${roomId}/pieces/${playerId}`), flat);
+  return update(ref(db, `vs/${roomId}/pieces/${boardKey}`), flat);
 }
 
-export function solveVSGroup(roomId, playerId, updates) {
+export function solveVSGroup(roomId, boardKey, updates) {
   const flat = {};
   Object.entries(updates).forEach(([index, { x, y }]) => {
     flat[`${index}/x`] = x; flat[`${index}/y`] = y;
     flat[`${index}/solved`] = true; flat[`${index}/lockedBy`] = null;
   });
-  return update(ref(db, `vs/${roomId}/pieces/${playerId}`), flat);
+  return update(ref(db, `vs/${roomId}/pieces/${boardKey}`), flat);
 }
 
 export function offerVSRematch(roomId, playerId) {
@@ -389,9 +418,20 @@ export function setVSPlaying(roomId) {
   return update(ref(db, `vs/${roomId}/meta`), { status: 'playing', startedAt: Date.now() });
 }
 
-export function setVSWinner(roomId, playerId, secs) {
+export function setVSWinner(roomId, winnerId, secs) {
   update(ref(db, `vs-index/${roomId}`), { status: 'done' });
-  return update(ref(db, `vs/${roomId}/meta`), { status: 'done', winner: playerId, winnerSecs: secs });
+  return update(ref(db, `vs/${roomId}/meta`), { status: 'done', winner: winnerId, winnerSecs: secs });
+}
+
+/** Set the winning team (team mode). winnerTeamId = 'A' | 'B'. */
+export function setVSWinnerTeam(roomId, winnerTeamId, secs) {
+  update(ref(db, `vs-index/${roomId}`), { status: 'done' });
+  return update(ref(db, `vs/${roomId}/meta`), {
+    status: 'done',
+    winnerTeamId,
+    winner: winnerTeamId,
+    winnerSecs: secs,
+  });
 }
 
 // ── VS Index (open rooms browser) ─────────────────────────────────────────────
@@ -429,17 +469,27 @@ export function deleteRoomsIndex(roomId) {
 }
 
 // ── VS Powerups (Chaos mode) ───────────────────────────────────────────────────
+// In team mode, poolKey = teamId so both team members share one pool.
+// In 1v1, poolKey = playerId (unchanged behavior).
 
-export function writeVSPowerupEarned(roomId, playerId, pieceIndex) {
-  return set(ref(db, `vs/${roomId}/powerups/${playerId}/${pieceIndex}`), true);
+export function writeVSPowerupEarned(roomId, poolKey, pieceIndex) {
+  return set(ref(db, `vs/${roomId}/powerups/${poolKey}/${pieceIndex}`), true);
 }
 
-export function writeVSEffect(roomId, targetPlayerId, effect) {
-  return push(ref(db, `vs/${roomId}/effects/${targetPlayerId}`), effect);
+export function onVSPowerups(roomId, poolKey, callback) {
+  const r = ref(db, `vs/${roomId}/powerups/${poolKey}`);
+  const handler = snap => { if (snap.val()) callback(snap.val()); };
+  onChildAdded(r, handler);
+  return () => off(r, 'child_added', handler);
 }
 
-export function onVSEffects(roomId, playerId, callback) {
-  const r = ref(db, `vs/${roomId}/effects/${playerId}`);
+// targetKey = teamId in team mode, playerId in 1v1
+export function writeVSEffect(roomId, targetKey, effect) {
+  return push(ref(db, `vs/${roomId}/effects/${targetKey}`), effect);
+}
+
+export function onVSEffects(roomId, targetKey, callback) {
+  const r = ref(db, `vs/${roomId}/effects/${targetKey}`);
   const handler = snap => { if (snap.val()) callback(snap.val()); };
   onChildAdded(r, handler);
   return () => off(r, 'child_added', handler);

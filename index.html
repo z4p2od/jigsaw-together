@@ -70,6 +70,13 @@
       <p class="field-label">VS Mode</p>
       <p style="color:var(--text-muted);font-size:0.9rem;margin:0">Race a friend — same puzzle, first to finish wins</p>
       <div class="piece-section">
+        <p class="field-label">Match Type</p>
+        <div class="piece-options">
+          <label><input type="radio" name="vs-type" value="1v1" checked /> <span>1v1</span></label>
+          <label><input type="radio" name="vs-type" value="team" /> <span>Team vs Team</span></label>
+        </div>
+      </div>
+      <div class="piece-section">
         <p class="field-label">Pieces</p>
         <div class="piece-options">
           <label><input type="radio" name="vs-pieces" value="24" /> <span>24</span></label>
@@ -83,6 +90,17 @@
           <label><input type="radio" name="vs-mode" value="normal" checked /> <span>Casual</span></label>
           <label><input type="radio" name="vs-mode" value="hard" /> <span>Hard 🔥</span></label>
           <label><input type="radio" name="vs-mode" value="chaos" /> <span>Chaos ⚡</span></label>
+        </div>
+      </div>
+      <div class="piece-section">
+        <p class="field-label">Image</p>
+        <div class="piece-options">
+          <label><input type="radio" name="vs-image" value="random" checked /> <span>Random</span></label>
+          <label><input type="radio" name="vs-image" value="pick" /> <span>Pick from library</span></label>
+        </div>
+        <div id="vs-image-picker" style="display:none;margin-top:10px">
+          <div id="vs-image-grid" class="vs-image-grid"></div>
+          <p id="vs-image-status" style="font-size:0.8rem;color:var(--text-muted);margin:4px 0 0">Loading…</p>
         </div>
       </div>
       <button class="btn" id="vs-create-btn">⚡ Start VS Match</button>
