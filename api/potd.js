@@ -157,8 +157,9 @@ function fbPatch(path, value) {
 // ── Main handler ──────────────────────────────────────────────────────────────
 
 export default async function handler(req, res) {
-  const expected = process.env.CRON_SECRET || process.env.POTD_SECRET;
-  if (req.headers['authorization'] !== `Bearer ${expected}`) {
+  const token = (req.headers['authorization'] ?? '').replace(/^Bearer\s+/i, '');
+  const validTokens = [process.env.POTD_SECRET, process.env.CRON_SECRET].filter(Boolean);
+  if (!validTokens.length || !validTokens.includes(token)) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
