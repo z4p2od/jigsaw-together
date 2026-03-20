@@ -50,10 +50,12 @@ export default async function handler(req, res) {
     const createdAt = await metaRes.json();
     if (!createdAt || createdAt >= cutoff) return;
 
-    // Delete Cloudinary image if present
+    // Delete Cloudinary image only if it was user-uploaded (not from managed library folders)
     const pidRes  = await fetch(`${dbUrl}/puzzles/${id}/meta/imagePublicId.json?auth=${secret}`);
     const publicId = await pidRes.json();
-    if (publicId) {
+    const PROTECTED_PREFIXES = ['potd-pool', 'puzzle-library'];
+    const isProtected = publicId && PROTECTED_PREFIXES.some(p => String(publicId).startsWith(p));
+    if (publicId && !isProtected) {
       try { await deleteCloudinaryImage(publicId); } catch {}
     }
 
