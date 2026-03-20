@@ -1033,6 +1033,23 @@ body {
 
 /* ── VS Mode ── */
 
+.vs-lobby-back-link {
+  align-self: flex-start;
+  text-align: left;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-decoration: none;
+  margin-bottom: -6px; /* pull it closer to the title */
+}
+
+.vs-lobby-back-link:hover {
+  color: var(--text);
+}
+
 .vs-lobby {
   position: fixed;
   inset: 0;

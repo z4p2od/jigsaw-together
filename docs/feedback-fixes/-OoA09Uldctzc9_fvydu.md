@@ -15,9 +15,9 @@ There is no way to go back from the VS Mode waiting screen.
 Screen: vs · Room: 8fea6a3f-5c90-4098-b157-ed4553c15231
 
 ## Fix checklist
-- [ ] Reproduce issue (confirm root cause)
-- [ ] Implement fix
-- [ ] Add/update tests where possible
+- [x] Reproduce issue (confirm root cause)
+- [x] Implement fix
+- [x] Add/update tests where possible
 - [ ] Verify on affected screens
 - [ ] Close out related feedback
 
@@ -30,3 +30,12 @@ Auto-seeded by `Jigsaw Together` feedback triage agent.
 - Confirm any regression around the last known change.
 
 > Seed title: There is no way to go back from the VS Mode waiting screen.
+
+## What I changed (and why)
+
+- Added a “← Back” link to the VS waiting overlays in `/vs.html`:
+  - `#vs-lobby` (1v1 waiting)
+  - `#vs-team-lobby` (team waiting)
+- The back link returns users to `/vs-rooms.html`, matching the existing back navigation pattern used on the rooms screen.
+- Added small CSS styling for consistent placement (`.vs-lobby-back-link`).
+- Added a Node sanity test (`js/vs-waiting-back.test.mjs`) to ensure the back links are present in `vs.html`, preventing this UI regression from reappearing.
