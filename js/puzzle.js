@@ -325,6 +325,10 @@ function attachDragListeners() {
   board.addEventListener('contextmenu', onContextMenu);
   window.addEventListener('mousemove',  onMouseMove);
   window.addEventListener('mouseup',    onMouseUp);
+  if (!isMobileLike) {
+    // Desktop: allow wheel-zoom with Ctrl/trackpad pinch gesture.
+    boardWrap.addEventListener('wheel', onWheelZoom, { passive: false });
+  }
   // Double-tap for mobile rotation (hard mode only)
   board.addEventListener('touchend', onDoubleTap);
 
@@ -1000,6 +1004,9 @@ function setupHelp() {
     { key: 'Drop near edge',  desc: 'Pieces snap together automatically' },
     { key: 'Scroll / drag bg',desc: 'Pan the board' },
   ];
+  if (!isMobileLike) {
+    controls.push({ key: 'Ctrl + scroll', desc: 'Zoom at cursor position (desktop)' });
+  }
   if (isMobileLike) {
     controls.push({ key: 'Pinch (mobile)', desc: 'Zoom in / out' });
     controls.push({ key: 'HQ button',      desc: 'Toggle sharper pieces (uses more memory)' });
