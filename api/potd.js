@@ -1,6 +1,6 @@
 /**
  * Vercel cron job — creates three Puzzle of the Day puzzles (Easy/Medium/Hard).
- * Images are picked randomly from the 'potd-pool' folder in Cloudinary.
+ * Images are picked from 'potd-pool'; if empty, fallback to 'puzzle-library'.
  * Schedule: daily at 4am UTC (configured in vercel.json).
  *
  * Required env vars:
@@ -78,12 +78,11 @@ function generateEdges(cols, rows) {
 
 // ── Cloudinary helpers ────────────────────────────────────────────────────────
 
-async function listPOTDImages() {
+async function listImagesFromFolder(folder) {
   const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
   const auth = Buffer.from(`${process.env.CLOUDINARY_API_KEY}:${process.env.CLOUDINARY_API_SECRET}`).toString('base64');
-  const folder = 'potd-pool';
 
-  function isPOTDResource(r) {
+  function isFolderResource(r) {
     if (!r) return false;
     const norm = s => String(s ?? '').replace(/^\/+/, '').replace(/\/+$/, '');
     const af = norm(r.asset_folder);
@@ -126,7 +125,17 @@ async function listPOTDImages() {
     }
   }
 
-  return resources.filter(isPOTDResource);
+  return resources.filter(isFolderResource);
+}
+
+async function listPOTDImages() {
+  const potdImages = await listImagesFromFolder('potd-pool');
+  if (potdImages.length > 0) return { images: potdImages, sourceFolder: 'potd-pool' };
+
+  const libraryImages = await listImagesFromFolder('puzzle-library');
+  if (libraryImages.length > 0) return { images: libraryImages, sourceFolder: 'puzzle-library' };
+
+  return { images: [], sourceFolder: null };
 }
 
 // ── Firebase REST helpers ─────────────────────────────────────────────────────
@@ -166,9 +175,9 @@ export default async function handler(req, res) {
   const date = new Date().toLocaleDateString('sv', { timeZone: 'Europe/Athens' });
 
   // List available images
-  const images = await listPOTDImages();
+  const { images, sourceFolder } = await listPOTDImages();
   if (images.length === 0) {
-    return res.status(500).json({ error: 'No images in potd-pool folder' });
+    return res.status(500).json({ error: 'No images in potd-pool or puzzle-library folders' });
   }
 
   // Load recent IDs to avoid repeats
@@ -236,5 +245,5 @@ export default async function handler(req, res) {
   const newRecent = [...usedIds, ...recentIds].slice(0, 30);
   await fbPut('potd/recentIds', newRecent);
 
-  res.json({ date, created });
+  res.json({ date, sourceFolder, created });
 }
