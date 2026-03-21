@@ -48,6 +48,8 @@ let dragging    = null; // { indices, anchorIndex, offsetX, offsetY, relOffsets 
 let unsubscribe = null;
 let scale       = 1;   // current zoom level applied to #puzzle-board
 let pinch       = null; // { dist0, scale0 } — active pinch gesture state
+let viewportPan = null; // { startX, startY, scrollLeft, scrollTop }
+let spaceDown   = false;
 
 // Double-tap for mobile rotate (hard mode only)
 let lastTap = { time: 0, el: null };
@@ -322,9 +324,12 @@ function updatePieceZIndex(index) {
 
 function attachDragListeners() {
   board.addEventListener('mousedown',   onMouseDown);
+  boardWrap.addEventListener('mousedown', onViewportPanStart);
   board.addEventListener('contextmenu', onContextMenu);
   window.addEventListener('mousemove',  onMouseMove);
   window.addEventListener('mouseup',    onMouseUp);
+  window.addEventListener('keydown', onKeyDownPan);
+  window.addEventListener('keyup', onKeyUpPan);
   if (!isMobileLike) {
     // Desktop: allow wheel-zoom with Ctrl/trackpad pinch gesture.
     boardWrap.addEventListener('wheel', onWheelZoom, { passive: false });
@@ -339,6 +344,7 @@ function attachDragListeners() {
 }
 
 function onMouseDown(e) {
+  if (!isMobileLike && spaceDown) return;
   const el = e.target.closest('.piece');
   if (!el || el.classList.contains('solved')) return;
 
@@ -372,6 +378,12 @@ function onMouseDown(e) {
 }
 
 function onMouseMove(e) {
+  if (viewportPan) {
+    e.preventDefault();
+    boardWrap.scrollLeft = viewportPan.scrollLeft - (e.clientX - viewportPan.startX);
+    boardWrap.scrollTop  = viewportPan.scrollTop  - (e.clientY - viewportPan.startY);
+    return;
+  }
   if (!dragging) return;
   const { indices, offsetX, offsetY, relOffsets } = dragging;
 
@@ -416,6 +428,11 @@ function onMouseMove(e) {
 }
 
 async function onMouseUp(e) {
+  if (viewportPan) {
+    viewportPan = null;
+    boardWrap.classList.remove('panning');
+    return;
+  }
   if (!dragging) return;
   const { indices, anchorIndex, offsetX, offsetY, relOffsets, locked } = dragging;
   dragging = null;
@@ -690,11 +707,38 @@ function onWheelZoom(e) {
   // Preserve normal one-finger/trackpad scrolling unless modified.
   if (!e.ctrlKey && !e.metaKey) return;
   e.preventDefault();
-  // Trackpads (especially on macOS) can emit very large delta spikes.
-  // Cap per-event delta and use a gentler curve for smoother zooming.
-  const cappedDelta = Math.max(-60, Math.min(60, e.deltaY));
-  const factor = Math.exp(-cappedDelta * 0.0011);
+  const factor = Math.exp(-e.deltaY * 0.0018);
   applyScale(scale * factor, { anchorClientX: e.clientX, anchorClientY: e.clientY });
+}
+
+function onViewportPanStart(e) {
+  if (isMobileLike || dragging || pinch) return;
+  if (e.button !== 0) return;
+  const onPiece = !!e.target.closest('.piece');
+  const canPanNow = scale > 1.01 || spaceDown;
+  if (!canPanNow) return;
+  if (onPiece && !spaceDown) return;
+  viewportPan = {
+    startX: e.clientX,
+    startY: e.clientY,
+    scrollLeft: boardWrap.scrollLeft,
+    scrollTop: boardWrap.scrollTop,
+  };
+  boardWrap.classList.add('panning');
+  e.preventDefault();
+}
+
+function onKeyDownPan(e) {
+  if (e.code !== 'Space' || isMobileLike) return;
+  if (!spaceDown) boardWrap.classList.add('space-pan');
+  spaceDown = true;
+  if (e.target === document.body) e.preventDefault();
+}
+
+function onKeyUpPan(e) {
+  if (e.code !== 'Space' || isMobileLike) return;
+  spaceDown = false;
+  boardWrap.classList.remove('space-pan');
 }
 
 function setupViewportControls() {

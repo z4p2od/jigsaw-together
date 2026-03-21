@@ -510,6 +510,12 @@ body.puzzle-body {
   background: var(--bg);
   touch-action: pan-x pan-y;
 }
+.puzzle-board-wrap.space-pan {
+  cursor: grab;
+}
+.puzzle-board-wrap.panning {
+  cursor: grabbing;
+}
 
 .board-zoom-controls {
   position: absolute;
