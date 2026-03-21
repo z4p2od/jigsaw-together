@@ -108,6 +108,7 @@ const chatInput       = document.getElementById('chat-input');
 const chatSendBtn     = document.getElementById('chat-send');
 const boardWrap       = board.parentElement;
 const qualityBtn      = document.getElementById('quality-btn');
+const isCoarsePointer = window.matchMedia?.('(pointer: coarse)').matches ?? false;
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
@@ -191,8 +192,10 @@ function setupBoard() {
   board.style.width          = BOARD_W + 'px';
   board.style.height         = BOARD_H + 'px';
   board.style.transformOrigin = 'top left';
-  setupViewportControls();
-  fitBoardToViewport();
+  if (isCoarsePointer) {
+    setupViewportControls();
+    fitBoardToViewport();
+  }
 }
 
 // ── Rendering ─────────────────────────────────────────────────────────────────
@@ -262,7 +265,7 @@ function initHighQualityPreference() {
   const saved = localStorage.getItem('jt-high-quality');
   if (saved === '1') return true;
   if (saved === '0') return false;
-  if (window.matchMedia?.('(pointer: coarse)').matches) return false;
+  if (!isCoarsePointer) return false;
 
   // Newer phones default to HQ once unless user explicitly toggles off.
   const ua = navigator.userAgent || '';
@@ -321,9 +324,6 @@ function attachDragListeners() {
   board.addEventListener('contextmenu', onContextMenu);
   window.addEventListener('mousemove',  onMouseMove);
   window.addEventListener('mouseup',    onMouseUp);
-  // Ctrl/trackpad-pinch wheel zoom at cursor.
-  boardWrap.addEventListener('wheel', onWheelZoom, { passive: false });
-
   // Double-tap for mobile rotation (hard mode only)
   board.addEventListener('touchend', onDoubleTap);
 
@@ -997,11 +997,12 @@ function setupHelp() {
   const controls = [
     { key: 'Drag',            desc: 'Move a piece or a connected group' },
     { key: 'Drop near edge',  desc: 'Pieces snap together automatically' },
-    { key: 'Pinch (mobile)',  desc: 'Zoom in / out' },
-    { key: 'Ctrl + scroll',   desc: 'Zoom at cursor position (desktop)' },
     { key: 'Scroll / drag bg',desc: 'Pan the board' },
-    { key: 'HQ button',       desc: 'Toggle sharper pieces (uses more memory)' },
   ];
+  if (isCoarsePointer) {
+    controls.push({ key: 'Pinch (mobile)', desc: 'Zoom in / out' });
+    controls.push({ key: 'HQ button',      desc: 'Toggle sharper pieces (uses more memory)' });
+  }
   if (meta.hardMode) {
     controls.push({ key: 'Right-click',  desc: 'Rotate a piece or group 90°' });
     controls.push({ key: 'Double-tap',   desc: 'Rotate a piece or group on mobile' });
@@ -1023,7 +1024,7 @@ function setupHelp() {
 
 function setupQualityMode() {
   if (!qualityBtn) return;
-  if (window.matchMedia?.('(pointer: coarse)').matches) {
+  if (!isCoarsePointer) {
     highQualityMode = false;
     localStorage.setItem('jt-high-quality', '0');
     qualityBtn.style.display = 'none';
