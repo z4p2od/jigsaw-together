@@ -49,7 +49,6 @@ let unsubscribe = null;
 let scale       = 1;   // current zoom level applied to #puzzle-board
 let pinch       = null; // { dist0, scale0 } — active pinch gesture state
 let viewportPan = null; // { startX, startY, scrollLeft, scrollTop }
-let spaceDown   = false;
 
 // Double-tap for mobile rotate (hard mode only)
 let lastTap = { time: 0, el: null };
@@ -328,8 +327,6 @@ function attachDragListeners() {
   board.addEventListener('contextmenu', onContextMenu);
   window.addEventListener('mousemove',  onMouseMove);
   window.addEventListener('mouseup',    onMouseUp);
-  window.addEventListener('keydown', onKeyDownPan);
-  window.addEventListener('keyup', onKeyUpPan);
   if (!isMobileLike) {
     // Desktop: allow wheel-zoom with Ctrl/trackpad pinch gesture.
     boardWrap.addEventListener('wheel', onWheelZoom, { passive: false });
@@ -344,7 +341,6 @@ function attachDragListeners() {
 }
 
 function onMouseDown(e) {
-  if (!isMobileLike && spaceDown) return;
   const el = e.target.closest('.piece');
   if (!el || el.classList.contains('solved')) return;
 
@@ -704,20 +700,16 @@ function fitBoardToViewport() {
 
 function onWheelZoom(e) {
   if (dragging) return;
-  // Preserve normal one-finger/trackpad scrolling unless modified.
-  if (!e.ctrlKey && !e.metaKey) return;
   e.preventDefault();
   const factor = Math.exp(-e.deltaY * 0.0018);
   applyScale(scale * factor, { anchorClientX: e.clientX, anchorClientY: e.clientY });
 }
 
 function onViewportPanStart(e) {
-  if (isMobileLike || dragging || pinch) return;
+  if (isMobileLike || dragging) return;
   if (e.button !== 0) return;
-  const onPiece = !!e.target.closest('.piece');
-  const canPanNow = scale > 1.01 || spaceDown;
-  if (!canPanNow) return;
-  if (onPiece && !spaceDown) return;
+  if (scale <= 1.01) return;
+  if (e.target.closest('.piece')) return;
   viewportPan = {
     startX: e.clientX,
     startY: e.clientY,
@@ -726,19 +718,6 @@ function onViewportPanStart(e) {
   };
   boardWrap.classList.add('panning');
   e.preventDefault();
-}
-
-function onKeyDownPan(e) {
-  if (e.code !== 'Space' || isMobileLike) return;
-  if (!spaceDown) boardWrap.classList.add('space-pan');
-  spaceDown = true;
-  if (e.target === document.body) e.preventDefault();
-}
-
-function onKeyUpPan(e) {
-  if (e.code !== 'Space' || isMobileLike) return;
-  spaceDown = false;
-  boardWrap.classList.remove('space-pan');
 }
 
 function setupViewportControls() {
