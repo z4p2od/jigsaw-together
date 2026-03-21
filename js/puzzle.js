@@ -279,17 +279,8 @@ function initHighQualityPreference() {
   const saved = localStorage.getItem('jt-high-quality');
   if (saved === '1') return true;
   if (saved === '0') return false;
-  if (!isMobileLike) return false;
-
-  // Newer phones default to HQ once unless user explicitly toggles off.
-  const ua = navigator.userAgent || '';
-  const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
-  const dpr = window.devicePixelRatio || 1;
-  const mem = Number(navigator.deviceMemory || 0);
-  const cores = Number(navigator.hardwareConcurrency || 0);
-  const minScreenSide = Math.min(window.screen?.width || 0, window.screen?.height || 0);
-  const capable = dpr >= 3 && minScreenSide >= 390 && (mem >= 6 || cores >= 8);
-  return isMobile && capable;
+  // Default OFF for stability. Users can still enable HQ manually.
+  return false;
 }
 
 // Position and rotate a piece using a single CSS transform.
