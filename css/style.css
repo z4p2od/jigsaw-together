@@ -441,7 +441,7 @@ body.puzzle-body {
   white-space: nowrap;
 }
 
-@media (max-width: 860px) {
+@media (max-width: 860px) and (pointer: coarse) {
   .puzzle-header {
     padding: 8px 10px;
     gap: 8px;
@@ -540,7 +540,7 @@ body.puzzle-body {
   font-size: 0.78rem;
 }
 
-@media (max-width: 860px) {
+@media (max-width: 860px) and (pointer: coarse) {
   .board-zoom-controls {
     right: 8px;
     top: 8px;

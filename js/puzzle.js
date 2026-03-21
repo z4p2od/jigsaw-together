@@ -262,6 +262,7 @@ function initHighQualityPreference() {
   const saved = localStorage.getItem('jt-high-quality');
   if (saved === '1') return true;
   if (saved === '0') return false;
+  if (window.matchMedia?.('(pointer: coarse)').matches) return false;
 
   // Newer phones default to HQ once unless user explicitly toggles off.
   const ua = navigator.userAgent || '';
@@ -1022,6 +1023,12 @@ function setupHelp() {
 
 function setupQualityMode() {
   if (!qualityBtn) return;
+  if (window.matchMedia?.('(pointer: coarse)').matches) {
+    highQualityMode = false;
+    localStorage.setItem('jt-high-quality', '0');
+    qualityBtn.style.display = 'none';
+    return;
+  }
   const applyState = () => {
     qualityBtn.classList.toggle('active', highQualityMode);
     qualityBtn.title = highQualityMode
