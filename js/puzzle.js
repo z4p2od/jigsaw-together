@@ -57,6 +57,9 @@ const forceReleaseState = {}; // index → { count, lastTime }
 let lastEmptyTap = { time: 0, x: 0, y: 0 };
 const TOUCH_HOLD_MS = 280;
 const TOUCH_HOLD_SLOP = 10;
+const DRAG_DEAD_ZONE_DESKTOP = 7;
+const DRAG_DEAD_ZONE_TOUCH = 12;
+const DRAG_START_GRACE_MS = 140;
 let touchHold = null; // { index, startX, startY, activated, timer }
 
 // Double-tap for mobile rotate (hard mode only)
@@ -391,7 +394,18 @@ function onMouseDown(e) {
 
   // Don't lock yet — lock only when movement actually starts (onMouseMove).
   // This prevents orphaned locks from clicks/taps that never move.
-  dragging = { indices, anchorIndex: index, offsetX, offsetY, relOffsets, locked: false, startClientX: e.clientX, startClientY: e.clientY };
+  dragging = {
+    indices,
+    anchorIndex: index,
+    offsetX,
+    offsetY,
+    relOffsets,
+    locked: false,
+    startClientX: e.clientX,
+    startClientY: e.clientY,
+    startTs: Date.now(),
+    fromTouch: !!e?.isTouch,
+  };
 }
 
 function onMouseMove(e) {
@@ -407,9 +421,15 @@ function onMouseMove(e) {
   // Dead zone: ignore tiny movements so a slightly shaky click still registers
   // as a tap (hand-select) rather than a drag.
   if (!dragging.locked) {
-    const dx = Math.abs(e.clientX - dragging.startClientX);
-    const dy = Math.abs(e.clientY - dragging.startClientY);
-    if (dx < 5 && dy < 5) return;
+    const dx = e.clientX - dragging.startClientX;
+    const dy = e.clientY - dragging.startClientY;
+    const dist = Math.hypot(dx, dy);
+    const threshold = dragging.fromTouch ? DRAG_DEAD_ZONE_TOUCH : DRAG_DEAD_ZONE_DESKTOP;
+    const elapsed = Date.now() - (dragging.startTs || 0);
+
+    // Small startup grace: suppress tiny jitters right after press.
+    if (elapsed < DRAG_START_GRACE_MS && dist < threshold + 2) return;
+    if (dist < threshold) return;
   }
 
   if (!dragging.locked) {
@@ -562,7 +582,7 @@ function onTouchStart(e) {
 
   const touch = e.touches[0];
   const target = document.elementFromPoint(touch.clientX, touch.clientY);
-  onMouseDown({ clientX: touch.clientX, clientY: touch.clientY, target });
+  onMouseDown({ clientX: touch.clientX, clientY: touch.clientY, target, isTouch: true });
   if (dragging) {
     e.preventDefault();
     if (isMobileLike && dragging.indices.length === 1) {
