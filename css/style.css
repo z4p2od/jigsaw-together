@@ -17,6 +17,7 @@ body {
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
+  overflow-x: hidden;
 }
 
 /* ── Landing page ── */
@@ -228,6 +229,8 @@ body {
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
+  width: 100%;
+  max-width: 100vw;
 }
 
 .puzzle-header {
@@ -239,6 +242,9 @@ body {
   border-bottom: 1px solid var(--surface2);
   flex-shrink: 0;
   gap: 12px;
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: clip;
 }
 
 .puzzle-header h2 {
