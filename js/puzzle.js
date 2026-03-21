@@ -192,6 +192,10 @@ async function renderAllPieces() {
   const img = await loadImage(src);
   const { cols, rows, pieceW, pieceH, edges, displayW, displayH } = meta;
   const pad = getPad(displayW, displayH);
+  const textureScale = getTextureScale(totalPieces);
+  const texDisplayW = Math.round(displayW * textureScale);
+  const texDisplayH = Math.round(displayH * textureScale);
+  const texPad = getPad(texDisplayW, texDisplayH);
 
   // Store on meta for use by snap/move logic
   meta._displayW = displayW;
@@ -205,9 +209,10 @@ async function renderAllPieces() {
     for (let i = start; i < end; i++) {
       const col    = i % cols;
       const row    = Math.floor(i / cols);
-      const dataUrl = cutPiece(img, col, row, pieceW, pieceH, displayW, displayH, edges[i]);
+      const dataUrl = cutPiece(img, col, row, pieceW, pieceH, texDisplayW, texDisplayH, edges[i]);
       const p      = pieceStates[i];
-      renderPiece(i, dataUrl, p.x, p.y, p.solved, displayW + pad * 2, displayH + pad * 2);
+      // Keep gameplay dimensions unchanged; only improve texture density.
+      renderPiece(i, dataUrl, p.x, p.y, p.solved, (texDisplayW + texPad * 2) / textureScale, (texDisplayH + texPad * 2) / textureScale);
     }
     loadingText.textContent = `Cutting pieces... ${Math.min(end, totalPieces)} / ${totalPieces}`;
   }
@@ -225,6 +230,15 @@ function renderPiece(index, dataUrl, x, y, solved, elW, elH) {
   board.appendChild(el);
   pieceEls[index] = el;
   updatePieceZIndex(index);
+}
+
+function getTextureScale(total) {
+  // Improve sharpness on mobile/high-DPI while avoiding huge memory spikes.
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  if (total <= 40) return Math.max(1, dpr);
+  if (total <= 120) return Math.max(1, Math.min(1.7, dpr * 1.2));
+  if (total <= 250) return Math.max(1, Math.min(1.45, dpr));
+  return 1;
 }
 
 // Position and rotate a piece using a single CSS transform.
@@ -642,7 +656,7 @@ function onWheelZoom(e) {
 }
 
 function setupViewportControls() {
-  if (boardWrap.querySelector('.board-zoom-controls')) return;
+  if (document.querySelector('.board-zoom-controls')) return;
 
   const controls = document.createElement('div');
   controls.className = 'board-zoom-controls';
@@ -652,7 +666,7 @@ function setupViewportControls() {
     <button class="zoom-btn" data-action="plus" title="Zoom in">+</button>
     <button class="zoom-btn" data-action="center" title="Center board">◎</button>
   `;
-  boardWrap.appendChild(controls);
+  document.body.appendChild(controls);
 
   controls.addEventListener('click', e => {
     const btn = e.target.closest('button[data-action]');
@@ -671,7 +685,7 @@ function setupViewportControls() {
 }
 
 function updateZoomControls() {
-  const readout = boardWrap.querySelector('.zoom-readout');
+  const readout = document.querySelector('.board-zoom-controls .zoom-readout');
   if (!readout) return;
   readout.textContent = `${Math.round(scale * 100)}%`;
 }

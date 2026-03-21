@@ -429,18 +429,16 @@ body {
 }
 
 .board-zoom-controls {
-  position: sticky;
-  bottom: 12px;
-  left: 100%;
-  transform: translateX(calc(-100% - 12px));
+  position: fixed;
+  bottom: max(12px, env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
   display: flex;
   gap: 8px;
-  z-index: 20;
-  pointer-events: none;
+  z-index: 1200;
   width: max-content;
 }
 .board-zoom-controls .zoom-btn {
-  pointer-events: auto;
   border: 1px solid rgba(255,255,255,0.18);
   background: rgba(15, 23, 42, 0.82);
   color: var(--text);
