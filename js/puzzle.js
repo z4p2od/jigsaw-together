@@ -109,6 +109,7 @@ const chatSendBtn     = document.getElementById('chat-send');
 const boardWrap       = board.parentElement;
 const qualityBtn      = document.getElementById('quality-btn');
 const isCoarsePointer = window.matchMedia?.('(pointer: coarse)').matches ?? false;
+const isMobileLike = isCoarsePointer || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
@@ -192,7 +193,7 @@ function setupBoard() {
   board.style.width          = BOARD_W + 'px';
   board.style.height         = BOARD_H + 'px';
   board.style.transformOrigin = 'top left';
-  if (isCoarsePointer) {
+  if (isMobileLike) {
     setupViewportControls();
     fitBoardToViewport();
   }
@@ -265,7 +266,7 @@ function initHighQualityPreference() {
   const saved = localStorage.getItem('jt-high-quality');
   if (saved === '1') return true;
   if (saved === '0') return false;
-  if (!isCoarsePointer) return false;
+  if (!isMobileLike) return false;
 
   // Newer phones default to HQ once unless user explicitly toggles off.
   const ua = navigator.userAgent || '';
@@ -999,7 +1000,7 @@ function setupHelp() {
     { key: 'Drop near edge',  desc: 'Pieces snap together automatically' },
     { key: 'Scroll / drag bg',desc: 'Pan the board' },
   ];
-  if (isCoarsePointer) {
+  if (isMobileLike) {
     controls.push({ key: 'Pinch (mobile)', desc: 'Zoom in / out' });
     controls.push({ key: 'HQ button',      desc: 'Toggle sharper pieces (uses more memory)' });
   }
@@ -1024,7 +1025,7 @@ function setupHelp() {
 
 function setupQualityMode() {
   if (!qualityBtn) return;
-  if (!isCoarsePointer) {
+  if (!isMobileLike) {
     highQualityMode = false;
     localStorage.setItem('jt-high-quality', '0');
     qualityBtn.style.display = 'none';
