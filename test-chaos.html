@@ -6,7 +6,7 @@
 <title>Chaos Mode Test</title>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{--bg:#1a1a2e;--surface:#16213e;--surface2:#0f3460;--accent:#e94560;--text:#eaeaea;--text-muted:#888;--radius:12px}
+:root{--bg:#4a3d4f;--surface:#4a3d4f;--surface2:#4a3d4f;--accent:#cdce9d;--text:#eaeaea;--text-muted:#888;--radius:0px}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding:20px}
 a{color:var(--text-muted);text-decoration:none;font-size:0.9rem}
 a:hover{color:var(--text)}
@@ -16,7 +16,7 @@ h1 span{color:var(--accent)}
 .boards-row{display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin-bottom:20px}
 .board-panel{display:flex;flex-direction:column;gap:8px}
 .board-label{font-weight:700;font-size:0.95rem;text-align:center;color:var(--text-muted)}
-.board-wrap{position:relative;width:500px;height:380px;background:var(--surface);border-radius:var(--radius);overflow:hidden;border:2px solid var(--surface2)}
+.board-wrap{position:relative;width:500px;height:380px;background:var(--surface);border-radius:var(--radius);overflow:hidden;border:1px solid #000}
 .board-wrap.cursor-none{cursor:none}
 
 /* Cursor: force none on entire page when invert active */
@@ -34,18 +34,12 @@ body.invert-active,body.invert-active *{cursor:none !important}
 .board-shake{animation:board-shake 0.15s ease-in-out infinite}
 @keyframes board-shake{0%,100%{transform:translate(0,0)}20%{transform:translate(-6px,3px)}40%{transform:translate(6px,-3px)}60%{transform:translate(-4px,-4px)}80%{transform:translate(4px,2px)}}
 
-.controls{background:var(--surface);border-radius:var(--radius);padding:20px;max-width:1040px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+.controls{background:var(--surface);border-radius:var(--radius);padding:20px;max-width:1040px;margin:0 auto;display:flex;flex-direction:column;gap:20px;border:1px solid #000}
 .control-section h3{font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:10px}
 .btn-row{display:flex;gap:10px;flex-wrap:wrap}
-button{padding:10px 18px;border:none;border-radius:8px;font-size:0.9rem;font-weight:600;cursor:pointer;transition:opacity 0.15s}
+button{padding:10px 18px;border:1px solid #4a3d4f;border-radius:0;background:#000;color:#eaeaea;font-size:0.9rem;font-weight:600;cursor:pointer;transition:opacity 0.15s}
 button:hover{opacity:0.85}
-.btn-bw{background:#4b5563;color:#fff}
-.btn-invert{background:#7c3aed;color:#fff}
-.btn-scramble{background:#d97706;color:#fff}
-.btn-flip{background:#ef4444;color:#fff}
-.btn-shake{background:#ea580c;color:#fff}
-.btn-shuffle{background:#059669;color:#fff}
-.btn-reset{background:#6b21a8;color:#fff}
+.btn-bw,.btn-invert,.btn-scramble,.btn-flip,.btn-shake,.btn-shuffle,.btn-reset{background:#000;color:#eaeaea}
 
 .effects-list{display:flex;flex-direction:column;gap:8px}
 .effect-item{display:flex;align-items:center;gap:10px;font-size:0.9rem}

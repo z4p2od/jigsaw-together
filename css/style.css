@@ -1,14 +1,14 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg: #1a1a2e;
-  --surface: #16213e;
-  --surface2: #0f3460;
-  --accent: #e94560;
+  --bg: #4a3d4f;
+  --surface: #4a3d4f;
+  --surface2: #4a3d4f;
+  --accent: #cdce9d;
   --accent2: #f5a623;
   --text: #eaeaea;
   --text-muted: #888;
-  --radius: 12px;
+  --radius: 0px;
   --shadow: 0 4px 24px rgba(0,0,0,0.4);
 }
 
@@ -72,7 +72,7 @@ body {
 
 .upload-zone:hover, .upload-zone.drag-over {
   border-color: var(--accent);
-  background: rgba(233,69,96,0.05);
+  background: rgba(205,206,157,0.08);
 }
 
 .upload-zone input[type="file"] {
@@ -127,7 +127,7 @@ body {
 .piece-options input:checked + span {
   border-color: var(--accent);
   color: var(--accent);
-  background: rgba(233,69,96,0.1);
+  background: rgba(205,206,157,0.12);
 }
 
 .piece-options span:hover { border-color: var(--text-muted); color: var(--text); }
@@ -965,7 +965,7 @@ body {
 .feedback-type-row input[type="radio"]:checked + span {
   border-color: var(--accent);
   color: var(--accent);
-  background: rgba(233,69,96,0.12);
+  background: rgba(205,206,157,0.2);
 }
 
 .feedback-field {
@@ -1710,7 +1710,7 @@ body {
   50%       { filter: drop-shadow(0 0 10px #fef08a) drop-shadow(0 0 20px #fcd34d); }
 }
 .powerup-glow-flip {
-  filter: drop-shadow(0 0 6px #f87171) drop-shadow(0 0 12px #ef4444);
+  filter: drop-shadow(0 0 6px #cdce9d) drop-shadow(0 0 12px #cdce9d);
   animation: glow-flip 1.4s ease-in-out infinite;
 }
 .powerup-glow-shake {
@@ -1722,8 +1722,8 @@ body {
   animation: glow-shuffle 1.4s ease-in-out infinite;
 }
 @keyframes glow-flip {
-  0%, 100% { filter: drop-shadow(0 0 4px #f87171) drop-shadow(0 0 8px #ef4444); }
-  50%       { filter: drop-shadow(0 0 10px #fca5a5) drop-shadow(0 0 20px #f87171); }
+  0%, 100% { filter: drop-shadow(0 0 4px #cdce9d) drop-shadow(0 0 8px #cdce9d); }
+  50%       { filter: drop-shadow(0 0 10px #e2e2ba) drop-shadow(0 0 20px #cdce9d); }
 }
 @keyframes glow-shake {
   0%, 100% { filter: drop-shadow(0 0 4px #fb923c) drop-shadow(0 0 8px #ea580c); }
@@ -1733,7 +1733,7 @@ body {
   0%, 100% { filter: drop-shadow(0 0 4px #34d399) drop-shadow(0 0 8px #059669); }
   50%       { filter: drop-shadow(0 0 10px #6ee7b7) drop-shadow(0 0 20px #34d399); }
 }
-.powerup-flip    { background: #ef4444; }
+.powerup-flip    { background: #cdce9d; }
 .powerup-shake   { background: #ea580c; }
 .powerup-shuffle { background: #059669; }
 
@@ -1797,4 +1797,48 @@ body {
 @keyframes rematchPulse {
   from { box-shadow: 0 0 0 0 rgba(52,211,153,0.4); }
   to   { box-shadow: 0 0 0 8px rgba(52,211,153,0); }
+}
+
+/* ── UI palette + shape override ── */
+button,
+.btn,
+.icon-btn,
+input,
+select,
+textarea,
+.card,
+.modal,
+.chat-panel,
+.feedback-panel,
+.upload-zone,
+.puzzle-header,
+.piece-options span,
+.chat-input-field,
+.chat-msg-bubble,
+.hard-badge,
+.powerup-toast {
+  border-radius: 0 !important;
+}
+
+.card,
+.modal,
+.chat-panel,
+.feedback-panel,
+.upload-zone,
+.puzzle-header,
+.name-input,
+.chat-input-field,
+.piece-options span {
+  border: 1px solid #000 !important;
+}
+
+button,
+.btn,
+.icon-btn,
+#chat-launcher button,
+#feedback-launcher button,
+.share-box button {
+  background: #000 !important;
+  border: 1px solid #4a3d4f !important;
+  color: var(--text) !important;
 }
