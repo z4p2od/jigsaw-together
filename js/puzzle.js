@@ -1197,7 +1197,7 @@ function renderPlayers(players) {
     dot.className = 'player-dot';
     dot.style.background = p.color;
     dot.title = p.name;
-    dot.textContent = p.name[0].toUpperCase();
+    dot.textContent = getAvatarText(p.name);
     if (id === playerId) dot.classList.add('me');
     playersListEl.appendChild(dot);
   });
@@ -1240,7 +1240,7 @@ function setPieceAvatar(index, lockOwner) {
   const avatar = document.createElement('div');
   avatar.className = 'piece-avatar';
   avatar.style.background = player.color;
-  avatar.textContent = player.name[0].toUpperCase();
+  avatar.textContent = getAvatarText(player.name);
   avatar.title = player.name;
   board.appendChild(avatar);
   avatarEls[anchor] = avatar;
@@ -1286,6 +1286,25 @@ function formatNames(names) {
   if (names.length === 1) return names[0];
   if (names.length <= 3) return names.slice(0, -1).join(', ') + ' & ' + names[names.length - 1];
   return `${names[0]}, ${names[1]} +${names.length - 2} more`;
+}
+
+function getAvatarText(name) {
+  const text = String(name || '').trim();
+  if (!text) return '?';
+  const first = getFirstGrapheme(text);
+  return isEmojiGrapheme(first) ? first : first.toUpperCase();
+}
+
+function getFirstGrapheme(text) {
+  if (typeof Intl !== 'undefined' && Intl.Segmenter) {
+    const seg = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+    for (const part of seg.segment(text)) return part.segment;
+  }
+  return Array.from(text)[0] || '?';
+}
+
+function isEmojiGrapheme(ch) {
+  return /\p{Extended_Pictographic}/u.test(ch);
 }
 
 function loadImage(src) {
