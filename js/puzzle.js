@@ -65,6 +65,7 @@ let chatUnread    = 0;
 let chatOpen      = false;
 const lastPlayerPos = {}; // playerId → { x, y } last known board position
 let startedAt     = null;
+let highQualityMode = localStorage.getItem('jt-high-quality') === '1';
 
 // Rooms-index sync (public rooms only)
 let lastRoomsSolvedSync = 0;
@@ -100,6 +101,7 @@ const chatMessages    = document.getElementById('chat-messages');
 const chatInput       = document.getElementById('chat-input');
 const chatSendBtn     = document.getElementById('chat-send');
 const boardWrap       = board.parentElement;
+const qualityBtn      = document.getElementById('quality-btn');
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
@@ -150,6 +152,7 @@ async function initPuzzle() {
 
     setupHelp();
     setupPeek();
+    setupQualityMode();
     setupChat();
 
     unsubscribe = onPiecesChanged(puzzleId, applyRemoteUpdate);
@@ -233,6 +236,7 @@ function renderPiece(index, dataUrl, x, y, solved, elW, elH) {
 }
 
 function getTextureScale(total) {
+  if (highQualityMode) return Math.min(window.devicePixelRatio || 1, 2.4);
   // Improve sharpness on mobile/high-DPI while avoiding huge memory spikes.
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   if (total <= 40) return Math.max(1, dpr);
@@ -966,6 +970,7 @@ function setupHelp() {
     { key: 'Pinch (mobile)',  desc: 'Zoom in / out' },
     { key: 'Ctrl + scroll',   desc: 'Zoom at cursor position (desktop)' },
     { key: 'Scroll / drag bg',desc: 'Pan the board' },
+    { key: 'HQ button',       desc: 'Toggle sharper pieces (uses more memory)' },
   ];
   if (meta.hardMode) {
     controls.push({ key: 'Right-click',  desc: 'Rotate a piece or group 90°' });
@@ -983,6 +988,25 @@ function setupHelp() {
   });
   helpModal.addEventListener('click', e => {
     if (e.target === helpModal) helpModal.style.display = 'none';
+  });
+}
+
+function setupQualityMode() {
+  if (!qualityBtn) return;
+  const applyState = () => {
+    qualityBtn.classList.toggle('active', highQualityMode);
+    qualityBtn.title = highQualityMode
+      ? 'High quality ON (tap to disable)'
+      : 'High quality OFF (tap to enable)';
+  };
+  applyState();
+
+  qualityBtn.addEventListener('click', () => {
+    highQualityMode = !highQualityMode;
+    localStorage.setItem('jt-high-quality', highQualityMode ? '1' : '0');
+    applyState();
+    // Piece textures are generated at load time, so refresh to rebuild.
+    location.reload();
   });
 }
 

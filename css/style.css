@@ -277,6 +277,10 @@ body {
 }
 
 .icon-btn:hover { background: var(--accent); }
+.icon-btn.active {
+  background: var(--accent);
+  color: #fff;
+}
 
 .mode-hint {
   font-size: 0.82rem;
