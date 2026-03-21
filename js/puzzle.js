@@ -55,6 +55,9 @@ let handContainer = null;
 const HAND_RELEASE_MS = 15000;
 const forceReleaseState = {}; // index → { count, lastTime }
 let lastEmptyTap = { time: 0, x: 0, y: 0 };
+const TOUCH_HOLD_MS = 280;
+const TOUCH_HOLD_SLOP = 10;
+let touchHold = null; // { index, startX, startY, activated, timer }
 
 // Double-tap for mobile rotate (hard mode only)
 let lastTap = { time: 0, el: null };
@@ -462,9 +465,9 @@ async function onMouseUp(e) {
     if (pieceEls[i]) pieceEls[i].style.zIndex = '';
   });
 
-  // A click/tap without movement picks the piece into the hand.
+  // Desktop click without movement picks into hand; touch uses tap-hold.
   if (!locked) {
-    if (!pieceGroup[anchorIndex]) addToHand(anchorIndex);
+    if (!e?.isTouch && !pieceGroup[anchorIndex]) addToHand(anchorIndex);
     return;
   }
 
@@ -540,6 +543,7 @@ async function onMouseUp(e) {
 
 function onTouchStart(e) {
   if (e.touches.length === 2) {
+    cancelTouchHoldSelection();
     // Two fingers — start pinch zoom; cancel any ongoing drag
     if (dragging) {
       if (dragging.locked) unlockGroup(puzzleId, dragging.indices);
@@ -557,9 +561,14 @@ function onTouchStart(e) {
   if (pinch) return; // ignore single-finger start during active pinch
 
   const touch = e.touches[0];
-  onMouseDown({ clientX: touch.clientX, clientY: touch.clientY,
-                target: document.elementFromPoint(touch.clientX, touch.clientY) });
-  if (dragging) e.preventDefault();
+  const target = document.elementFromPoint(touch.clientX, touch.clientY);
+  onMouseDown({ clientX: touch.clientX, clientY: touch.clientY, target });
+  if (dragging) {
+    e.preventDefault();
+    if (isMobileLike && dragging.indices.length === 1) {
+      startTouchHoldSelection(dragging.anchorIndex, touch.clientX, touch.clientY);
+    }
+  }
 }
 
 function onTouchMove(e) {
@@ -575,17 +584,28 @@ function onTouchMove(e) {
     return;
   }
 
+  const touch = e.touches[0];
+  if (touchHold) {
+    const dx = Math.abs(touch.clientX - touchHold.startX);
+    const dy = Math.abs(touch.clientY - touchHold.startY);
+    if (dx > TOUCH_HOLD_SLOP || dy > TOUCH_HOLD_SLOP) cancelTouchHoldSelection();
+  }
+
   if (!dragging) return;
   e.preventDefault();
-  const touch = e.touches[0];
   onMouseMove({ clientX: touch.clientX, clientY: touch.clientY });
 }
 
 function onTouchEnd(e) {
+  const holdActivated = !!touchHold?.activated;
+  cancelTouchHoldSelection();
+
   if (pinch && e.touches.length < 2) {
     pinch = null;
     return;
   }
+
+  if (holdActivated) return;
 
   if (!dragging) {
     // Detect double-tap on empty board to drop hand
@@ -599,7 +619,25 @@ function onTouchEnd(e) {
     return;
   }
   const touch = e.changedTouches[0];
-  onMouseUp({ clientX: touch.clientX, clientY: touch.clientY });
+  onMouseUp({ clientX: touch.clientX, clientY: touch.clientY, isTouch: true });
+}
+
+function startTouchHoldSelection(index, startX, startY) {
+  cancelTouchHoldSelection();
+  touchHold = { index, startX, startY, activated: false, timer: null };
+  touchHold.timer = setTimeout(() => {
+    if (!touchHold || touchHold.index !== index) return;
+    if (!dragging || dragging.locked || dragging.anchorIndex !== index) return;
+    dragging = null;
+    addToHand(index);
+    touchHold.activated = true;
+  }, TOUCH_HOLD_MS);
+}
+
+function cancelTouchHoldSelection() {
+  if (!touchHold) return;
+  if (touchHold.timer) clearTimeout(touchHold.timer);
+  touchHold = null;
 }
 
 // ── Rotation ──────────────────────────────────────────────────────────────────
