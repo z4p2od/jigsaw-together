@@ -65,7 +65,7 @@ let chatUnread    = 0;
 let chatOpen      = false;
 const lastPlayerPos = {}; // playerId → { x, y } last known board position
 let startedAt     = null;
-let highQualityMode = localStorage.getItem('jt-high-quality') === '1';
+let highQualityMode = initHighQualityPreference();
 
 // Rooms-index sync (public rooms only)
 let lastRoomsSolvedSync = 0;
@@ -243,6 +243,22 @@ function getTextureScale(total) {
   if (total <= 120) return Math.max(1, Math.min(1.7, dpr * 1.2));
   if (total <= 250) return Math.max(1, Math.min(1.45, dpr));
   return 1;
+}
+
+function initHighQualityPreference() {
+  const saved = localStorage.getItem('jt-high-quality');
+  if (saved === '1') return true;
+  if (saved === '0') return false;
+
+  // Newer phones default to HQ once unless user explicitly toggles off.
+  const ua = navigator.userAgent || '';
+  const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
+  const dpr = window.devicePixelRatio || 1;
+  const mem = Number(navigator.deviceMemory || 0);
+  const cores = Number(navigator.hardwareConcurrency || 0);
+  const modernIPhone = /iPhone1[3-9],|iPhone2\d,|iPhone/i.test(ua); // coarse fallback
+  const capable = dpr >= 3 && (mem >= 4 || cores >= 6 || modernIPhone);
+  return isMobile && capable;
 }
 
 // Position and rotate a piece using a single CSS transform.
