@@ -433,7 +433,7 @@ function updateLobbyUI(players) {
     const nameEl   = document.getElementById(`vs-name-${slot}`);
     const readyEl  = document.getElementById(`vs-ready-${slot}`);
     if (p) {
-      avatarEl.textContent    = getAvatarText(p.name);
+      avatarEl.textContent    = p.name[0].toUpperCase();
       avatarEl.style.background = p.color;
       nameEl.textContent      = pid === playerId ? `${p.name} (you)` : p.name;
       readyEl.textContent     = p.ready ? '✓ Ready' : '';
@@ -491,7 +491,7 @@ function updateTeamLobbyUI(players, m) {
       const chip = document.createElement('div');
       chip.className = 'team-player-chip';
       const readyMark = p.ready ? ' ✓' : '';
-      chip.innerHTML = `<div class="team-player-circle" style="background:${p.color}">${getAvatarText(p.name)}</div>
+      chip.innerHTML = `<div class="team-player-circle" style="background:${p.color}">${(p.name[0] || '?').toUpperCase()}</div>
         <span class="team-player-name">${pid === playerId ? `${p.name} (you)` : p.name}${readyMark}</span>`;
       container.appendChild(chip);
     });
@@ -702,7 +702,7 @@ function renderBoardAvatars(players) {
     circle.className = 'vs-board-avatar';
     circle.style.background = p.color;
     circle.title = p.name;
-    circle.textContent = getAvatarText(p.name);
+    circle.textContent = (p.name[0] || '?').toUpperCase();
     if (tid === myTeamId) {
       vsBoardAvatarsMe.appendChild(circle);
     } else {
@@ -2008,25 +2008,6 @@ function spawnBoardEmoji(msg) {
 
 function isSingleEmoji(text) {
   return /^\p{Emoji_Presentation}$/u.test(text.trim()) || /^\p{Emoji}\uFE0F?$/u.test(text.trim());
-}
-
-function getAvatarText(name) {
-  const text = String(name || '').trim();
-  if (!text) return '?';
-  const first = getFirstGrapheme(text);
-  return isEmojiGrapheme(first) ? first : first.toUpperCase();
-}
-
-function getFirstGrapheme(text) {
-  if (typeof Intl !== 'undefined' && Intl.Segmenter) {
-    const seg = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
-    for (const part of seg.segment(text)) return part.segment;
-  }
-  return Array.from(text)[0] || '?';
-}
-
-function isEmojiGrapheme(ch) {
-  return /\p{Extended_Pictographic}/u.test(ch);
 }
 
 function escapeHtml(str) {

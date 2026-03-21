@@ -44,9 +44,8 @@ export function generateEdges(cols, rows) {
 }
 
 export function getPad(displayW, displayH) {
-  // Max tab protrusion is neckH + 2*headR ~= 0.36 * edge length (at seed max).
-  // Use the larger piece side so wide/tall rectangular pieces never clip tabs.
-  return Math.ceil(Math.max(displayW, displayH) * 0.42);
+  // Must exceed max tab protrusion: neckH + 2*headR = 0.29*len, use 0.35 for margin
+  return Math.ceil(Math.min(displayW, displayH) * 0.40);
 }
 
 /**
@@ -147,14 +146,9 @@ export function cutPiece(img, col, row, pieceW, pieceH, displayW, displayH, edge
   canvas.width  = displayW + pad * 2;
   canvas.height = displayH + pad * 2;
   const ctx    = canvas.getContext('2d');
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
 
   const srcPadX = pad * pieceW / displayW;
   const srcPadY = pad * pieceH / displayH;
-  // Small source/destination bleed to avoid anti-aliased transparent seams
-  // at protruding tab tips on mobile Safari.
-  const bleedPx = 1;
 
   drawJigsawPath(ctx, displayW, displayH, edges, pad);
   ctx.save();
@@ -162,20 +156,18 @@ export function cutPiece(img, col, row, pieceW, pieceH, displayW, displayH, edge
 
   ctx.drawImage(
     img,
-    col * pieceW - srcPadX - bleedPx,
-    row * pieceH - srcPadY - bleedPx,
-    pieceW + srcPadX * 2 + bleedPx * 2,
-    pieceH + srcPadY * 2 + bleedPx * 2,
-    -bleedPx, -bleedPx,
-    canvas.width + bleedPx * 2, canvas.height + bleedPx * 2
+    col * pieceW - srcPadX,
+    row * pieceH - srcPadY,
+    pieceW + srcPadX * 2,
+    pieceH + srcPadY * 2,
+    0, 0,
+    canvas.width, canvas.height
   );
   ctx.restore();
 
   drawJigsawPath(ctx, displayW, displayH, edges, pad);
   ctx.strokeStyle = 'rgba(0,0,0,0.35)';
   ctx.lineWidth   = 1.5;
-  ctx.lineJoin    = 'round';
-  ctx.lineCap     = 'round';
   ctx.stroke();
 
   return canvas.toDataURL('image/png');

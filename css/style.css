@@ -17,7 +17,6 @@ body {
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
-  overflow-x: hidden;
 }
 
 /* ── Landing page ── */
@@ -227,22 +226,8 @@ body {
 .puzzle-page {
   display: flex;
   flex-direction: column;
-  height: 100dvh;
-  min-height: 100dvh;
+  height: 100vh;
   overflow: hidden;
-  width: 100%;
-  max-width: 100vw;
-}
-
-/* iOS/Safari hard lock for puzzle route so header can't drift horizontally */
-body.puzzle-body {
-  position: fixed;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-  overscroll-behavior-x: none;
-  touch-action: pan-y;
 }
 
 .puzzle-header {
@@ -254,9 +239,6 @@ body.puzzle-body {
   border-bottom: 1px solid var(--surface2);
   flex-shrink: 0;
   gap: 12px;
-  width: 100%;
-  max-width: 100vw;
-  overflow-x: clip;
 }
 
 .puzzle-header h2 {
@@ -295,10 +277,6 @@ body.puzzle-body {
 }
 
 .icon-btn:hover { background: var(--accent); }
-.icon-btn.active {
-  background: var(--accent);
-  color: #fff;
-}
 
 .mode-hint {
   font-size: 0.82rem;
@@ -441,67 +419,6 @@ body.puzzle-body {
   white-space: nowrap;
 }
 
-@media (max-width: 860px) and (pointer: coarse) {
-  .puzzle-header {
-    padding: 8px 10px;
-    gap: 8px;
-    flex-wrap: wrap;
-    align-items: center;
-  }
-  .puzzle-header h2 {
-    order: 1;
-    flex: 1;
-    min-width: 0;
-    font-size: 0.95rem;
-  }
-  .home-btn {
-    order: 0;
-  }
-  .hard-badge {
-    order: 2;
-    font-size: 0.68rem;
-    padding: 2px 6px;
-  }
-  .share-box {
-    order: 3;
-    flex: 1 1 100%;
-    max-width: 100%;
-    width: 100%;
-    min-width: 0;
-    padding: 5px 8px;
-  }
-  .share-box span {
-    font-size: 0.72rem;
-  }
-  .share-box button {
-    padding: 4px 8px;
-    font-size: 0.7rem;
-  }
-  .header-right {
-    order: 4;
-    width: 100%;
-    flex-wrap: wrap;
-    justify-content: space-between;
-    gap: 8px;
-  }
-  .players-list {
-    gap: 4px;
-  }
-  .player-dot {
-    width: 24px;
-    height: 24px;
-    font-size: 0.62rem;
-  }
-  .timer, .progress-text {
-    font-size: 0.76rem;
-  }
-  .icon-btn {
-    width: 30px;
-    height: 30px;
-    font-size: 0.86rem;
-  }
-}
-
 /* Board area */
 .puzzle-board-wrap {
   flex: 1;
@@ -509,54 +426,6 @@ body.puzzle-body {
   position: relative;
   background: var(--bg);
   touch-action: pan-x pan-y;
-}
-.puzzle-board-wrap.panning {
-  cursor: grabbing;
-}
-
-.board-zoom-controls {
-  position: absolute;
-  right: 10px;
-  top: 10px;
-  display: flex;
-  gap: 8px;
-  z-index: 30;
-  width: max-content;
-}
-.board-zoom-controls .zoom-btn {
-  border: 1px solid rgba(255,255,255,0.18);
-  background: rgba(15, 23, 42, 0.82);
-  color: var(--text);
-  border-radius: 10px;
-  min-width: 36px;
-  height: 38px;
-  font-weight: 700;
-  cursor: pointer;
-  touch-action: manipulation;
-  -webkit-tap-highlight-color: transparent;
-}
-.board-zoom-controls .zoom-btn:hover {
-  background: rgba(30, 41, 59, 0.95);
-}
-.board-zoom-controls .zoom-readout {
-  min-width: 60px;
-  font-size: 0.78rem;
-}
-
-@media (max-width: 860px) and (pointer: coarse) {
-  .board-zoom-controls {
-    right: 8px;
-    top: 8px;
-  }
-}
-
-/* Hide Vercel preview toolbar overlays in-app. */
-#vercel-toolbar,
-[data-vercel-toolbar],
-.__vercel-toolbar,
-iframe[src*="_vercel/toolbar"],
-iframe[src*="vercel.live"] {
-  display: none !important;
 }
 
 #puzzle-board {
@@ -584,64 +453,8 @@ iframe[src*="vercel.live"] {
   filter: drop-shadow(0 8px 16px rgba(0,0,0,0.7));
 }
 
-.piece.in-hand {
-  opacity: 0.25;
-  filter: grayscale(0.5);
-  pointer-events: none;
-}
-
 .piece.locked-by-other {
   cursor: not-allowed;
-}
-
-/* ── Hand container (multi-select) ── */
-
-.piece-hand {
-  position: fixed;
-  bottom: 10px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: none;
-  gap: 6px;
-  align-items: flex-end;
-  z-index: 9200;
-  padding: 8px 14px;
-  background: rgba(15, 23, 42, 0.88);
-  border-radius: 14px;
-  border: 1px solid rgba(255, 222, 120, 0.35);
-  box-shadow: 0 0 10px rgba(255, 222, 120, 0.18);
-  max-width: 90vw;
-  overflow-x: auto;
-}
-
-.hand-thumb-wrap {
-  position: relative;
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: transform 0.12s;
-}
-
-.hand-thumb-wrap:hover {
-  transform: scale(1.08);
-}
-
-.hand-thumb {
-  width: 52px;
-  height: 52px;
-  object-fit: contain;
-  border-radius: 6px;
-  pointer-events: none;
-}
-
-.hand-thumb-timer {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  width: 100%;
-  height: 3px;
-  background: rgba(255, 222, 120, 0.7);
-  border-radius: 0 0 6px 6px;
-  transition: width 15s linear;
 }
 
 /* Player avatar shown on pieces being moved by another player */
