@@ -1041,11 +1041,17 @@ function setupHorizontalPageLock() {
   }, { passive: true });
 
   document.addEventListener('touchmove', e => {
-    if (!pageTouchStart || pageTouchStart.inBoardWrap || e.touches.length !== 1) return;
+    if (!pageTouchStart || e.touches.length !== 1) return;
     const t = e.touches[0];
     const dx = Math.abs(t.clientX - pageTouchStart.x);
     const dy = Math.abs(t.clientY - pageTouchStart.y);
-    if (dx > dy && dx > 5) e.preventDefault();
+    if (dx <= dy || dx <= 5) return;
+
+    // Only allow horizontal pan if gesture started in the board area AND board is wider
+    // than viewport at current zoom (real horizontal content exists).
+    const canPanBoardX = (BOARD_W * scale) > (boardWrap.clientWidth + 2);
+    const allowHorizontal = pageTouchStart.inBoardWrap && canPanBoardX;
+    if (!allowHorizontal) e.preventDefault();
   }, { passive: false });
 
   document.addEventListener('touchend', () => { pageTouchStart = null; }, { passive: true });

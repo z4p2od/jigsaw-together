@@ -242,6 +242,7 @@ body.puzzle-body {
   height: 100%;
   overflow: hidden;
   overscroll-behavior-x: none;
+  touch-action: pan-y;
 }
 
 .puzzle-header {
