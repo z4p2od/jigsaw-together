@@ -242,14 +242,8 @@ function renderPiece(index, dataUrl, x, y, solved, elW, elH) {
 }
 
 function getTextureScale(total) {
+  if (isLikelySafari) return 1;
   if (highQualityMode) {
-    if (isLikelySafari) {
-      // Safari is more prone to edge artifacts with aggressive texture scaling.
-      if (total <= 40) return 1.45;
-      if (total <= 120) return 1.25;
-      if (total <= 250) return 1.1;
-      return 1;
-    }
     // HQ still needs per-puzzle caps to avoid canvas memory pressure on smaller phones.
     const dpr = Math.min(window.devicePixelRatio || 1, 2.2);
     if (total <= 40) return Math.max(1.2, Math.min(2.2, dpr));
@@ -1029,6 +1023,12 @@ function setupHelp() {
 
 function setupQualityMode() {
   if (!qualityBtn) return;
+  if (isLikelySafari) {
+    highQualityMode = false;
+    localStorage.setItem('jt-high-quality', '0');
+    qualityBtn.style.display = 'none';
+    return;
+  }
   const applyState = () => {
     qualityBtn.classList.toggle('active', highQualityMode);
     qualityBtn.title = highQualityMode
