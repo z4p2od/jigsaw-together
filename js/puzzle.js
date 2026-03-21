@@ -66,6 +66,7 @@ let chatOpen      = false;
 const lastPlayerPos = {}; // playerId → { x, y } last known board position
 let startedAt     = null;
 let highQualityMode = initHighQualityPreference();
+let pageTouchStart = null;
 
 // Rooms-index sync (public rooms only)
 let lastRoomsSolvedSync = 0;
@@ -153,6 +154,7 @@ async function initPuzzle() {
     setupHelp();
     setupPeek();
     setupQualityMode();
+    setupHorizontalPageLock();
     setupChat();
 
     unsubscribe = onPiecesChanged(puzzleId, applyRemoteUpdate);
@@ -1024,6 +1026,31 @@ function setupQualityMode() {
     // Piece textures are generated at load time, so refresh to rebuild.
     location.reload();
   });
+}
+
+function setupHorizontalPageLock() {
+  // iOS Safari can still rubber-band horizontally even with overflow hidden.
+  // We only block horizontal swipes that start outside the puzzle board area.
+  document.addEventListener('touchstart', e => {
+    if (e.touches.length !== 1) { pageTouchStart = null; return; }
+    const t = e.touches[0];
+    pageTouchStart = {
+      x: t.clientX,
+      y: t.clientY,
+      inBoardWrap: !!e.target.closest('.puzzle-board-wrap'),
+    };
+  }, { passive: true });
+
+  document.addEventListener('touchmove', e => {
+    if (!pageTouchStart || pageTouchStart.inBoardWrap || e.touches.length !== 1) return;
+    const t = e.touches[0];
+    const dx = Math.abs(t.clientX - pageTouchStart.x);
+    const dy = Math.abs(t.clientY - pageTouchStart.y);
+    if (dx > dy && dx > 5) e.preventDefault();
+  }, { passive: false });
+
+  document.addEventListener('touchend', () => { pageTouchStart = null; }, { passive: true });
+  document.addEventListener('touchcancel', () => { pageTouchStart = null; }, { passive: true });
 }
 
 function setupPeek() {
