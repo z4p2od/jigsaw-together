@@ -147,9 +147,14 @@ export function cutPiece(img, col, row, pieceW, pieceH, displayW, displayH, edge
   canvas.width  = displayW + pad * 2;
   canvas.height = displayH + pad * 2;
   const ctx    = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
 
   const srcPadX = pad * pieceW / displayW;
   const srcPadY = pad * pieceH / displayH;
+  // Small source/destination bleed to avoid anti-aliased transparent seams
+  // at protruding tab tips on mobile Safari.
+  const bleedPx = 1;
 
   drawJigsawPath(ctx, displayW, displayH, edges, pad);
   ctx.save();
@@ -157,18 +162,20 @@ export function cutPiece(img, col, row, pieceW, pieceH, displayW, displayH, edge
 
   ctx.drawImage(
     img,
-    col * pieceW - srcPadX,
-    row * pieceH - srcPadY,
-    pieceW + srcPadX * 2,
-    pieceH + srcPadY * 2,
-    0, 0,
-    canvas.width, canvas.height
+    col * pieceW - srcPadX - bleedPx,
+    row * pieceH - srcPadY - bleedPx,
+    pieceW + srcPadX * 2 + bleedPx * 2,
+    pieceH + srcPadY * 2 + bleedPx * 2,
+    -bleedPx, -bleedPx,
+    canvas.width + bleedPx * 2, canvas.height + bleedPx * 2
   );
   ctx.restore();
 
   drawJigsawPath(ctx, displayW, displayH, edges, pad);
   ctx.strokeStyle = 'rgba(0,0,0,0.35)';
   ctx.lineWidth   = 1.5;
+  ctx.lineJoin    = 'round';
+  ctx.lineCap     = 'round';
   ctx.stroke();
 
   return canvas.toDataURL('image/png');
