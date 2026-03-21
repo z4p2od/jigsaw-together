@@ -200,7 +200,6 @@ async function renderAllPieces() {
   const textureScale = getTextureScale(totalPieces);
   const texDisplayW = Math.round(displayW * textureScale);
   const texDisplayH = Math.round(displayH * textureScale);
-  const texPad = getPad(texDisplayW, texDisplayH);
 
   // Store on meta for use by snap/move logic
   meta._displayW = displayW;
@@ -216,8 +215,8 @@ async function renderAllPieces() {
       const row    = Math.floor(i / cols);
       const dataUrl = cutPiece(img, col, row, pieceW, pieceH, texDisplayW, texDisplayH, edges[i]);
       const p      = pieceStates[i];
-      // Keep gameplay dimensions unchanged; only improve texture density.
-      renderPiece(i, dataUrl, p.x, p.y, p.solved, (texDisplayW + texPad * 2) / textureScale, (texDisplayH + texPad * 2) / textureScale);
+      // Keep gameplay dimensions exactly unchanged; only improve texture density.
+      renderPiece(i, dataUrl, p.x, p.y, p.solved, displayW + pad * 2, displayH + pad * 2);
     }
     loadingText.textContent = `Cutting pieces... ${Math.min(end, totalPieces)} / ${totalPieces}`;
   }
