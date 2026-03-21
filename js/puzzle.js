@@ -880,7 +880,7 @@ function removeFromHandSilent(index) {
   renderHand();
 }
 
-function dropHandAt(clientX, clientY) {
+async function dropHandAt(clientX, clientY) {
   if (hand.length === 0) return;
   const r = board.getBoundingClientRect();
   const centerX = (clientX - r.left) / scale;
@@ -898,6 +898,7 @@ function dropHandAt(clientX, clientY) {
   const spreadH = dH * 1.3;
 
   const positions = [];
+  const rotationWrites = [];
   shuffled.forEach((idx, i) => {
     const c = i % layoutCols;
     const rw = Math.floor(i / layoutCols);
@@ -909,6 +910,7 @@ function dropHandAt(clientX, clientY) {
     pieceStates[idx].y = y;
     movePieceEl(idx, x, y);
     positions.push({ index: idx, x, y });
+    rotationWrites.push(updatePieceRotation(puzzleId, idx, pieceStates[idx].rotation ?? 0));
     pieceEls[idx]?.classList.remove('in-hand');
     clearTimeout(handTimers[idx]);
     delete handTimers[idx];
@@ -919,6 +921,7 @@ function dropHandAt(clientX, clientY) {
   shuffled.forEach(i => { pieceStates[i].lockedBy = null; });
   hand = [];
   renderHand();
+  await Promise.allSettled(rotationWrites);
 }
 
 function shuffleNonAdjacent(indices, gridCols) {
@@ -970,6 +973,8 @@ function renderHand() {
       thumb.src = src;
       thumb.className = 'hand-thumb';
       thumb.draggable = false;
+      const rot = pieceStates[index]?.rotation ?? 0;
+      if (rot) thumb.style.transform = `rotate(${rot}deg)`;
       wrap.appendChild(thumb);
     }
     const timer = document.createElement('div');
