@@ -121,7 +121,7 @@ const chatInput       = document.getElementById('chat-input');
 const chatSendBtn     = document.getElementById('chat-send');
 const boardWrap       = board.parentElement;
 const qualityBtn      = document.getElementById('quality-btn');
-const isCoarsePointer = window.matchMedia?.('(pointer: coarse)').matches ?? false;
+const isCoarsePointer = window.matchMedia?.('(pointer: coarse)')?.matches ?? false;
 const isMobileLike = isCoarsePointer || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
