@@ -819,16 +819,23 @@ function dropHandAt(clientX, clientY) {
 
   const dW = meta._displayW;
   const dH = meta._displayH;
-  const cols = Math.ceil(Math.sqrt(hand.length));
-  const rows = Math.ceil(hand.length / cols);
+  const { cols: gridCols } = meta;
+
+  const shuffled = shuffleNonAdjacent([...hand], gridCols);
+
+  const layoutCols = Math.ceil(Math.sqrt(shuffled.length));
+  const layoutRows = Math.ceil(shuffled.length / layoutCols);
+  const spreadW = dW * 1.3;
+  const spreadH = dH * 1.3;
 
   const positions = [];
-  const indices = [...hand];
-  indices.forEach((idx, i) => {
-    const c = i % cols;
-    const rw = Math.floor(i / cols);
-    const x = centerX - (cols * dW / 2) + c * dW;
-    const y = centerY - (rows * dH / 2) + rw * dH;
+  shuffled.forEach((idx, i) => {
+    const c = i % layoutCols;
+    const rw = Math.floor(i / layoutCols);
+    const jitterX = (Math.random() - 0.5) * dW * 0.6;
+    const jitterY = (Math.random() - 0.5) * dH * 0.6;
+    const x = centerX - (layoutCols * spreadW / 2) + c * spreadW + jitterX;
+    const y = centerY - (layoutRows * spreadH / 2) + rw * spreadH + jitterY;
     pieceStates[idx].x = x;
     pieceStates[idx].y = y;
     movePieceEl(idx, x, y);
@@ -839,10 +846,40 @@ function dropHandAt(clientX, clientY) {
   });
 
   updateGroupPosition(puzzleId, positions);
-  unlockGroup(puzzleId, indices);
-  indices.forEach(i => { pieceStates[i].lockedBy = null; });
+  unlockGroup(puzzleId, shuffled);
+  shuffled.forEach(i => { pieceStates[i].lockedBy = null; });
   hand = [];
   renderHand();
+}
+
+function shuffleNonAdjacent(indices, gridCols) {
+  if (indices.length <= 1) return indices;
+
+  const isAdj = (a, b) => {
+    const colA = a % gridCols, rowA = Math.floor(a / gridCols);
+    const colB = b % gridCols, rowB = Math.floor(b / gridCols);
+    return Math.abs(colA - colB) + Math.abs(rowA - rowB) === 1;
+  };
+
+  for (let i = indices.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [indices[i], indices[j]] = [indices[j], indices[i]];
+  }
+
+  for (let pass = 0; pass < 3; pass++) {
+    for (let i = 0; i < indices.length - 1; i++) {
+      if (isAdj(indices[i], indices[i + 1])) {
+        const swap = indices.findIndex((_, k) =>
+          k > i + 1 && !isAdj(indices[i], indices[k]) &&
+          (i === 0 || !isAdj(indices[i - 1], indices[k]))
+        );
+        if (swap !== -1) {
+          [indices[i + 1], indices[swap]] = [indices[swap], indices[i + 1]];
+        }
+      }
+    }
+  }
+  return indices;
 }
 
 function clearHand() {
@@ -858,10 +895,12 @@ function renderHand() {
   hand.forEach(index => {
     const wrap = document.createElement('div');
     wrap.className = 'hand-thumb-wrap';
-    const thumb = pieceEls[index]?.cloneNode(false);
-    if (thumb) {
+    const src = pieceEls[index]?.src;
+    if (src) {
+      const thumb = document.createElement('img');
+      thumb.src = src;
       thumb.className = 'hand-thumb';
-      thumb.removeAttribute('data-index');
+      thumb.draggable = false;
       wrap.appendChild(thumb);
     }
     const timer = document.createElement('div');
