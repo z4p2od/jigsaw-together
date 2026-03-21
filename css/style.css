@@ -423,6 +423,67 @@ body {
   white-space: nowrap;
 }
 
+@media (max-width: 860px) {
+  .puzzle-header {
+    padding: 8px 10px;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .puzzle-header h2 {
+    order: 1;
+    flex: 1;
+    min-width: 0;
+    font-size: 0.95rem;
+  }
+  .home-btn {
+    order: 0;
+  }
+  .hard-badge {
+    order: 2;
+    font-size: 0.68rem;
+    padding: 2px 6px;
+  }
+  .share-box {
+    order: 3;
+    flex: 1 1 100%;
+    max-width: 100%;
+    width: 100%;
+    min-width: 0;
+    padding: 5px 8px;
+  }
+  .share-box span {
+    font-size: 0.72rem;
+  }
+  .share-box button {
+    padding: 4px 8px;
+    font-size: 0.7rem;
+  }
+  .header-right {
+    order: 4;
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .players-list {
+    gap: 4px;
+  }
+  .player-dot {
+    width: 24px;
+    height: 24px;
+    font-size: 0.62rem;
+  }
+  .timer, .progress-text {
+    font-size: 0.76rem;
+  }
+  .icon-btn {
+    width: 30px;
+    height: 30px;
+    font-size: 0.86rem;
+  }
+}
+
 /* Board area */
 .puzzle-board-wrap {
   flex: 1;
