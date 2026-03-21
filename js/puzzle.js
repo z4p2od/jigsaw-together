@@ -690,7 +690,10 @@ function onWheelZoom(e) {
   // Preserve normal one-finger/trackpad scrolling unless modified.
   if (!e.ctrlKey && !e.metaKey) return;
   e.preventDefault();
-  const factor = Math.exp(-e.deltaY * 0.0018);
+  // Trackpads (especially on macOS) can emit very large delta spikes.
+  // Cap per-event delta and use a gentler curve for smoother zooming.
+  const cappedDelta = Math.max(-60, Math.min(60, e.deltaY));
+  const factor = Math.exp(-cappedDelta * 0.0011);
   applyScale(scale * factor, { anchorClientX: e.clientX, anchorClientY: e.clientY });
 }
 
