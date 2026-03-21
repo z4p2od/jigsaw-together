@@ -388,7 +388,7 @@ function onMouseDown(e) {
 
   // Don't lock yet — lock only when movement actually starts (onMouseMove).
   // This prevents orphaned locks from clicks/taps that never move.
-  dragging = { indices, anchorIndex: index, offsetX, offsetY, relOffsets, locked: false };
+  dragging = { indices, anchorIndex: index, offsetX, offsetY, relOffsets, locked: false, startClientX: e.clientX, startClientY: e.clientY };
 }
 
 function onMouseMove(e) {
@@ -401,8 +401,14 @@ function onMouseMove(e) {
   if (!dragging) return;
   const { indices, offsetX, offsetY, relOffsets } = dragging;
 
-  // First movement — acquire locks and start timer now (not on mousedown).
-  // This prevents orphaned locks from clicks/taps that never actually drag.
+  // Dead zone: ignore tiny movements so a slightly shaky click still registers
+  // as a tap (hand-select) rather than a drag.
+  if (!dragging.locked) {
+    const dx = Math.abs(e.clientX - dragging.startClientX);
+    const dy = Math.abs(e.clientY - dragging.startClientY);
+    if (dx < 5 && dy < 5) return;
+  }
+
   if (!dragging.locked) {
     dragging.locked = true;
     lockGroup(puzzleId, indices, playerId);
