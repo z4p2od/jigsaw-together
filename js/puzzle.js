@@ -676,7 +676,7 @@ function onWheelZoom(e) {
 }
 
 function setupViewportControls() {
-  if (document.querySelector('.board-zoom-controls')) return;
+  if (boardWrap.querySelector('.board-zoom-controls')) return;
 
   const controls = document.createElement('div');
   controls.className = 'board-zoom-controls';
@@ -686,7 +686,7 @@ function setupViewportControls() {
     <button class="zoom-btn" data-action="plus" title="Zoom in">+</button>
     <button class="zoom-btn" data-action="center" title="Center board">◎</button>
   `;
-  document.body.appendChild(controls);
+  boardWrap.appendChild(controls);
 
   controls.addEventListener('click', e => {
     const btn = e.target.closest('button[data-action]');
@@ -705,7 +705,7 @@ function setupViewportControls() {
 }
 
 function updateZoomControls() {
-  const readout = document.querySelector('.board-zoom-controls .zoom-readout');
+  const readout = boardWrap.querySelector('.board-zoom-controls .zoom-readout');
   if (!readout) return;
   readout.textContent = `${Math.round(scale * 100)}%`;
 }

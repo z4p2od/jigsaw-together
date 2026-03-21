@@ -433,12 +433,12 @@ body {
 }
 
 .board-zoom-controls {
-  position: fixed;
-  right: max(12px, env(safe-area-inset-right));
-  bottom: calc(max(12px, env(safe-area-inset-bottom)) + 6px);
+  position: absolute;
+  right: 10px;
+  top: 10px;
   display: flex;
   gap: 8px;
-  z-index: 1200;
+  z-index: 30;
   width: max-content;
 }
 .board-zoom-controls .zoom-btn {
@@ -463,8 +463,8 @@ body {
 
 @media (max-width: 860px) {
   .board-zoom-controls {
-    right: max(10px, env(safe-area-inset-right));
-    bottom: calc(max(8px, env(safe-area-inset-bottom)) + 4px);
+    right: 8px;
+    top: 8px;
   }
 }
 
