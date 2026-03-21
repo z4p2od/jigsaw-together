@@ -44,8 +44,9 @@ export function generateEdges(cols, rows) {
 }
 
 export function getPad(displayW, displayH) {
-  // Must exceed max tab protrusion: neckH + 2*headR = 0.29*len, use 0.35 for margin
-  return Math.ceil(Math.min(displayW, displayH) * 0.40);
+  // Max tab protrusion is neckH + 2*headR ~= 0.36 * edge length (at seed max).
+  // Use the larger piece side so wide/tall rectangular pieces never clip tabs.
+  return Math.ceil(Math.max(displayW, displayH) * 0.42);
 }
 
 /**
