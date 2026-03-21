@@ -584,8 +584,64 @@ iframe[src*="vercel.live"] {
   filter: drop-shadow(0 8px 16px rgba(0,0,0,0.7));
 }
 
+.piece.in-hand {
+  opacity: 0.25;
+  filter: grayscale(0.5);
+  pointer-events: none;
+}
+
 .piece.locked-by-other {
   cursor: not-allowed;
+}
+
+/* ── Hand container (multi-select) ── */
+
+.piece-hand {
+  position: fixed;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: none;
+  gap: 6px;
+  align-items: flex-end;
+  z-index: 9200;
+  padding: 8px 14px;
+  background: rgba(15, 23, 42, 0.88);
+  border-radius: 14px;
+  border: 1px solid rgba(255, 222, 120, 0.35);
+  box-shadow: 0 0 10px rgba(255, 222, 120, 0.18);
+  max-width: 90vw;
+  overflow-x: auto;
+}
+
+.hand-thumb-wrap {
+  position: relative;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: transform 0.12s;
+}
+
+.hand-thumb-wrap:hover {
+  transform: scale(1.08);
+}
+
+.hand-thumb {
+  width: 52px;
+  height: 52px;
+  object-fit: contain;
+  border-radius: 6px;
+  pointer-events: none;
+}
+
+.hand-thumb-timer {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background: rgba(255, 222, 120, 0.7);
+  border-radius: 0 0 6px 6px;
+  transition: width 15s linear;
 }
 
 /* Player avatar shown on pieces being moved by another player */

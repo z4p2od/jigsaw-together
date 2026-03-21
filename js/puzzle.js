@@ -49,6 +49,12 @@ let unsubscribe = null;
 let scale       = 1;   // current zoom level applied to #puzzle-board
 let pinch       = null; // { dist0, scale0 } — active pinch gesture state
 let viewportPan = null; // { startX, startY, scrollLeft, scrollTop }
+let hand = [];           // indices of pieces currently in the player's hand
+let handTimers = {};     // index → setTimeout id for auto-release
+let handContainer = null;
+const HAND_RELEASE_MS = 15000;
+const forceReleaseState = {}; // index → { count, lastTime }
+let lastEmptyTap = { time: 0, x: 0, y: 0 };
 
 // Double-tap for mobile rotate (hard mode only)
 let lastTap = { time: 0, el: null };
@@ -334,6 +340,9 @@ function attachDragListeners() {
   // Double-tap for mobile rotation (hard mode only)
   board.addEventListener('touchend', onDoubleTap);
 
+  // Desktop double-click to drop hand on empty board
+  boardWrap.addEventListener('dblclick', onBoardDblClick);
+
   // Use the wrap for touch so pinch-to-zoom works even when fingers start outside board
   boardWrap.addEventListener('touchstart', onTouchStart, { passive: false });
   boardWrap.addEventListener('touchmove',  onTouchMove,  { passive: false });
@@ -342,11 +351,20 @@ function attachDragListeners() {
 
 function onMouseDown(e) {
   const el = e.target.closest('.piece');
+
   if (!el || el.classList.contains('solved')) return;
 
   const index = Number(el.dataset.index);
   const state = pieceStates[index];
-  if (state.lockedBy && state.lockedBy !== playerId) return;
+
+  // Force-release: rapid clicks on a piece locked by someone else
+  if (state.lockedBy && state.lockedBy !== playerId) {
+    tryForceRelease(index);
+    return;
+  }
+
+  // If this piece is already in our hand, ignore (it's managed by the hand UI)
+  if (hand.includes(index)) return;
 
   const gid     = pieceGroup[index];
   const indices = gid ? [...groups[gid]] : [index];
@@ -438,8 +456,11 @@ async function onMouseUp(e) {
     if (pieceEls[i]) pieceEls[i].style.zIndex = '';
   });
 
-  // If we never moved, there's no Firebase lock to release — just bail out.
-  if (!locked) return;
+  // A click/tap without movement picks the piece into the hand.
+  if (!locked) {
+    if (!pieceGroup[anchorIndex]) addToHand(anchorIndex);
+    return;
+  }
 
   const boardRect = board.getBoundingClientRect();
   const anchorX   = (e.clientX - boardRect.left) / scale - offsetX;
@@ -560,7 +581,17 @@ function onTouchEnd(e) {
     return;
   }
 
-  if (!dragging) return;
+  if (!dragging) {
+    // Detect double-tap on empty board to drop hand
+    if (hand.length > 0 && e.changedTouches.length === 1) {
+      const t = e.changedTouches[0];
+      const target = document.elementFromPoint(t.clientX, t.clientY);
+      if (!target?.closest('.piece')) {
+        if (checkEmptyDoubleTap(t.clientX, t.clientY)) return;
+      }
+    }
+    return;
+  }
   const touch = e.changedTouches[0];
   onMouseUp({ clientX: touch.clientX, clientY: touch.clientY });
 }
@@ -656,26 +687,26 @@ function applyScale(s, opts = {}) {
   const prev = scale;
   if (Math.abs(next - prev) < 0.001) return;
 
-  const oldRect = board.getBoundingClientRect();
+  const { anchorClientX, anchorClientY } = opts;
+  const hasAnchor = Number.isFinite(anchorClientX) && Number.isFinite(anchorClientY);
+  let bx, by;
+  if (hasAnchor) {
+    const r = board.getBoundingClientRect();
+    bx = (anchorClientX - r.left) / prev;
+    by = (anchorClientY - r.top) / prev;
+  }
+
   scale = next;
   board.style.transform = scale === 1 ? '' : `scale(${scale})`;
-  // CSS transform doesn't affect layout, so manually size a margin-bottom/right
-  // on the board so the wrap's scrollbars track the scaled dimensions.
   const extraW = BOARD_W * (scale - 1);
   const extraH = BOARD_H * (scale - 1);
   board.style.marginRight  = extraW > 0 ? extraW + 'px' : '';
   board.style.marginBottom = extraH > 0 ? extraH + 'px' : '';
 
-  // Keep cursor/finger anchor stable while zooming.
-  const { anchorClientX, anchorClientY } = opts;
-  if (Number.isFinite(anchorClientX) && Number.isFinite(anchorClientY)) {
-    const boardX = (anchorClientX - oldRect.left) / prev;
-    const boardY = (anchorClientY - oldRect.top) / prev;
-    const newRect = board.getBoundingClientRect();
-    const desiredLeft = anchorClientX - boardX * scale;
-    const desiredTop  = anchorClientY - boardY * scale;
-    boardWrap.scrollLeft += newRect.left - desiredLeft;
-    boardWrap.scrollTop  += newRect.top - desiredTop;
+  if (hasAnchor) {
+    const r2 = board.getBoundingClientRect();
+    boardWrap.scrollLeft += (r2.left + bx * scale) - anchorClientX;
+    boardWrap.scrollTop  += (r2.top  + by * scale) - anchorClientY;
   }
 
   updateZoomControls();
@@ -701,8 +732,19 @@ function fitBoardToViewport() {
 function onWheelZoom(e) {
   if (dragging) return;
   e.preventDefault();
-  const factor = Math.exp(-e.deltaY * 0.0018);
+  let delta = e.deltaY;
+  if (e.deltaMode === 1) delta *= 16;
+  if (e.deltaMode === 2) delta *= boardWrap.clientHeight;
+  const limited = Math.max(-120, Math.min(120, delta));
+  const factor = Math.exp(-limited * 0.0015);
   applyScale(scale * factor, { anchorClientX: e.clientX, anchorClientY: e.clientY });
+}
+
+function onBoardDblClick(e) {
+  if (hand.length === 0) return;
+  if (e.target.closest('.piece')) return;
+  e.preventDefault();
+  dropHandAt(e.clientX, e.clientY);
 }
 
 function onViewportPanStart(e) {
@@ -718,6 +760,152 @@ function onViewportPanStart(e) {
   };
   boardWrap.classList.add('panning');
   e.preventDefault();
+}
+
+// ── Hand (multi-select) system ─────────────────────────────────────────────
+
+function createHandContainer() {
+  const el = document.createElement('div');
+  el.id = 'piece-hand';
+  el.className = 'piece-hand';
+  document.body.appendChild(el);
+  return el;
+}
+
+function addToHand(index) {
+  if (hand.includes(index)) { removeFromHand(index); return; }
+  if (pieceStates[index].solved) return;
+  if (pieceGroup[index]) return;
+
+  lockGroup(puzzleId, [index], playerId);
+  pieceStates[index].lockedBy = playerId;
+  hand.push(index);
+  pieceEls[index]?.classList.add('in-hand');
+
+  handTimers[index] = setTimeout(() => {
+    if (hand.includes(index)) removeFromHand(index);
+  }, HAND_RELEASE_MS);
+
+  renderHand();
+
+  if (!startedAt) {
+    setStartedAt(puzzleId).then(t => { startedAt = t; startTimer(); });
+  }
+}
+
+function removeFromHand(index) {
+  hand = hand.filter(i => i !== index);
+  clearTimeout(handTimers[index]);
+  delete handTimers[index];
+  pieceEls[index]?.classList.remove('in-hand');
+  unlockGroup(puzzleId, [index]);
+  pieceStates[index].lockedBy = null;
+  renderHand();
+}
+
+function removeFromHandSilent(index) {
+  hand = hand.filter(i => i !== index);
+  clearTimeout(handTimers[index]);
+  delete handTimers[index];
+  pieceEls[index]?.classList.remove('in-hand');
+  renderHand();
+}
+
+function dropHandAt(clientX, clientY) {
+  if (hand.length === 0) return;
+  const r = board.getBoundingClientRect();
+  const centerX = (clientX - r.left) / scale;
+  const centerY = (clientY - r.top) / scale;
+
+  const dW = meta._displayW;
+  const dH = meta._displayH;
+  const cols = Math.ceil(Math.sqrt(hand.length));
+  const rows = Math.ceil(hand.length / cols);
+
+  const positions = [];
+  const indices = [...hand];
+  indices.forEach((idx, i) => {
+    const c = i % cols;
+    const rw = Math.floor(i / cols);
+    const x = centerX - (cols * dW / 2) + c * dW;
+    const y = centerY - (rows * dH / 2) + rw * dH;
+    pieceStates[idx].x = x;
+    pieceStates[idx].y = y;
+    movePieceEl(idx, x, y);
+    positions.push({ index: idx, x, y });
+    pieceEls[idx]?.classList.remove('in-hand');
+    clearTimeout(handTimers[idx]);
+    delete handTimers[idx];
+  });
+
+  updateGroupPosition(puzzleId, positions);
+  unlockGroup(puzzleId, indices);
+  indices.forEach(i => { pieceStates[i].lockedBy = null; });
+  hand = [];
+  renderHand();
+}
+
+function clearHand() {
+  [...hand].forEach(i => removeFromHand(i));
+}
+
+function renderHand() {
+  if (!handContainer) handContainer = createHandContainer();
+  handContainer.innerHTML = '';
+  if (hand.length === 0) { handContainer.style.display = 'none'; return; }
+  handContainer.style.display = 'flex';
+
+  hand.forEach(index => {
+    const wrap = document.createElement('div');
+    wrap.className = 'hand-thumb-wrap';
+    const thumb = pieceEls[index]?.cloneNode(false);
+    if (thumb) {
+      thumb.className = 'hand-thumb';
+      thumb.removeAttribute('data-index');
+      wrap.appendChild(thumb);
+    }
+    const timer = document.createElement('div');
+    timer.className = 'hand-thumb-timer';
+    wrap.appendChild(timer);
+    requestAnimationFrame(() => { timer.style.width = '0%'; });
+    wrap.addEventListener('click', () => removeFromHand(index));
+    handContainer.appendChild(wrap);
+  });
+}
+
+function checkEmptyDoubleTap(cx, cy) {
+  const now = Date.now();
+  const dist = Math.hypot(cx - lastEmptyTap.x, cy - lastEmptyTap.y);
+  if (now - lastEmptyTap.time < 400 && dist < 40) {
+    dropHandAt(cx, cy);
+    lastEmptyTap = { time: 0, x: 0, y: 0 };
+    return true;
+  }
+  lastEmptyTap = { time: now, x: cx, y: cy };
+  return false;
+}
+
+function tryForceRelease(index) {
+  const now = Date.now();
+  const st = forceReleaseState[index] || { count: 0, lastTime: 0 };
+  if (now - st.lastTime > 3000) st.count = 0;
+  st.count++;
+  st.lastTime = now;
+  forceReleaseState[index] = st;
+  if (st.count >= 5) {
+    unlockGroup(puzzleId, [index]);
+    forceReleaseState[index] = { count: 0, lastTime: 0 };
+    showForceReleaseToast();
+  }
+}
+
+function showForceReleaseToast() {
+  const t = document.createElement('div');
+  t.className = 'powerup-toast';
+  t.style.background = 'var(--accent2)';
+  t.textContent = 'Piece released!';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2000);
 }
 
 function setupViewportControls() {
@@ -937,6 +1125,11 @@ function applyRemoteUpdate(index, data) {
   }
   pieceStates[index] = { ...pieceStates[index], ...incoming };
 
+  // If a piece in our hand got force-released remotely, remove from hand
+  if (hand.includes(index) && incoming.lockedBy !== playerId) {
+    removeFromHandSilent(index);
+  }
+
   movePieceEl(index, data.x, data.y);
 
   // If this piece just joined a group (from another player's snap), merge locally
@@ -1029,9 +1222,11 @@ function setupHelp() {
     { key: 'Drag',            desc: 'Move a piece or a connected group' },
     { key: 'Drop near edge',  desc: 'Pieces snap together automatically' },
     { key: 'Scroll / drag bg',desc: 'Pan the board' },
+    { key: 'Click piece',     desc: 'Pick up into hand (tap again to deselect)' },
+    { key: 'Dbl-click board', desc: 'Drop all hand pieces at that spot' },
   ];
   if (!isMobileLike) {
-    controls.push({ key: 'Ctrl + scroll', desc: 'Zoom at cursor position (desktop)' });
+    controls.push({ key: 'Scroll wheel', desc: 'Zoom at cursor position (desktop)' });
   }
   if (isMobileLike) {
     controls.push({ key: 'Pinch (mobile)', desc: 'Zoom in / out' });
@@ -1369,5 +1564,6 @@ window.addEventListener('beforeunload', () => {
   if (unsubscribe) unsubscribe();
   if (unsubPlayers) unsubPlayers();
   if (dragging?.locked) unlockGroup(puzzleId, dragging.indices);
+  if (hand.length) unlockGroup(puzzleId, hand);
   removePlayer(puzzleId, playerId);
 });
