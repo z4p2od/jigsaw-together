@@ -350,6 +350,8 @@ function onMouseDown(e) {
   // Desktop: only left-click should start drag/select.
   // Right-click is reserved for rotate in hard mode.
   if (typeof e.button === 'number' && e.button !== 0) return;
+  // macOS: Ctrl+primary click opens context menu but uses button === 0 — don't start pickup/drag.
+  if (e.button === 0 && e.ctrlKey) return;
   const el = e.target.closest('.piece');
 
   if (!el || el.classList.contains('solved')) return;
@@ -471,6 +473,11 @@ async function onMouseUp(e) {
     return;
   }
   if (!dragging) return;
+  // Ignore non-primary-button release for finishing a gesture (avoids pairing with Ctrl+click / aux).
+  if (typeof e.button === 'number' && e.button !== 0) {
+    if (!dragging.locked) dragging = null;
+    return;
+  }
   const { indices, anchorIndex, offsetX, offsetY, relOffsets, locked } = dragging;
   dragging = null;
 
@@ -662,6 +669,10 @@ function onContextMenu(e) {
   const el = e.target.closest('.piece');
   if (!el) return;
   const index = Number(el.dataset.index);
+  // Cancel in-progress "click to hand" on same piece (e.g. Ctrl+click path started mousedown).
+  if (dragging && !dragging.locked && dragging.anchorIndex === index) {
+    dragging = null;
+  }
   if (pieceStates[index].lockedBy && pieceStates[index].lockedBy !== playerId) return;
   rotateAtIndex(index);
 }
