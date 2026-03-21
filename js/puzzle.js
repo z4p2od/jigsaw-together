@@ -99,6 +99,7 @@ const chatClose       = document.getElementById('chat-close');
 const chatMessages    = document.getElementById('chat-messages');
 const chatInput       = document.getElementById('chat-input');
 const chatSendBtn     = document.getElementById('chat-send');
+const boardWrap       = board.parentElement;
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
@@ -180,6 +181,8 @@ function setupBoard() {
   board.style.width          = BOARD_W + 'px';
   board.style.height         = BOARD_H + 'px';
   board.style.transformOrigin = 'top left';
+  setupViewportControls();
+  fitBoardToViewport();
 }
 
 // ── Rendering ─────────────────────────────────────────────────────────────────
@@ -270,15 +273,16 @@ function attachDragListeners() {
   board.addEventListener('contextmenu', onContextMenu);
   window.addEventListener('mousemove',  onMouseMove);
   window.addEventListener('mouseup',    onMouseUp);
+  // Ctrl/trackpad-pinch wheel zoom at cursor.
+  boardWrap.addEventListener('wheel', onWheelZoom, { passive: false });
 
   // Double-tap for mobile rotation (hard mode only)
   board.addEventListener('touchend', onDoubleTap);
 
   // Use the wrap for touch so pinch-to-zoom works even when fingers start outside board
-  const wrap = board.parentElement;
-  wrap.addEventListener('touchstart', onTouchStart, { passive: false });
-  wrap.addEventListener('touchmove',  onTouchMove,  { passive: false });
-  wrap.addEventListener('touchend',   onTouchEnd);
+  boardWrap.addEventListener('touchstart', onTouchStart, { passive: false });
+  boardWrap.addEventListener('touchmove',  onTouchMove,  { passive: false });
+  boardWrap.addEventListener('touchend',   onTouchEnd);
 }
 
 function onMouseDown(e) {
@@ -470,7 +474,11 @@ function onTouchMove(e) {
     e.preventDefault();
     const newDist = touchDist(e.touches);
     const raw     = pinch.scale0 * (newDist / pinch.dist0);
-    applyScale(Math.min(SCALE_MAX, Math.max(SCALE_MIN, raw)));
+    const mid     = touchMidpoint(e.touches);
+    applyScale(Math.min(SCALE_MAX, Math.max(SCALE_MIN, raw)), {
+      anchorClientX: mid.x,
+      anchorClientY: mid.y,
+    });
     return;
   }
 
@@ -565,8 +573,25 @@ function touchDist(touches) {
   return Math.hypot(dx, dy);
 }
 
-function applyScale(s) {
-  scale = s;
+function touchMidpoint(touches) {
+  return {
+    x: (touches[0].clientX + touches[1].clientX) / 2,
+    y: (touches[0].clientY + touches[1].clientY) / 2,
+  };
+}
+
+function clampScale(s) {
+  return Math.min(SCALE_MAX, Math.max(SCALE_MIN, s));
+}
+
+function applyScale(s, opts = {}) {
+  const next = clampScale(s);
+  if (!Number.isFinite(next)) return;
+  const prev = scale;
+  if (Math.abs(next - prev) < 0.001) return;
+
+  const oldRect = board.getBoundingClientRect();
+  scale = next;
   board.style.transform = scale === 1 ? '' : `scale(${scale})`;
   // CSS transform doesn't affect layout, so manually size a margin-bottom/right
   // on the board so the wrap's scrollbars track the scaled dimensions.
@@ -574,6 +599,81 @@ function applyScale(s) {
   const extraH = BOARD_H * (scale - 1);
   board.style.marginRight  = extraW > 0 ? extraW + 'px' : '';
   board.style.marginBottom = extraH > 0 ? extraH + 'px' : '';
+
+  // Keep cursor/finger anchor stable while zooming.
+  const { anchorClientX, anchorClientY } = opts;
+  if (Number.isFinite(anchorClientX) && Number.isFinite(anchorClientY)) {
+    const boardX = (anchorClientX - oldRect.left) / prev;
+    const boardY = (anchorClientY - oldRect.top) / prev;
+    const newRect = board.getBoundingClientRect();
+    const desiredLeft = anchorClientX - boardX * scale;
+    const desiredTop  = anchorClientY - boardY * scale;
+    boardWrap.scrollLeft += newRect.left - desiredLeft;
+    boardWrap.scrollTop  += newRect.top - desiredTop;
+  }
+
+  updateZoomControls();
+}
+
+function centerBoardInView() {
+  const scaledW = BOARD_W * scale;
+  const scaledH = BOARD_H * scale;
+  boardWrap.scrollLeft = Math.max(0, (scaledW - boardWrap.clientWidth) / 2);
+  boardWrap.scrollTop  = Math.max(0, (scaledH - boardWrap.clientHeight) / 2);
+}
+
+function fitBoardToViewport() {
+  const fit = Math.min(
+    1,
+    (boardWrap.clientWidth - 16) / BOARD_W,
+    (boardWrap.clientHeight - 16) / BOARD_H
+  );
+  applyScale(clampScale(fit || 1));
+  centerBoardInView();
+}
+
+function onWheelZoom(e) {
+  if (dragging) return;
+  // Preserve normal one-finger/trackpad scrolling unless modified.
+  if (!e.ctrlKey && !e.metaKey) return;
+  e.preventDefault();
+  const factor = Math.exp(-e.deltaY * 0.0018);
+  applyScale(scale * factor, { anchorClientX: e.clientX, anchorClientY: e.clientY });
+}
+
+function setupViewportControls() {
+  if (boardWrap.querySelector('.board-zoom-controls')) return;
+
+  const controls = document.createElement('div');
+  controls.className = 'board-zoom-controls';
+  controls.innerHTML = `
+    <button class="zoom-btn" data-action="minus" title="Zoom out">−</button>
+    <button class="zoom-btn zoom-readout" data-action="fit" title="Fit board">100%</button>
+    <button class="zoom-btn" data-action="plus" title="Zoom in">+</button>
+    <button class="zoom-btn" data-action="center" title="Center board">◎</button>
+  `;
+  boardWrap.appendChild(controls);
+
+  controls.addEventListener('click', e => {
+    const btn = e.target.closest('button[data-action]');
+    if (!btn) return;
+    const action = btn.dataset.action;
+    if (action === 'minus') applyScale(scale / 1.18);
+    if (action === 'plus')  applyScale(scale * 1.18);
+    if (action === 'fit')   fitBoardToViewport();
+    if (action === 'center') centerBoardInView();
+  });
+
+  window.addEventListener('resize', () => {
+    if (scale <= 1.05) fitBoardToViewport();
+  });
+  updateZoomControls();
+}
+
+function updateZoomControls() {
+  const readout = boardWrap.querySelector('.zoom-readout');
+  if (!readout) return;
+  readout.textContent = `${Math.round(scale * 100)}%`;
 }
 
 // ── Snap / merge ──────────────────────────────────────────────────────────────
@@ -850,7 +950,8 @@ function setupHelp() {
     { key: 'Drag',            desc: 'Move a piece or a connected group' },
     { key: 'Drop near edge',  desc: 'Pieces snap together automatically' },
     { key: 'Pinch (mobile)',  desc: 'Zoom in / out' },
-    { key: 'Scroll',          desc: 'Pan the board' },
+    { key: 'Ctrl + scroll',   desc: 'Zoom at cursor position (desktop)' },
+    { key: 'Scroll / drag bg',desc: 'Pan the board' },
   ];
   if (meta.hardMode) {
     controls.push({ key: 'Right-click',  desc: 'Rotate a piece or group 90°' });
