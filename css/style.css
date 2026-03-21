@@ -233,6 +233,16 @@ body {
   max-width: 100vw;
 }
 
+/* iOS/Safari hard lock for puzzle route so header can't drift horizontally */
+body.puzzle-body {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior-x: none;
+}
+
 .puzzle-header {
   display: flex;
   align-items: center;
