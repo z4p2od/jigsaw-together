@@ -28,6 +28,7 @@ const BOARD_W   = 900;
 const BOARD_H   = 650;
 const SCALE_MIN = 0.3;
 const SCALE_MAX = 3.0;
+const SCALE_MAX_HQ = 4.5;
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
@@ -202,9 +203,6 @@ async function renderAllPieces() {
   const img = await loadImage(src);
   const { cols, rows, pieceW, pieceH, edges, displayW, displayH } = meta;
   const pad = getPad(displayW, displayH);
-  const textureScale = getTextureScale(totalPieces);
-  const texDisplayW = Math.round(displayW * textureScale);
-  const texDisplayH = Math.round(displayH * textureScale);
 
   // Store on meta for use by snap/move logic
   meta._displayW = displayW;
@@ -218,7 +216,7 @@ async function renderAllPieces() {
     for (let i = start; i < end; i++) {
       const col    = i % cols;
       const row    = Math.floor(i / cols);
-      const dataUrl = cutPiece(img, col, row, pieceW, pieceH, texDisplayW, texDisplayH, edges[i]);
+      const dataUrl = cutPiece(img, col, row, pieceW, pieceH, displayW, displayH, edges[i]);
       const p      = pieceStates[i];
       // Keep gameplay dimensions exactly unchanged; only improve texture density.
       renderPiece(i, dataUrl, p.x, p.y, p.solved, displayW + pad * 2, displayH + pad * 2);
@@ -239,23 +237,6 @@ function renderPiece(index, dataUrl, x, y, solved, elW, elH) {
   board.appendChild(el);
   pieceEls[index] = el;
   updatePieceZIndex(index);
-}
-
-function getTextureScale(total) {
-  if (highQualityMode) {
-    // HQ still needs per-puzzle caps to avoid canvas memory pressure on smaller phones.
-    const dpr = Math.min(window.devicePixelRatio || 1, 2.2);
-    if (total <= 40) return Math.max(1.2, Math.min(2.2, dpr));
-    if (total <= 120) return Math.max(1.15, Math.min(1.8, dpr * 0.95));
-    if (total <= 250) return Math.max(1.05, Math.min(1.35, dpr * 0.78));
-    return 1;
-  }
-  // Improve sharpness on mobile/high-DPI while avoiding huge memory spikes.
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  if (total <= 40) return Math.max(1, dpr);
-  if (total <= 120) return Math.max(1, Math.min(1.7, dpr * 1.2));
-  if (total <= 250) return Math.max(1, Math.min(1.45, dpr));
-  return 1;
 }
 
 function initHighQualityPreference() {
@@ -522,7 +503,7 @@ function onTouchMove(e) {
     const newDist = touchDist(e.touches);
     const raw     = pinch.scale0 * (newDist / pinch.dist0);
     const mid     = touchMidpoint(e.touches);
-    applyScale(Math.min(SCALE_MAX, Math.max(SCALE_MIN, raw)), {
+    applyScale(clampScale(raw), {
       anchorClientX: mid.x,
       anchorClientY: mid.y,
     });
@@ -628,7 +609,8 @@ function touchMidpoint(touches) {
 }
 
 function clampScale(s) {
-  return Math.min(SCALE_MAX, Math.max(SCALE_MIN, s));
+  const max = highQualityMode ? SCALE_MAX_HQ : SCALE_MAX;
+  return Math.min(max, Math.max(SCALE_MIN, s));
 }
 
 function applyScale(s, opts = {}) {
@@ -999,7 +981,7 @@ function setupHelp() {
     { key: 'Pinch (mobile)',  desc: 'Zoom in / out' },
     { key: 'Ctrl + scroll',   desc: 'Zoom at cursor position (desktop)' },
     { key: 'Scroll / drag bg',desc: 'Pan the board' },
-    { key: 'HQ button',       desc: 'Toggle sharper pieces (uses more memory)' },
+    { key: 'HQ button',       desc: 'Toggle extended max zoom for detail work' },
   ];
   if (meta.hardMode) {
     controls.push({ key: 'Right-click',  desc: 'Rotate a piece or group 90°' });
@@ -1025,8 +1007,8 @@ function setupQualityMode() {
   const applyState = () => {
     qualityBtn.classList.toggle('active', highQualityMode);
     qualityBtn.title = highQualityMode
-      ? 'High quality ON (tap to disable)'
-      : 'High quality OFF (tap to enable)';
+      ? 'HQ zoom ON (tap to disable)'
+      : 'HQ zoom OFF (tap to enable)';
   };
   applyState();
 
