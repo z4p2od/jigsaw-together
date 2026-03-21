@@ -237,7 +237,14 @@ function renderPiece(index, dataUrl, x, y, solved, elW, elH) {
 }
 
 function getTextureScale(total) {
-  if (highQualityMode) return Math.min(window.devicePixelRatio || 1, 2.4);
+  if (highQualityMode) {
+    // HQ still needs per-puzzle caps to avoid canvas memory pressure on smaller phones.
+    const dpr = Math.min(window.devicePixelRatio || 1, 2.2);
+    if (total <= 40) return Math.max(1.2, Math.min(2.2, dpr));
+    if (total <= 120) return Math.max(1.15, Math.min(1.8, dpr * 0.95));
+    if (total <= 250) return Math.max(1.05, Math.min(1.35, dpr * 0.78));
+    return 1;
+  }
   // Improve sharpness on mobile/high-DPI while avoiding huge memory spikes.
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   if (total <= 40) return Math.max(1, dpr);
@@ -257,8 +264,8 @@ function initHighQualityPreference() {
   const dpr = window.devicePixelRatio || 1;
   const mem = Number(navigator.deviceMemory || 0);
   const cores = Number(navigator.hardwareConcurrency || 0);
-  const modernIPhone = /iPhone1[3-9],|iPhone2\d,|iPhone/i.test(ua); // coarse fallback
-  const capable = dpr >= 3 && (mem >= 4 || cores >= 6 || modernIPhone);
+  const minScreenSide = Math.min(window.screen?.width || 0, window.screen?.height || 0);
+  const capable = dpr >= 3 && minScreenSide >= 390 && (mem >= 6 || cores >= 8);
   return isMobile && capable;
 }
 
