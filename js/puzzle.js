@@ -347,6 +347,9 @@ function attachDragListeners() {
 }
 
 function onMouseDown(e) {
+  // Desktop: only left-click should start drag/select.
+  // Right-click is reserved for rotate in hard mode.
+  if (typeof e.button === 'number' && e.button !== 0) return;
   const el = e.target.closest('.piece');
 
   if (!el || el.classList.contains('solved')) return;
