@@ -279,8 +279,32 @@ function initHighQualityPreference() {
   const saved = localStorage.getItem('jt-high-quality');
   if (saved === '1') return true;
   if (saved === '0') return false;
-  // Default OFF for stability. Users can still enable HQ manually.
-  return false;
+  if (!isMobileLike) return false;
+  return shouldAutoEnableHQ();
+}
+
+function shouldAutoEnableHQ() {
+  const ua = navigator.userAgent || '';
+  const isIOS = /iPhone|iPad|iPod/i.test(ua);
+  const dpr = Number(window.devicePixelRatio || 1);
+  const mem = Number(navigator.deviceMemory || 0);
+  const cores = Number(navigator.hardwareConcurrency || 0);
+  const minScreenSide = Math.min(window.screen?.width || 0, window.screen?.height || 0);
+  const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false;
+
+  // Respect accessibility/perf preference first.
+  if (reduceMotion) return false;
+
+  // Small phones (e.g. iPhone mini class) struggle more with HQ texture memory.
+  if (minScreenSide > 0 && minScreenSide < 390) return false;
+
+  // iOS: prefer conservative gating, since Safari memory pressure is stricter.
+  if (isIOS) {
+    return dpr >= 3 && minScreenSide >= 390 && cores >= 6;
+  }
+
+  // Android/other mobile: require strong enough memory+CPU profile.
+  return dpr >= 2.5 && minScreenSide >= 390 && (mem >= 6 || cores >= 8);
 }
 
 // Position and rotate a piece using a single CSS transform.

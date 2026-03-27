@@ -227,7 +227,10 @@ body {
 .puzzle-page {
   display: flex;
   flex-direction: column;
+  /* dvh + fallback for older iOS */
+  height: 100vh;
   height: 100dvh;
+  min-height: 100vh;
   min-height: 100dvh;
   overflow: hidden;
   width: 100%;
@@ -250,6 +253,9 @@ body.puzzle-body {
   align-items: center;
   justify-content: space-between;
   padding: 12px 20px;
+  padding-top: max(12px, env(safe-area-inset-top, 0px));
+  padding-left: max(20px, env(safe-area-inset-left, 0px));
+  padding-right: max(20px, env(safe-area-inset-right, 0px));
   background: var(--surface);
   border-bottom: 1px solid var(--surface2);
   flex-shrink: 0;
@@ -444,6 +450,9 @@ body.puzzle-body {
 @media (max-width: 860px) and (pointer: coarse) {
   .puzzle-header {
     padding: 8px 10px;
+    padding-top: max(8px, env(safe-area-inset-top, 0px));
+    padding-left: max(10px, env(safe-area-inset-left, 0px));
+    padding-right: max(10px, env(safe-area-inset-right, 0px));
     gap: 8px;
     flex-wrap: wrap;
     align-items: center;
@@ -499,6 +508,56 @@ body.puzzle-body {
     width: 30px;
     height: 30px;
     font-size: 0.86rem;
+  }
+}
+
+/* Very small phones (e.g. iPhone 13 mini) — more board space, smaller chrome */
+@media (max-width: 400px) and (pointer: coarse) {
+  .puzzle-header {
+    padding: 6px 8px;
+    padding-top: max(6px, env(safe-area-inset-top, 0px));
+    padding-left: max(8px, env(safe-area-inset-left, 0px));
+    padding-right: max(8px, env(safe-area-inset-right, 0px));
+    gap: 6px;
+  }
+  .puzzle-header h2 {
+    font-size: 0.88rem;
+  }
+  .icon-btn {
+    width: 28px;
+    height: 28px;
+    font-size: 0.8rem;
+  }
+  .player-dot {
+    width: 22px;
+    height: 22px;
+    font-size: 0.58rem;
+  }
+  .piece-hand {
+    padding: 6px 10px;
+    gap: 4px;
+    max-width: calc(100vw - 16px);
+  }
+  .hand-thumb {
+    width: 44px;
+    height: 44px;
+  }
+  #chat-launcher button,
+  #feedback-launcher button {
+    width: 46px;
+    height: 46px;
+    font-size: 1.25rem;
+  }
+}
+
+@media (max-width: 400px) and (pointer: coarse) and (max-height: 740px) {
+  .puzzle-header h2 {
+    font-size: 0.82rem;
+  }
+  .board-zoom-controls .zoom-btn {
+    min-width: 32px;
+    height: 34px;
+    font-size: 0.85rem;
   }
 }
 
@@ -598,7 +657,7 @@ iframe[src*="vercel.live"] {
 
 .piece-hand {
   position: fixed;
-  bottom: 10px;
+  bottom: calc(10px + env(safe-area-inset-bottom, 0px));
   left: 50%;
   transform: translateX(-50%);
   display: none;
@@ -712,6 +771,9 @@ iframe[src*="vercel.live"] {
   justify-content: center;
   gap: 20px;
   padding: 14px 24px;
+  padding-top: max(14px, env(safe-area-inset-top, 0px));
+  padding-left: max(24px, env(safe-area-inset-left, 0px));
+  padding-right: max(24px, env(safe-area-inset-right, 0px));
   box-shadow: 0 4px 24px rgba(0,0,0,0.5);
 }
 
@@ -853,8 +915,8 @@ iframe[src*="vercel.live"] {
 /* Chat launcher button — bottom left */
 #chat-launcher {
   position: fixed;
-  bottom: 24px;
-  left: 24px;
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  left: calc(24px + env(safe-area-inset-left, 0px));
   z-index: 9001;
 }
 
@@ -879,8 +941,8 @@ iframe[src*="vercel.live"] {
 /* Chat popup — expands upward from bottom-left */
 .chat-panel {
   position: fixed;
-  bottom: 88px;
-  left: 24px;
+  bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+  left: calc(24px + env(safe-area-inset-left, 0px));
   width: 300px;
   height: 400px;
   background: var(--surface);
@@ -1053,8 +1115,8 @@ iframe[src*="vercel.live"] {
 
 #feedback-launcher {
   position: fixed;
-  bottom: 24px;
-  right: 24px;
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  right: calc(24px + env(safe-area-inset-right, 0px));
   z-index: 9001;
 }
 
@@ -1082,8 +1144,8 @@ iframe[src*="vercel.live"] {
 
 .feedback-panel {
   position: fixed;
-  bottom: 88px;
-  right: 24px;
+  bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+  right: calc(24px + env(safe-area-inset-right, 0px));
   width: 320px;
   max-width: 90vw;
   background: var(--surface);
