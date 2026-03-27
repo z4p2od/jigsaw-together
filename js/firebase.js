@@ -13,8 +13,20 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
 
 // Fetch Firebase config from Vercel serverless function (which reads env vars)
-const configRes = await fetch('/api/config');
-const firebaseConfig = await configRes.json();
+// Hardening: never let module-load hang forever (prevents "Loading puzzle" forever).
+async function fetchJsonWithTimeout(url, ms) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal });
+    if (!res.ok) throw new Error(`Failed to fetch ${url}: ${res.status} ${res.statusText}`);
+    return await res.json();
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+const firebaseConfig = await fetchJsonWithTimeout('/api/config', 8000);
 
 const app = initializeApp(firebaseConfig);
 const db  = getDatabase(app);
