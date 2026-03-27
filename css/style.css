@@ -133,12 +133,12 @@ body::before {
 
 /* Piece count selector */
 .piece-options {
-  display: flex;
-  gap: 6px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .piece-options label {
-  flex: 1;
   text-align: center;
   min-width: 0;
 }
@@ -155,6 +155,10 @@ body::before {
   font-weight: 600;
   color: var(--text-muted);
   transition: all 0.15s;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .piece-options input:checked + span {
@@ -164,6 +168,26 @@ body::before {
 }
 
 .piece-options span:hover { border-color: var(--text-muted); color: var(--text); }
+
+/* More room on desktop for long labels and many choices */
+@media (min-width: 980px) {
+  .piece-options {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+  }
+}
+
+/* Keep touch/mobile options compact and readable */
+@media (max-width: 860px) and (pointer: coarse) {
+  .piece-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .piece-options span {
+    min-height: 38px;
+    font-size: 0.8rem;
+  }
+}
 
 /* Button */
 .btn {
