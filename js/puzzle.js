@@ -638,11 +638,8 @@ function onTouchMove(e) {
     e.preventDefault();
     const newDist = touchDist(e.touches);
     const raw     = pinch.scale0 * (newDist / pinch.dist0);
-    const mid     = touchMidpoint(e.touches);
-    applyScale(Math.min(SCALE_MAX, Math.max(SCALE_MIN, raw)), {
-      anchorClientX: mid.x,
-      anchorClientY: mid.y,
-    });
+    const mid = touchMidpoint(e.touches);
+    applyScale(Math.min(SCALE_MAX, Math.max(SCALE_MIN, raw)), zoomAnchorFromClient(mid.x, mid.y));
     return;
   }
 
@@ -791,6 +788,32 @@ function clampScale(s) {
   return Math.min(SCALE_MAX, Math.max(SCALE_MIN, s));
 }
 
+/** Center of the visible scroll viewport (stable zoom pivot for toolbar +/-). */
+function zoomAnchorViewportCenter() {
+  const wr = boardWrap.getBoundingClientRect();
+  return {
+    anchorClientX: wr.left + wr.width / 2,
+    anchorClientY: wr.top + wr.height / 2,
+  };
+}
+
+/**
+ * Zoom toward cursor when it lies over the board; otherwise use viewport center
+ * (e.g. wheel on gutter/scrollbar still feels anchored sensibly).
+ */
+function zoomAnchorFromClient(clientX, clientY) {
+  const br = board.getBoundingClientRect();
+  if (
+    clientX >= br.left &&
+    clientX <= br.right &&
+    clientY >= br.top &&
+    clientY <= br.bottom
+  ) {
+    return { anchorClientX: clientX, anchorClientY: clientY };
+  }
+  return zoomAnchorViewportCenter();
+}
+
 function applyScale(s, opts = {}) {
   const next = clampScale(s);
   if (!Number.isFinite(next)) return;
@@ -850,7 +873,10 @@ function flushWheelZoom() {
   if (sum === 0) return;
   const capped = Math.max(-280, Math.min(280, sum));
   const factor = Math.exp(-capped * 0.00135);
-  applyScale(scale * factor, wheelZoomAnchor);
+  applyScale(
+    scale * factor,
+    zoomAnchorFromClient(wheelZoomAnchor.anchorClientX, wheelZoomAnchor.anchorClientY)
+  );
 }
 
 function onWheelZoom(e) {
@@ -1093,8 +1119,8 @@ function setupViewportControls() {
     const btn = e.target.closest('button[data-action]');
     if (!btn) return;
     const action = btn.dataset.action;
-    if (action === 'minus') applyScale(scale / 1.18);
-    if (action === 'plus')  applyScale(scale * 1.18);
+    if (action === 'minus') applyScale(scale / 1.18, zoomAnchorViewportCenter());
+    if (action === 'plus')  applyScale(scale * 1.18, zoomAnchorViewportCenter());
     if (action === 'fit')   fitBoardToViewport();
     if (action === 'center') centerBoardInView();
   });

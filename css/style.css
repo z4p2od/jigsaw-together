@@ -720,6 +720,8 @@ iframe[src*="vercel.live"] {
   border-radius: 4px;
   /* width/height set by JS */
   backface-visibility: hidden;
+  /* Must match applyScale() math (zoom toward point uses top-left origin). */
+  transform-origin: 0 0;
 }
 
 /* Individual piece */
