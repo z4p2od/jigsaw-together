@@ -864,6 +864,7 @@ function applyScale(s, opts = {}) {
     const st = my - oy2 - by * next;
     const maxSl = Math.max(0, boardWrap.scrollWidth - boardWrap.clientWidth);
     const maxSt = Math.max(0, boardWrap.scrollHeight - boardWrap.clientHeight);
+    // At max scroll the browser clamps — cursor-locked zoom cannot be perfect at edges.
     boardWrap.scrollLeft = Math.max(0, Math.min(maxSl, Math.round(sl)));
     boardWrap.scrollTop = Math.max(0, Math.min(maxSt, Math.round(st)));
   }
