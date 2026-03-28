@@ -2,11 +2,26 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Jigsaw Together</title>
   <link rel="stylesheet" href="/css/style.css" />
 </head>
 <body>
+  <div id="in-app-hint" class="in-app-hint" hidden>
+    <p>In-app browsers (Instagram, Messenger, TikTok) often block uploads. For creating puzzles, use <strong>Safari</strong> or Chrome: Share → Open in Browser.</p>
+    <button type="button" class="in-app-hint-dismiss" aria-label="Dismiss">×</button>
+  </div>
+  <script>
+    (function () {
+      var ua = navigator.userAgent || '';
+      if (!/Instagram|FBAN|FBAV|FB_IAB|FBIOS|Line\/|Snapchat|Messenger|LinkedInApp|TikTok/i.test(ua)) return;
+      var el = document.getElementById('in-app-hint');
+      if (!el) return;
+      el.hidden = false;
+      var b = el.querySelector('.in-app-hint-dismiss');
+      if (b) b.addEventListener('click', function () { el.hidden = true; });
+    })();
+  </script>
   <main class="landing">
     <div>
       <h1>Jigsaw <span>Together</span></h1>

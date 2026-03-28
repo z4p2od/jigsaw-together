@@ -2,11 +2,26 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Jigsaw Together</title>
   <link rel="stylesheet" href="/css/style.css" />
 </head>
-<body>
+<body class="puzzle-body">
+  <div id="in-app-hint" class="in-app-hint" hidden>
+    <p>In-app browsers sometimes fail to load puzzles. If you are stuck, open this link in <strong>Safari</strong> or Chrome (Share → Open in Browser).</p>
+    <button type="button" class="in-app-hint-dismiss" aria-label="Dismiss">×</button>
+  </div>
+  <script>
+    (function () {
+      var ua = navigator.userAgent || '';
+      if (!/Instagram|FBAN|FBAV|FB_IAB|FBIOS|Line\/|Snapchat|Messenger|LinkedInApp|TikTok/i.test(ua)) return;
+      var el = document.getElementById('in-app-hint');
+      if (!el) return;
+      el.hidden = false;
+      var b = el.querySelector('.in-app-hint-dismiss');
+      if (b) b.addEventListener('click', function () { el.hidden = true; });
+    })();
+  </script>
   <div id="loading-overlay">
     <div class="spinner"></div>
     <p id="loading-text">Loading puzzle...</p>
@@ -59,6 +74,7 @@
         <div id="players-list" class="players-list"></div>
         <span id="timer-display" class="timer">0:00</span>
         <span class="progress-text" id="progress-text">0 / 0 pieces</span>
+        <button id="quality-btn" class="icon-btn" title="Toggle high quality pieces">HQ</button>
         <button id="peek-btn" class="icon-btn" title="See the full image">🖼️</button>
         <button id="help-btn" class="icon-btn" title="Controls">?</button>
       </div>
@@ -97,6 +113,17 @@
   </div>
 
   <script type="module" src="/js/puzzle.js"></script>
+  <script>
+    // Hardening: if module init fails, don't leave the user stuck on the overlay forever.
+    const hideLoading = (msg) => {
+      const overlay = document.getElementById('loading-overlay');
+      const text = document.getElementById('loading-text');
+      if (overlay) overlay.style.display = 'none';
+      if (text && msg) text.textContent = msg;
+    };
+    window.addEventListener('error', (e) => hideLoading('Failed to load puzzle. Please refresh.'));
+    window.addEventListener('unhandledrejection', () => hideLoading('Failed to load puzzle. Please refresh.'));
+  </script>
   <script type="module" src="/js/feedback.js"></script>
 </body>
 </html>

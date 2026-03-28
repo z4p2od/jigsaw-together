@@ -48,6 +48,19 @@ let dragging    = null; // { indices, anchorIndex, offsetX, offsetY, relOffsets 
 let unsubscribe = null;
 let scale       = 1;   // current zoom level applied to #puzzle-board
 let pinch       = null; // { dist0, scale0 } — active pinch gesture state
+let viewportPan = null; // { startX, startY, scrollLeft, scrollTop }
+let hand = [];           // indices of pieces currently in the player's hand
+let handTimers = {};     // index → setTimeout id for auto-release
+let handContainer = null;
+const HAND_RELEASE_MS = 15000;
+const forceReleaseState = {}; // index → { count, lastTime }
+let lastEmptyTap = { time: 0, x: 0, y: 0 };
+const TOUCH_HOLD_MS = 280;
+const TOUCH_HOLD_SLOP = 10;
+const DRAG_DEAD_ZONE_DESKTOP = 7;
+const DRAG_DEAD_ZONE_TOUCH = 12;
+const DRAG_START_GRACE_MS = 140;
+let touchHold = null; // { index, startX, startY, activated, timer }
 
 // Double-tap for mobile rotate (hard mode only)
 let lastTap = { time: 0, el: null };
@@ -65,6 +78,13 @@ let chatUnread    = 0;
 let chatOpen      = false;
 const lastPlayerPos = {}; // playerId → { x, y } last known board position
 let startedAt     = null;
+let highQualityMode = initHighQualityPreference();
+let pageTouchStart = null;
+const isLikelySafari = (() => {
+  const ua = navigator.userAgent || '';
+  // Safari only; exclude Chromium/Firefox-branded browsers.
+  return /Safari/i.test(ua) && !/Chrome|CriOS|Edg|EdgiOS|FxiOS|OPiOS/i.test(ua);
+})();
 
 // Rooms-index sync (public rooms only)
 let lastRoomsSolvedSync = 0;
@@ -99,6 +119,10 @@ const chatClose       = document.getElementById('chat-close');
 const chatMessages    = document.getElementById('chat-messages');
 const chatInput       = document.getElementById('chat-input');
 const chatSendBtn     = document.getElementById('chat-send');
+const boardWrap       = board.parentElement;
+const qualityBtn      = document.getElementById('quality-btn');
+const isCoarsePointer = window.matchMedia?.('(pointer: coarse)')?.matches ?? false;
+const isMobileLike = isCoarsePointer || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
@@ -131,6 +155,11 @@ function showNameModal() {
 }
 
 async function initPuzzle() {
+  const watchdog = window.setTimeout(() => {
+    if (!loadingEl || getComputedStyle(loadingEl).display === 'none') return;
+    loadingText.textContent =
+      'Still loading… In-app browsers often block this. Try opening in Safari (Share → Open in Browser).';
+  }, 22000);
   try {
     loadingText.textContent = 'Loading puzzle...';
     const data  = await loadPuzzle(puzzleId);
@@ -149,6 +178,8 @@ async function initPuzzle() {
 
     setupHelp();
     setupPeek();
+    setupQualityMode();
+    setupHorizontalPageLock();
     setupChat();
 
     unsubscribe = onPiecesChanged(puzzleId, applyRemoteUpdate);
@@ -168,11 +199,19 @@ async function initPuzzle() {
       startTimer();
     }
 
+    window.clearTimeout(watchdog);
     loadingEl.style.display = 'none';
     updateProgress();
   } catch (err) {
+    window.clearTimeout(watchdog);
     console.error(err);
-    loadingText.textContent = 'Puzzle not found.';
+    loadingText.textContent =
+      err.name === 'AbortError' || /Failed to fetch|NetworkError|load failed/i.test(String(err.message || err))
+        ? 'Could not reach the server. Try Safari if you opened this link from a social app.'
+        : 'Puzzle not found.';
+    loadingEl.classList.add('loading-overlay--error');
+    const sp = loadingEl.querySelector('.spinner');
+    if (sp) sp.style.display = 'none';
   }
 }
 
@@ -180,6 +219,10 @@ function setupBoard() {
   board.style.width          = BOARD_W + 'px';
   board.style.height         = BOARD_H + 'px';
   board.style.transformOrigin = 'top left';
+  if (isMobileLike) {
+    setupViewportControls();
+    fitBoardToViewport();
+  }
 }
 
 // ── Rendering ─────────────────────────────────────────────────────────────────
@@ -189,6 +232,9 @@ async function renderAllPieces() {
   const img = await loadImage(src);
   const { cols, rows, pieceW, pieceH, edges, displayW, displayH } = meta;
   const pad = getPad(displayW, displayH);
+  const textureScale = getTextureScale(totalPieces);
+  const texDisplayW = Math.round(displayW * textureScale);
+  const texDisplayH = Math.round(displayH * textureScale);
 
   // Store on meta for use by snap/move logic
   meta._displayW = displayW;
@@ -202,8 +248,9 @@ async function renderAllPieces() {
     for (let i = start; i < end; i++) {
       const col    = i % cols;
       const row    = Math.floor(i / cols);
-      const dataUrl = cutPiece(img, col, row, pieceW, pieceH, displayW, displayH, edges[i]);
+      const dataUrl = cutPiece(img, col, row, pieceW, pieceH, texDisplayW, texDisplayH, edges[i]);
       const p      = pieceStates[i];
+      // Keep gameplay dimensions exactly unchanged; only improve texture density.
       renderPiece(i, dataUrl, p.x, p.y, p.solved, displayW + pad * 2, displayH + pad * 2);
     }
     loadingText.textContent = `Cutting pieces... ${Math.min(end, totalPieces)} / ${totalPieces}`;
@@ -222,6 +269,55 @@ function renderPiece(index, dataUrl, x, y, solved, elW, elH) {
   board.appendChild(el);
   pieceEls[index] = el;
   updatePieceZIndex(index);
+}
+
+function getTextureScale(total) {
+  if (highQualityMode) {
+    // HQ still needs per-puzzle caps to avoid canvas memory pressure on smaller phones.
+    const dpr = Math.min(window.devicePixelRatio || 1, 2.2);
+    if (total <= 40) return Math.max(1.2, Math.min(2.2, dpr));
+    if (total <= 120) return Math.max(1.15, Math.min(1.8, dpr * 0.95));
+    if (total <= 250) return Math.max(1.05, Math.min(1.35, dpr * 0.78));
+    return 1;
+  }
+  // Improve sharpness on mobile/high-DPI while avoiding huge memory spikes.
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  if (total <= 40) return Math.max(1, dpr);
+  if (total <= 120) return Math.max(1, Math.min(1.7, dpr * 1.2));
+  if (total <= 250) return Math.max(1, Math.min(1.45, dpr));
+  return 1;
+}
+
+function initHighQualityPreference() {
+  const saved = localStorage.getItem('jt-high-quality');
+  if (saved === '1') return true;
+  if (saved === '0') return false;
+  if (!isMobileLike) return false;
+  return shouldAutoEnableHQ();
+}
+
+function shouldAutoEnableHQ() {
+  const ua = navigator.userAgent || '';
+  const isIOS = /iPhone|iPad|iPod/i.test(ua);
+  const dpr = Number(window.devicePixelRatio || 1);
+  const mem = Number(navigator.deviceMemory || 0);
+  const cores = Number(navigator.hardwareConcurrency || 0);
+  const minScreenSide = Math.min(window.screen?.width || 0, window.screen?.height || 0);
+  const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false;
+
+  // Respect accessibility/perf preference first.
+  if (reduceMotion) return false;
+
+  // Small phones (e.g. iPhone mini class) struggle more with HQ texture memory.
+  if (minScreenSide > 0 && minScreenSide < 390) return false;
+
+  // iOS: prefer conservative gating, since Safari memory pressure is stricter.
+  if (isIOS) {
+    return dpr >= 3 && minScreenSide >= 390 && cores >= 6;
+  }
+
+  // Android/other mobile: require strong enough memory+CPU profile.
+  return dpr >= 2.5 && minScreenSide >= 390 && (mem >= 6 || cores >= 8);
 }
 
 // Position and rotate a piece using a single CSS transform.
@@ -267,27 +363,47 @@ function updatePieceZIndex(index) {
 
 function attachDragListeners() {
   board.addEventListener('mousedown',   onMouseDown);
+  boardWrap.addEventListener('mousedown', onViewportPanStart);
   board.addEventListener('contextmenu', onContextMenu);
   window.addEventListener('mousemove',  onMouseMove);
   window.addEventListener('mouseup',    onMouseUp);
-
+  if (!isMobileLike) {
+    // Desktop: allow wheel-zoom with Ctrl/trackpad pinch gesture.
+    boardWrap.addEventListener('wheel', onWheelZoom, { passive: false });
+  }
   // Double-tap for mobile rotation (hard mode only)
   board.addEventListener('touchend', onDoubleTap);
 
+  // Desktop double-click to drop hand on empty board
+  boardWrap.addEventListener('dblclick', onBoardDblClick);
+
   // Use the wrap for touch so pinch-to-zoom works even when fingers start outside board
-  const wrap = board.parentElement;
-  wrap.addEventListener('touchstart', onTouchStart, { passive: false });
-  wrap.addEventListener('touchmove',  onTouchMove,  { passive: false });
-  wrap.addEventListener('touchend',   onTouchEnd);
+  boardWrap.addEventListener('touchstart', onTouchStart, { passive: false });
+  boardWrap.addEventListener('touchmove',  onTouchMove,  { passive: false });
+  boardWrap.addEventListener('touchend',   onTouchEnd);
 }
 
 function onMouseDown(e) {
+  // Desktop: only left-click should start drag/select.
+  // Right-click is reserved for rotate in hard mode.
+  if (typeof e.button === 'number' && e.button !== 0) return;
+  // macOS: Ctrl+primary click opens context menu but uses button === 0 — don't start pickup/drag.
+  if (e.button === 0 && e.ctrlKey) return;
   const el = e.target.closest('.piece');
+
   if (!el || el.classList.contains('solved')) return;
 
   const index = Number(el.dataset.index);
   const state = pieceStates[index];
-  if (state.lockedBy && state.lockedBy !== playerId) return;
+
+  // Force-release: rapid clicks on a piece locked by someone else
+  if (state.lockedBy && state.lockedBy !== playerId) {
+    tryForceRelease(index);
+    return;
+  }
+
+  // If this piece is already in our hand, ignore (it's managed by the hand UI)
+  if (hand.includes(index)) return;
 
   const gid     = pieceGroup[index];
   const indices = gid ? [...groups[gid]] : [index];
@@ -311,15 +427,44 @@ function onMouseDown(e) {
 
   // Don't lock yet — lock only when movement actually starts (onMouseMove).
   // This prevents orphaned locks from clicks/taps that never move.
-  dragging = { indices, anchorIndex: index, offsetX, offsetY, relOffsets, locked: false };
+  dragging = {
+    indices,
+    anchorIndex: index,
+    offsetX,
+    offsetY,
+    relOffsets,
+    locked: false,
+    startClientX: e.clientX,
+    startClientY: e.clientY,
+    startTs: Date.now(),
+    fromTouch: !!e?.isTouch,
+  };
 }
 
 function onMouseMove(e) {
+  if (viewportPan) {
+    e.preventDefault();
+    boardWrap.scrollLeft = viewportPan.scrollLeft - (e.clientX - viewportPan.startX);
+    boardWrap.scrollTop  = viewportPan.scrollTop  - (e.clientY - viewportPan.startY);
+    return;
+  }
   if (!dragging) return;
   const { indices, offsetX, offsetY, relOffsets } = dragging;
 
-  // First movement — acquire locks and start timer now (not on mousedown).
-  // This prevents orphaned locks from clicks/taps that never actually drag.
+  // Dead zone: ignore tiny movements so a slightly shaky click still registers
+  // as a tap (hand-select) rather than a drag.
+  if (!dragging.locked) {
+    const dx = e.clientX - dragging.startClientX;
+    const dy = e.clientY - dragging.startClientY;
+    const dist = Math.hypot(dx, dy);
+    const threshold = dragging.fromTouch ? DRAG_DEAD_ZONE_TOUCH : DRAG_DEAD_ZONE_DESKTOP;
+    const elapsed = Date.now() - (dragging.startTs || 0);
+
+    // Small startup grace: suppress tiny jitters right after press.
+    if (elapsed < DRAG_START_GRACE_MS && dist < threshold + 2) return;
+    if (dist < threshold) return;
+  }
+
   if (!dragging.locked) {
     dragging.locked = true;
     lockGroup(puzzleId, indices, playerId);
@@ -359,7 +504,17 @@ function onMouseMove(e) {
 }
 
 async function onMouseUp(e) {
+  if (viewportPan) {
+    viewportPan = null;
+    boardWrap.classList.remove('panning');
+    return;
+  }
   if (!dragging) return;
+  // Ignore non-primary-button release for finishing a gesture (avoids pairing with Ctrl+click / aux).
+  if (typeof e.button === 'number' && e.button !== 0) {
+    if (!dragging.locked) dragging = null;
+    return;
+  }
   const { indices, anchorIndex, offsetX, offsetY, relOffsets, locked } = dragging;
   dragging = null;
 
@@ -368,8 +523,11 @@ async function onMouseUp(e) {
     if (pieceEls[i]) pieceEls[i].style.zIndex = '';
   });
 
-  // If we never moved, there's no Firebase lock to release — just bail out.
-  if (!locked) return;
+  // Desktop click without movement picks into hand; touch uses tap-hold.
+  if (!locked) {
+    if (!e?.isTouch && !pieceGroup[anchorIndex]) addToHand(anchorIndex);
+    return;
+  }
 
   const boardRect = board.getBoundingClientRect();
   const anchorX   = (e.clientX - boardRect.left) / scale - offsetX;
@@ -443,6 +601,7 @@ async function onMouseUp(e) {
 
 function onTouchStart(e) {
   if (e.touches.length === 2) {
+    cancelTouchHoldSelection();
     // Two fingers — start pinch zoom; cancel any ongoing drag
     if (dragging) {
       if (dragging.locked) unlockGroup(puzzleId, dragging.indices);
@@ -460,9 +619,14 @@ function onTouchStart(e) {
   if (pinch) return; // ignore single-finger start during active pinch
 
   const touch = e.touches[0];
-  onMouseDown({ clientX: touch.clientX, clientY: touch.clientY,
-                target: document.elementFromPoint(touch.clientX, touch.clientY) });
-  if (dragging) e.preventDefault();
+  const target = document.elementFromPoint(touch.clientX, touch.clientY);
+  onMouseDown({ clientX: touch.clientX, clientY: touch.clientY, target, isTouch: true });
+  if (dragging) {
+    e.preventDefault();
+    if (isMobileLike && dragging.indices.length === 1) {
+      startTouchHoldSelection(dragging.anchorIndex, touch.clientX, touch.clientY);
+    }
+  }
 }
 
 function onTouchMove(e) {
@@ -470,25 +634,68 @@ function onTouchMove(e) {
     e.preventDefault();
     const newDist = touchDist(e.touches);
     const raw     = pinch.scale0 * (newDist / pinch.dist0);
-    applyScale(Math.min(SCALE_MAX, Math.max(SCALE_MIN, raw)));
+    const mid     = touchMidpoint(e.touches);
+    applyScale(Math.min(SCALE_MAX, Math.max(SCALE_MIN, raw)), {
+      anchorClientX: mid.x,
+      anchorClientY: mid.y,
+    });
     return;
+  }
+
+  const touch = e.touches[0];
+  if (touchHold) {
+    const dx = Math.abs(touch.clientX - touchHold.startX);
+    const dy = Math.abs(touch.clientY - touchHold.startY);
+    if (dx > TOUCH_HOLD_SLOP || dy > TOUCH_HOLD_SLOP) cancelTouchHoldSelection();
   }
 
   if (!dragging) return;
   e.preventDefault();
-  const touch = e.touches[0];
   onMouseMove({ clientX: touch.clientX, clientY: touch.clientY });
 }
 
 function onTouchEnd(e) {
+  const holdActivated = !!touchHold?.activated;
+  cancelTouchHoldSelection();
+
   if (pinch && e.touches.length < 2) {
     pinch = null;
     return;
   }
 
-  if (!dragging) return;
+  if (holdActivated) return;
+
+  if (!dragging) {
+    // Detect double-tap on empty board to drop hand
+    if (hand.length > 0 && e.changedTouches.length === 1) {
+      const t = e.changedTouches[0];
+      const target = document.elementFromPoint(t.clientX, t.clientY);
+      if (!target?.closest('.piece')) {
+        if (checkEmptyDoubleTap(t.clientX, t.clientY)) return;
+      }
+    }
+    return;
+  }
   const touch = e.changedTouches[0];
-  onMouseUp({ clientX: touch.clientX, clientY: touch.clientY });
+  onMouseUp({ clientX: touch.clientX, clientY: touch.clientY, isTouch: true });
+}
+
+function startTouchHoldSelection(index, startX, startY) {
+  cancelTouchHoldSelection();
+  touchHold = { index, startX, startY, activated: false, timer: null };
+  touchHold.timer = setTimeout(() => {
+    if (!touchHold || touchHold.index !== index) return;
+    if (!dragging || dragging.locked || dragging.anchorIndex !== index) return;
+    dragging = null;
+    addToHand(index);
+    touchHold.activated = true;
+  }, TOUCH_HOLD_MS);
+}
+
+function cancelTouchHoldSelection() {
+  if (!touchHold) return;
+  if (touchHold.timer) clearTimeout(touchHold.timer);
+  touchHold = null;
 }
 
 // ── Rotation ──────────────────────────────────────────────────────────────────
@@ -499,6 +706,10 @@ function onContextMenu(e) {
   const el = e.target.closest('.piece');
   if (!el) return;
   const index = Number(el.dataset.index);
+  // Cancel in-progress "click to hand" on same piece (e.g. Ctrl+click path started mousedown).
+  if (dragging && !dragging.locked && dragging.anchorIndex === index) {
+    dragging = null;
+  }
   if (pieceStates[index].lockedBy && pieceStates[index].lockedBy !== playerId) return;
   rotateAtIndex(index);
 }
@@ -565,15 +776,321 @@ function touchDist(touches) {
   return Math.hypot(dx, dy);
 }
 
-function applyScale(s) {
-  scale = s;
+function touchMidpoint(touches) {
+  return {
+    x: (touches[0].clientX + touches[1].clientX) / 2,
+    y: (touches[0].clientY + touches[1].clientY) / 2,
+  };
+}
+
+function clampScale(s) {
+  return Math.min(SCALE_MAX, Math.max(SCALE_MIN, s));
+}
+
+function applyScale(s, opts = {}) {
+  const next = clampScale(s);
+  if (!Number.isFinite(next)) return;
+  const prev = scale;
+  if (Math.abs(next - prev) < 0.001) return;
+
+  const { anchorClientX, anchorClientY } = opts;
+  const hasAnchor = Number.isFinite(anchorClientX) && Number.isFinite(anchorClientY);
+  let bx, by;
+  if (hasAnchor) {
+    const r = board.getBoundingClientRect();
+    bx = (anchorClientX - r.left) / prev;
+    by = (anchorClientY - r.top) / prev;
+  }
+
+  scale = next;
   board.style.transform = scale === 1 ? '' : `scale(${scale})`;
-  // CSS transform doesn't affect layout, so manually size a margin-bottom/right
-  // on the board so the wrap's scrollbars track the scaled dimensions.
   const extraW = BOARD_W * (scale - 1);
   const extraH = BOARD_H * (scale - 1);
   board.style.marginRight  = extraW > 0 ? extraW + 'px' : '';
   board.style.marginBottom = extraH > 0 ? extraH + 'px' : '';
+
+  if (hasAnchor) {
+    const r2 = board.getBoundingClientRect();
+    boardWrap.scrollLeft += (r2.left + bx * scale) - anchorClientX;
+    boardWrap.scrollTop  += (r2.top  + by * scale) - anchorClientY;
+  }
+
+  updateZoomControls();
+}
+
+function centerBoardInView() {
+  const scaledW = BOARD_W * scale;
+  const scaledH = BOARD_H * scale;
+  boardWrap.scrollLeft = Math.max(0, (scaledW - boardWrap.clientWidth) / 2);
+  boardWrap.scrollTop  = Math.max(0, (scaledH - boardWrap.clientHeight) / 2);
+}
+
+function fitBoardToViewport() {
+  const fit = Math.min(
+    1,
+    (boardWrap.clientWidth - 16) / BOARD_W,
+    (boardWrap.clientHeight - 16) / BOARD_H
+  );
+  applyScale(clampScale(fit || 1));
+  centerBoardInView();
+}
+
+function onWheelZoom(e) {
+  if (dragging) return;
+  e.preventDefault();
+  let delta = e.deltaY;
+  if (e.deltaMode === 1) delta *= 16;
+  if (e.deltaMode === 2) delta *= boardWrap.clientHeight;
+  const limited = Math.max(-120, Math.min(120, delta));
+  const factor = Math.exp(-limited * 0.0015);
+  applyScale(scale * factor, { anchorClientX: e.clientX, anchorClientY: e.clientY });
+}
+
+function onBoardDblClick(e) {
+  if (hand.length === 0) return;
+  if (e.target.closest('.piece')) return;
+  e.preventDefault();
+  dropHandAt(e.clientX, e.clientY);
+}
+
+function onViewportPanStart(e) {
+  if (isMobileLike || dragging) return;
+  if (e.button !== 0) return;
+  if (scale <= 1.01) return;
+  if (e.target.closest('.piece')) return;
+  viewportPan = {
+    startX: e.clientX,
+    startY: e.clientY,
+    scrollLeft: boardWrap.scrollLeft,
+    scrollTop: boardWrap.scrollTop,
+  };
+  boardWrap.classList.add('panning');
+  e.preventDefault();
+}
+
+// ── Hand (multi-select) system ─────────────────────────────────────────────
+
+function createHandContainer() {
+  const el = document.createElement('div');
+  el.id = 'piece-hand';
+  el.className = 'piece-hand';
+  document.body.appendChild(el);
+  return el;
+}
+
+function addToHand(index) {
+  if (hand.includes(index)) { removeFromHand(index); return; }
+  if (pieceStates[index].solved) return;
+  if (pieceGroup[index]) return;
+
+  lockGroup(puzzleId, [index], playerId);
+  pieceStates[index].lockedBy = playerId;
+  hand.push(index);
+  pieceEls[index]?.classList.add('in-hand');
+
+  handTimers[index] = setTimeout(() => {
+    if (hand.includes(index)) removeFromHand(index);
+  }, HAND_RELEASE_MS);
+
+  renderHand();
+
+  if (!startedAt) {
+    setStartedAt(puzzleId).then(t => { startedAt = t; startTimer(); });
+  }
+}
+
+function removeFromHand(index) {
+  hand = hand.filter(i => i !== index);
+  clearTimeout(handTimers[index]);
+  delete handTimers[index];
+  pieceEls[index]?.classList.remove('in-hand');
+  unlockGroup(puzzleId, [index]);
+  pieceStates[index].lockedBy = null;
+  renderHand();
+}
+
+function removeFromHandSilent(index) {
+  hand = hand.filter(i => i !== index);
+  clearTimeout(handTimers[index]);
+  delete handTimers[index];
+  pieceEls[index]?.classList.remove('in-hand');
+  renderHand();
+}
+
+async function dropHandAt(clientX, clientY) {
+  if (hand.length === 0) return;
+  const r = board.getBoundingClientRect();
+  const centerX = (clientX - r.left) / scale;
+  const centerY = (clientY - r.top) / scale;
+
+  const dW = meta._displayW;
+  const dH = meta._displayH;
+  const { cols: gridCols } = meta;
+
+  const shuffled = shuffleNonAdjacent([...hand], gridCols);
+
+  const layoutCols = Math.ceil(Math.sqrt(shuffled.length));
+  const layoutRows = Math.ceil(shuffled.length / layoutCols);
+  const spreadW = dW * 1.3;
+  const spreadH = dH * 1.3;
+
+  const positions = [];
+  const rotationWrites = [];
+  shuffled.forEach((idx, i) => {
+    const c = i % layoutCols;
+    const rw = Math.floor(i / layoutCols);
+    const jitterX = (Math.random() - 0.5) * dW * 0.6;
+    const jitterY = (Math.random() - 0.5) * dH * 0.6;
+    const x = centerX - (layoutCols * spreadW / 2) + c * spreadW + jitterX;
+    const y = centerY - (layoutRows * spreadH / 2) + rw * spreadH + jitterY;
+    pieceStates[idx].x = x;
+    pieceStates[idx].y = y;
+    movePieceEl(idx, x, y);
+    positions.push({ index: idx, x, y });
+    rotationWrites.push(updatePieceRotation(puzzleId, idx, pieceStates[idx].rotation ?? 0));
+    pieceEls[idx]?.classList.remove('in-hand');
+    clearTimeout(handTimers[idx]);
+    delete handTimers[idx];
+  });
+
+  updateGroupPosition(puzzleId, positions);
+  unlockGroup(puzzleId, shuffled);
+  shuffled.forEach(i => { pieceStates[i].lockedBy = null; });
+  hand = [];
+  renderHand();
+  await Promise.allSettled(rotationWrites);
+}
+
+function shuffleNonAdjacent(indices, gridCols) {
+  if (indices.length <= 1) return indices;
+
+  const isAdj = (a, b) => {
+    const colA = a % gridCols, rowA = Math.floor(a / gridCols);
+    const colB = b % gridCols, rowB = Math.floor(b / gridCols);
+    return Math.abs(colA - colB) + Math.abs(rowA - rowB) === 1;
+  };
+
+  for (let i = indices.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [indices[i], indices[j]] = [indices[j], indices[i]];
+  }
+
+  for (let pass = 0; pass < 3; pass++) {
+    for (let i = 0; i < indices.length - 1; i++) {
+      if (isAdj(indices[i], indices[i + 1])) {
+        const swap = indices.findIndex((_, k) =>
+          k > i + 1 && !isAdj(indices[i], indices[k]) &&
+          (i === 0 || !isAdj(indices[i - 1], indices[k]))
+        );
+        if (swap !== -1) {
+          [indices[i + 1], indices[swap]] = [indices[swap], indices[i + 1]];
+        }
+      }
+    }
+  }
+  return indices;
+}
+
+function clearHand() {
+  [...hand].forEach(i => removeFromHand(i));
+}
+
+function renderHand() {
+  if (!handContainer) handContainer = createHandContainer();
+  handContainer.innerHTML = '';
+  if (hand.length === 0) { handContainer.style.display = 'none'; return; }
+  handContainer.style.display = 'flex';
+
+  hand.forEach(index => {
+    const wrap = document.createElement('div');
+    wrap.className = 'hand-thumb-wrap';
+    const src = pieceEls[index]?.src;
+    if (src) {
+      const thumb = document.createElement('img');
+      thumb.src = src;
+      thumb.className = 'hand-thumb';
+      thumb.draggable = false;
+      const rot = pieceStates[index]?.rotation ?? 0;
+      if (rot) thumb.style.transform = `rotate(${rot}deg)`;
+      wrap.appendChild(thumb);
+    }
+    const timer = document.createElement('div');
+    timer.className = 'hand-thumb-timer';
+    wrap.appendChild(timer);
+    requestAnimationFrame(() => { timer.style.width = '0%'; });
+    wrap.addEventListener('click', () => removeFromHand(index));
+    handContainer.appendChild(wrap);
+  });
+}
+
+function checkEmptyDoubleTap(cx, cy) {
+  const now = Date.now();
+  const dist = Math.hypot(cx - lastEmptyTap.x, cy - lastEmptyTap.y);
+  if (now - lastEmptyTap.time < 400 && dist < 40) {
+    dropHandAt(cx, cy);
+    lastEmptyTap = { time: 0, x: 0, y: 0 };
+    return true;
+  }
+  lastEmptyTap = { time: now, x: cx, y: cy };
+  return false;
+}
+
+function tryForceRelease(index) {
+  const now = Date.now();
+  const st = forceReleaseState[index] || { count: 0, lastTime: 0 };
+  if (now - st.lastTime > 3000) st.count = 0;
+  st.count++;
+  st.lastTime = now;
+  forceReleaseState[index] = st;
+  if (st.count >= 5) {
+    unlockGroup(puzzleId, [index]);
+    forceReleaseState[index] = { count: 0, lastTime: 0 };
+    showForceReleaseToast();
+  }
+}
+
+function showForceReleaseToast() {
+  const t = document.createElement('div');
+  t.className = 'powerup-toast';
+  t.style.background = 'var(--accent2)';
+  t.textContent = 'Piece released!';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2000);
+}
+
+function setupViewportControls() {
+  if (boardWrap.querySelector('.board-zoom-controls')) return;
+
+  const controls = document.createElement('div');
+  controls.className = 'board-zoom-controls';
+  controls.innerHTML = `
+    <button class="zoom-btn" data-action="minus" title="Zoom out">−</button>
+    <button class="zoom-btn zoom-readout" data-action="fit" title="Fit board">100%</button>
+    <button class="zoom-btn" data-action="plus" title="Zoom in">+</button>
+    <button class="zoom-btn" data-action="center" title="Center board">◎</button>
+  `;
+  boardWrap.appendChild(controls);
+
+  controls.addEventListener('click', e => {
+    const btn = e.target.closest('button[data-action]');
+    if (!btn) return;
+    const action = btn.dataset.action;
+    if (action === 'minus') applyScale(scale / 1.18);
+    if (action === 'plus')  applyScale(scale * 1.18);
+    if (action === 'fit')   fitBoardToViewport();
+    if (action === 'center') centerBoardInView();
+  });
+
+  window.addEventListener('resize', () => {
+    if (scale <= 1.05) fitBoardToViewport();
+  });
+  updateZoomControls();
+}
+
+function updateZoomControls() {
+  const readout = boardWrap.querySelector('.board-zoom-controls .zoom-readout');
+  if (!readout) return;
+  readout.textContent = `${Math.round(scale * 100)}%`;
 }
 
 // ── Snap / merge ──────────────────────────────────────────────────────────────
@@ -758,6 +1275,11 @@ function applyRemoteUpdate(index, data) {
   }
   pieceStates[index] = { ...pieceStates[index], ...incoming };
 
+  // If a piece in our hand got force-released remotely, remove from hand
+  if (hand.includes(index) && incoming.lockedBy !== playerId) {
+    removeFromHandSilent(index);
+  }
+
   movePieceEl(index, data.x, data.y);
 
   // If this piece just joined a group (from another player's snap), merge locally
@@ -849,9 +1371,17 @@ function setupHelp() {
   const controls = [
     { key: 'Drag',            desc: 'Move a piece or a connected group' },
     { key: 'Drop near edge',  desc: 'Pieces snap together automatically' },
-    { key: 'Pinch (mobile)',  desc: 'Zoom in / out' },
-    { key: 'Scroll',          desc: 'Pan the board' },
+    { key: 'Scroll / drag bg',desc: 'Pan the board' },
+    { key: 'Click piece',     desc: 'Pick up into hand (tap again to deselect)' },
+    { key: 'Dbl-click board', desc: 'Drop all hand pieces at that spot' },
   ];
+  if (!isMobileLike) {
+    controls.push({ key: 'Scroll wheel', desc: 'Zoom at cursor position (desktop)' });
+  }
+  if (isMobileLike) {
+    controls.push({ key: 'Pinch (mobile)', desc: 'Zoom in / out' });
+    controls.push({ key: 'HQ button',      desc: 'Toggle sharper pieces (uses more memory)' });
+  }
   if (meta.hardMode) {
     controls.push({ key: 'Right-click',  desc: 'Rotate a piece or group 90°' });
     controls.push({ key: 'Double-tap',   desc: 'Rotate a piece or group on mobile' });
@@ -869,6 +1399,62 @@ function setupHelp() {
   helpModal.addEventListener('click', e => {
     if (e.target === helpModal) helpModal.style.display = 'none';
   });
+}
+
+function setupQualityMode() {
+  if (!qualityBtn) return;
+  if (!isMobileLike) {
+    highQualityMode = false;
+    localStorage.setItem('jt-high-quality', '0');
+    qualityBtn.style.display = 'none';
+    return;
+  }
+  const applyState = () => {
+    qualityBtn.classList.toggle('active', highQualityMode);
+    qualityBtn.title = highQualityMode
+      ? 'High quality ON (tap to disable)'
+      : 'High quality OFF (tap to enable)';
+  };
+  applyState();
+
+  qualityBtn.addEventListener('click', () => {
+    highQualityMode = !highQualityMode;
+    localStorage.setItem('jt-high-quality', highQualityMode ? '1' : '0');
+    applyState();
+    // Piece textures are generated at load time, so refresh to rebuild.
+    location.reload();
+  });
+}
+
+function setupHorizontalPageLock() {
+  // iOS Safari can still rubber-band horizontally even with overflow hidden.
+  // We only block horizontal swipes that start outside the puzzle board area.
+  document.addEventListener('touchstart', e => {
+    if (e.touches.length !== 1) { pageTouchStart = null; return; }
+    const t = e.touches[0];
+    pageTouchStart = {
+      x: t.clientX,
+      y: t.clientY,
+      inBoardWrap: !!e.target.closest('.puzzle-board-wrap'),
+    };
+  }, { passive: true });
+
+  document.addEventListener('touchmove', e => {
+    if (!pageTouchStart || e.touches.length !== 1) return;
+    const t = e.touches[0];
+    const dx = Math.abs(t.clientX - pageTouchStart.x);
+    const dy = Math.abs(t.clientY - pageTouchStart.y);
+    if (dx <= dy || dx <= 5) return;
+
+    // Only allow horizontal pan if gesture started in the board area AND board is wider
+    // than viewport at current zoom (real horizontal content exists).
+    const canPanBoardX = (BOARD_W * scale) > (boardWrap.clientWidth + 2);
+    const allowHorizontal = pageTouchStart.inBoardWrap && canPanBoardX;
+    if (!allowHorizontal) e.preventDefault();
+  }, { passive: false });
+
+  document.addEventListener('touchend', () => { pageTouchStart = null; }, { passive: true });
+  document.addEventListener('touchcancel', () => { pageTouchStart = null; }, { passive: true });
 }
 
 function setupPeek() {
@@ -998,7 +1584,7 @@ function renderPlayers(players) {
     dot.className = 'player-dot';
     dot.style.background = p.color;
     dot.title = p.name;
-    dot.textContent = p.name[0].toUpperCase();
+    dot.textContent = getAvatarText(p.name);
     if (id === playerId) dot.classList.add('me');
     playersListEl.appendChild(dot);
   });
@@ -1041,7 +1627,7 @@ function setPieceAvatar(index, lockOwner) {
   const avatar = document.createElement('div');
   avatar.className = 'piece-avatar';
   avatar.style.background = player.color;
-  avatar.textContent = player.name[0].toUpperCase();
+  avatar.textContent = getAvatarText(player.name);
   avatar.title = player.name;
   board.appendChild(avatar);
   avatarEls[anchor] = avatar;
@@ -1089,6 +1675,25 @@ function formatNames(names) {
   return `${names[0]}, ${names[1]} +${names.length - 2} more`;
 }
 
+function getAvatarText(name) {
+  const text = String(name || '').trim();
+  if (!text) return '?';
+  const first = getFirstGrapheme(text);
+  return isEmojiGrapheme(first) ? first : first.toUpperCase();
+}
+
+function getFirstGrapheme(text) {
+  if (typeof Intl !== 'undefined' && Intl.Segmenter) {
+    const seg = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+    for (const part of seg.segment(text)) return part.segment;
+  }
+  return Array.from(text)[0] || '?';
+}
+
+function isEmojiGrapheme(ch) {
+  return /\p{Extended_Pictographic}/u.test(ch);
+}
+
 function loadImage(src) {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -1109,5 +1714,6 @@ window.addEventListener('beforeunload', () => {
   if (unsubscribe) unsubscribe();
   if (unsubPlayers) unsubPlayers();
   if (dragging?.locked) unlockGroup(puzzleId, dragging.indices);
+  if (hand.length) unlockGroup(puzzleId, hand);
   removePlayer(puzzleId, playerId);
 });
