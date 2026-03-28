@@ -176,6 +176,40 @@ body {
 
 .status.error { color: var(--accent); }
 
+.in-app-hint {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10000;
+  padding: 10px 40px 10px 14px;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  color: var(--text);
+  background: rgba(24, 10, 48, 0.96);
+  border-bottom: 1px solid var(--surface2);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+}
+
+.in-app-hint p { margin: 0; max-width: 36em; }
+
+.in-app-hint-dismiss {
+  position: absolute;
+  top: 4px;
+  right: 8px;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.in-app-hint-dismiss:hover { color: var(--text); }
+
 /* ── Name modal ── */
 
 .modal-overlay {
@@ -743,6 +777,17 @@ iframe[src*="vercel.live"] {
 #loading-overlay p {
   color: var(--text-muted);
   font-size: 0.9rem;
+}
+
+#loading-overlay.loading-overlay--error p {
+  color: var(--text);
+  max-width: 22rem;
+  text-align: center;
+  line-height: 1.45;
+}
+
+#loading-overlay.loading-overlay--error .spinner {
+  display: none;
 }
 
 .spinner {

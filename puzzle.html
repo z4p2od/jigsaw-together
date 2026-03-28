@@ -7,6 +7,21 @@
   <link rel="stylesheet" href="/css/style.css" />
 </head>
 <body class="puzzle-body">
+  <div id="in-app-hint" class="in-app-hint" hidden>
+    <p>In-app browsers sometimes fail to load puzzles. If you are stuck, open this link in <strong>Safari</strong> or Chrome (Share → Open in Browser).</p>
+    <button type="button" class="in-app-hint-dismiss" aria-label="Dismiss">×</button>
+  </div>
+  <script>
+    (function () {
+      var ua = navigator.userAgent || '';
+      if (!/Instagram|FBAN|FBAV|FB_IAB|FBIOS|Line\/|Snapchat|Messenger|LinkedInApp|TikTok/i.test(ua)) return;
+      var el = document.getElementById('in-app-hint');
+      if (!el) return;
+      el.hidden = false;
+      var b = el.querySelector('.in-app-hint-dismiss');
+      if (b) b.addEventListener('click', function () { el.hidden = true; });
+    })();
+  </script>
   <div id="loading-overlay">
     <div class="spinner"></div>
     <p id="loading-text">Loading puzzle...</p>

@@ -13,6 +13,29 @@ const MAX_BYTES = 10 * 1024 * 1024;
 
 let imageBase64 = null;
 
+function isLikelyInAppBrowser() {
+  const ua = navigator.userAgent || '';
+  return /Instagram|FBAN|FBAV|FB_IAB|FBIOS|Line\/|Snapchat|Messenger|LinkedInApp|TikTok/i.test(ua);
+}
+
+async function fetchJsonWithTimeout(url, ms) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal });
+    if (!res.ok) throw new Error(`${url} ${res.status}`);
+    return await res.json();
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+function fetchWithTimeout(url, options, ms) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  return fetch(url, { ...options, signal: ctrl.signal }).finally(() => clearTimeout(t));
+}
+
 // Show hard mode explainer when Hard is selected
 document.querySelectorAll('input[name="mode"]').forEach(radio => {
   radio.addEventListener('change', () => {
@@ -234,13 +257,17 @@ let cloudinaryConfigCache = null;
 
 async function uploadToCloudinary(base64Data) {
   if (!cloudinaryConfigCache) {
-    cloudinaryConfigCache = await fetch('/api/cloudinary-config').then(r => r.json());
+    cloudinaryConfigCache = await fetchJsonWithTimeout('/api/cloudinary-config', 8000);
   }
   const { cloudName, uploadPreset } = cloudinaryConfigCache;
   const fd = new FormData();
   fd.append('file',          'data:image/jpeg;base64,' + base64Data);
   fd.append('upload_preset', uploadPreset);
-  const res  = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, { method: 'POST', body: fd });
+  const res = await fetchWithTimeout(
+    `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
+    { method: 'POST', body: fd },
+    120000
+  );
   const data = await res.json();
   if (!res.ok) throw new Error(data.error?.message || 'Cloudinary upload failed');
   return { imageUrl: data.secure_url, imagePublicId: data.public_id };
@@ -284,7 +311,14 @@ async function handleCreatePuzzle() {
     window.location.href = `/puzzle.html?id=${puzzleId}`;
   } catch (err) {
     console.error(err);
-    setStatus('Something went wrong. Please try again.', true);
+    let msg = 'Something went wrong. Please try again.';
+    if (err.name === 'AbortError') {
+      msg = 'Upload or setup timed out. In-app browsers (Instagram, Messenger, TikTok) often block image uploads.';
+    }
+    if (isLikelyInAppBrowser()) {
+      msg += ' Open this page in Safari or Chrome: Share → Open in Browser.';
+    }
+    setStatus(msg, true);
     createBtn.disabled = false;
   }
 }

@@ -155,6 +155,11 @@ function showNameModal() {
 }
 
 async function initPuzzle() {
+  const watchdog = window.setTimeout(() => {
+    if (!loadingEl || getComputedStyle(loadingEl).display === 'none') return;
+    loadingText.textContent =
+      'Still loading… In-app browsers often block this. Try opening in Safari (Share → Open in Browser).';
+  }, 22000);
   try {
     loadingText.textContent = 'Loading puzzle...';
     const data  = await loadPuzzle(puzzleId);
@@ -194,11 +199,19 @@ async function initPuzzle() {
       startTimer();
     }
 
+    window.clearTimeout(watchdog);
     loadingEl.style.display = 'none';
     updateProgress();
   } catch (err) {
+    window.clearTimeout(watchdog);
     console.error(err);
-    loadingText.textContent = 'Puzzle not found.';
+    loadingText.textContent =
+      err.name === 'AbortError' || /Failed to fetch|NetworkError|load failed/i.test(String(err.message || err))
+        ? 'Could not reach the server. Try Safari if you opened this link from a social app.'
+        : 'Puzzle not found.';
+    loadingEl.classList.add('loading-overlay--error');
+    const sp = loadingEl.querySelector('.spinner');
+    if (sp) sp.style.display = 'none';
   }
 }
 
