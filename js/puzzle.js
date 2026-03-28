@@ -26,6 +26,8 @@ import { cutPiece, getPad } from './jigsaw.js';
 
 const BOARD_W   = 900;
 const BOARD_H   = 650;
+/** Must match .puzzle-board-scroll-content padding in style.css */
+const BOARD_SCROLL_PADDING = 20;
 const SCALE_MIN = 0.3;
 const SCALE_MAX = 3.0;
 
@@ -95,7 +97,9 @@ let lastRoomsSolvedSync = 0;
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 
-const board           = document.getElementById('puzzle-board');
+const boardWrap          = document.getElementById('puzzle-board-wrap');
+const boardScrollContent = document.getElementById('puzzle-board-scroll-content');
+const board              = document.getElementById('puzzle-board');
 const loadingEl       = document.getElementById('loading-overlay');
 const loadingText     = document.getElementById('loading-text');
 const celebration     = document.getElementById('celebration');
@@ -123,7 +127,6 @@ const chatClose       = document.getElementById('chat-close');
 const chatMessages    = document.getElementById('chat-messages');
 const chatInput       = document.getElementById('chat-input');
 const chatSendBtn     = document.getElementById('chat-send');
-const boardWrap       = board.parentElement;
 const qualityBtn      = document.getElementById('quality-btn');
 const isCoarsePointer = window.matchMedia?.('(pointer: coarse)')?.matches ?? false;
 const isMobileLike = isCoarsePointer || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
@@ -223,6 +226,9 @@ function setupBoard() {
   board.style.width          = BOARD_W + 'px';
   board.style.height         = BOARD_H + 'px';
   board.style.transformOrigin = 'top left';
+  board.style.marginRight = '';
+  board.style.marginBottom = '';
+  syncBoardScrollContentSize();
   if (isMobileLike) {
     setupViewportControls();
     fitBoardToViewport();
@@ -385,6 +391,8 @@ function attachDragListeners() {
   boardWrap.addEventListener('touchstart', onTouchStart, { passive: false });
   boardWrap.addEventListener('touchmove',  onTouchMove,  { passive: false });
   boardWrap.addEventListener('touchend',   onTouchEnd);
+
+  window.addEventListener('resize', syncBoardScrollContentSize, { passive: true });
 }
 
 function onMouseDown(e) {
@@ -788,6 +796,16 @@ function clampScale(s) {
   return Math.min(SCALE_MAX, Math.max(SCALE_MIN, s));
 }
 
+function syncBoardScrollContentSize() {
+  if (!boardScrollContent || !boardWrap) return;
+  const cw = boardWrap.clientWidth || 0;
+  const ch = boardWrap.clientHeight || 0;
+  const innerW = BOARD_SCROLL_PADDING * 2 + BOARD_W * scale;
+  const innerH = BOARD_SCROLL_PADDING * 2 + BOARD_H * scale;
+  boardScrollContent.style.width = Math.max(innerW, cw) + 'px';
+  boardScrollContent.style.height = Math.max(innerH, ch) + 'px';
+}
+
 /** Center of the visible scroll viewport (stable zoom pivot for toolbar +/-). */
 function zoomAnchorViewportCenter() {
   const wr = boardWrap.getBoundingClientRect();
@@ -822,41 +840,50 @@ function applyScale(s, opts = {}) {
 
   const { anchorClientX, anchorClientY } = opts;
   const hasAnchor = Number.isFinite(anchorClientX) && Number.isFinite(anchorClientY);
-  let bx, by;
+
+  let mx, my, bx, by;
   if (hasAnchor) {
-    const r = board.getBoundingClientRect();
-    bx = (anchorClientX - r.left) / prev;
-    by = (anchorClientY - r.top) / prev;
+    const wr = boardWrap.getBoundingClientRect();
+    mx = boardWrap.scrollLeft + (anchorClientX - wr.left);
+    my = boardWrap.scrollTop + (anchorClientY - wr.top);
+    const ox = board.offsetLeft;
+    const oy = board.offsetTop;
+    bx = (mx - ox) / prev;
+    by = (my - oy) / prev;
   }
 
   scale = next;
   board.style.transform = scale === 1 ? '' : `translateZ(0) scale(${scale})`;
-  const extraW = BOARD_W * (scale - 1);
-  const extraH = BOARD_H * (scale - 1);
-  board.style.marginRight  = extraW > 0 ? extraW + 'px' : '';
-  board.style.marginBottom = extraH > 0 ? extraH + 'px' : '';
+
+  syncBoardScrollContentSize();
 
   if (hasAnchor) {
-    const r2 = board.getBoundingClientRect();
-    boardWrap.scrollLeft += (r2.left + bx * scale) - anchorClientX;
-    boardWrap.scrollTop  += (r2.top  + by * scale) - anchorClientY;
+    const ox2 = board.offsetLeft;
+    const oy2 = board.offsetTop;
+    const sl = mx - ox2 - bx * next;
+    const st = my - oy2 - by * next;
+    const maxSl = Math.max(0, boardWrap.scrollWidth - boardWrap.clientWidth);
+    const maxSt = Math.max(0, boardWrap.scrollHeight - boardWrap.clientHeight);
+    boardWrap.scrollLeft = Math.max(0, Math.min(maxSl, Math.round(sl)));
+    boardWrap.scrollTop = Math.max(0, Math.min(maxSt, Math.round(st)));
   }
 
   updateZoomControls();
 }
 
 function centerBoardInView() {
-  const scaledW = BOARD_W * scale;
-  const scaledH = BOARD_H * scale;
-  boardWrap.scrollLeft = Math.max(0, (scaledW - boardWrap.clientWidth) / 2);
-  boardWrap.scrollTop  = Math.max(0, (scaledH - boardWrap.clientHeight) / 2);
+  const maxSl = Math.max(0, boardWrap.scrollWidth - boardWrap.clientWidth);
+  const maxSt = Math.max(0, boardWrap.scrollHeight - boardWrap.clientHeight);
+  boardWrap.scrollLeft = Math.round(maxSl / 2);
+  boardWrap.scrollTop = Math.round(maxSt / 2);
 }
 
 function fitBoardToViewport() {
+  const gutter = BOARD_SCROLL_PADDING * 2;
   const fit = Math.min(
     1,
-    (boardWrap.clientWidth - 16) / BOARD_W,
-    (boardWrap.clientHeight - 16) / BOARD_H
+    Math.max(0.01, (boardWrap.clientWidth - gutter) / BOARD_W),
+    Math.max(0.01, (boardWrap.clientHeight - gutter) / BOARD_H)
   );
   applyScale(clampScale(fit || 1));
   centerBoardInView();

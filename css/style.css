@@ -662,6 +662,18 @@ body.puzzle-body {
   touch-action: pan-x pan-y;
   overscroll-behavior: contain;
   scroll-behavior: auto;
+  min-height: 0;
+}
+
+.puzzle-board-scroll-content {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
+  padding: 20px;
+  box-sizing: border-box;
 }
 .puzzle-board-wrap.panning {
   cursor: grabbing;
@@ -714,7 +726,8 @@ iframe[src*="vercel.live"] {
 
 #puzzle-board {
   position: relative;
-  margin: 20px auto;
+  margin: 0;
+  flex-shrink: 0;
   background: rgba(255,255,255,0.03);
   border: 1px solid var(--surface2);
   border-radius: 4px;
