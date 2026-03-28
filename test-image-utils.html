@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Image Utils Sanity Check</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 16px; }
+    .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+    #preview { max-width: 220px; max-height: 220px; display:none; border-radius: 10px; border: 1px solid #ddd; }
+    #out { margin-top: 12px; white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+  </style>
+</head>
+<body>
+  <h2>Image utils sanity check</h2>
+  <p>Pick an image and verify we can read dimensions without base64 conversion.</p>
+  <div class="row">
+    <input type="file" id="file" accept="image/*" />
+    <img id="preview" alt="preview" />
+  </div>
+  <div id="out">No file selected.</div>
+
+  <script type="module">
+    import { getImageDimensions } from './js/image-utils.js';
+    const input = document.getElementById('file');
+    const out = document.getElementById('out');
+    const preview = document.getElementById('preview');
+
+    input.addEventListener('change', async () => {
+      const f = input.files && input.files[0];
+      if (!f) return;
+      out.textContent = 'Reading dimensions…';
+
+      const url = URL.createObjectURL(f);
+      preview.onload = () => URL.revokeObjectURL(url);
+      preview.onerror = () => URL.revokeObjectURL(url);
+      preview.src = url;
+      preview.style.display = '';
+
+      try {
+        const dims = await getImageDimensions(f);
+        out.textContent = `ok\nname: ${f.name}\ntype: ${f.type}\nsize: ${f.size}\nwidth: ${dims.width}\nheight: ${dims.height}`;
+      } catch (e) {
+        out.textContent = `error: ${e && e.message ? e.message : String(e)}`;
+      }
+    });
+  </script>
+</body>
+</html>
+
