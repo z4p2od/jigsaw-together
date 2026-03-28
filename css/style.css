@@ -660,6 +660,8 @@ body.puzzle-body {
   position: relative;
   background: var(--bg);
   touch-action: pan-x pan-y;
+  overscroll-behavior: contain;
+  scroll-behavior: auto;
 }
 .puzzle-board-wrap.panning {
   cursor: grabbing;
@@ -717,6 +719,7 @@ iframe[src*="vercel.live"] {
   border: 1px solid var(--surface2);
   border-radius: 4px;
   /* width/height set by JS */
+  backface-visibility: hidden;
 }
 
 /* Individual piece */

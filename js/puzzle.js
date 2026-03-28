@@ -49,6 +49,10 @@ let unsubscribe = null;
 let scale       = 1;   // current zoom level applied to #puzzle-board
 let pinch       = null; // { dist0, scale0 } — active pinch gesture state
 let viewportPan = null; // { startX, startY, scrollLeft, scrollTop }
+/** Coalesce wheel/trackpad deltas to one applyScale per animation frame (smoother on web). */
+let wheelZoomRaf = null;
+let wheelDeltaFrame = 0;
+let wheelZoomAnchor = { anchorClientX: 0, anchorClientY: 0 };
 let hand = [];           // indices of pieces currently in the player's hand
 let handTimers = {};     // index → setTimeout id for auto-release
 let handContainer = null;
@@ -803,7 +807,7 @@ function applyScale(s, opts = {}) {
   }
 
   scale = next;
-  board.style.transform = scale === 1 ? '' : `scale(${scale})`;
+  board.style.transform = scale === 1 ? '' : `translateZ(0) scale(${scale})`;
   const extraW = BOARD_W * (scale - 1);
   const extraH = BOARD_H * (scale - 1);
   board.style.marginRight  = extraW > 0 ? extraW + 'px' : '';
@@ -835,15 +839,29 @@ function fitBoardToViewport() {
   centerBoardInView();
 }
 
+function flushWheelZoom() {
+  wheelZoomRaf = null;
+  if (dragging) {
+    wheelDeltaFrame = 0;
+    return;
+  }
+  const sum = wheelDeltaFrame;
+  wheelDeltaFrame = 0;
+  if (sum === 0) return;
+  const capped = Math.max(-280, Math.min(280, sum));
+  const factor = Math.exp(-capped * 0.00135);
+  applyScale(scale * factor, wheelZoomAnchor);
+}
+
 function onWheelZoom(e) {
   if (dragging) return;
   e.preventDefault();
   let delta = e.deltaY;
   if (e.deltaMode === 1) delta *= 16;
   if (e.deltaMode === 2) delta *= boardWrap.clientHeight;
-  const limited = Math.max(-120, Math.min(120, delta));
-  const factor = Math.exp(-limited * 0.0015);
-  applyScale(scale * factor, { anchorClientX: e.clientX, anchorClientY: e.clientY });
+  wheelDeltaFrame += delta;
+  wheelZoomAnchor = { anchorClientX: e.clientX, anchorClientY: e.clientY };
+  if (!wheelZoomRaf) wheelZoomRaf = requestAnimationFrame(flushWheelZoom);
 }
 
 function onBoardDblClick(e) {
