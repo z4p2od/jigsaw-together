@@ -1,5 +1,6 @@
 import { createPuzzle, getPOTD, onPOTDLeaderboard } from './firebase.js';
 import { generateEdges } from './jigsaw.js';
+import { getImageDimensions, withTimeout } from './image-utils.js';
 
 const fileInput   = document.getElementById('file-input');
 const uploadZone  = document.getElementById('upload-zone');
@@ -11,23 +12,12 @@ const modeHint    = document.getElementById('mode-hint');
 
 const MAX_BYTES = 10 * 1024 * 1024;
 
-let imageBase64 = null;
+let selectedFile = null;
+let selectedDims = null;
 
 function isLikelyInAppBrowser() {
   const ua = navigator.userAgent || '';
   return /Instagram|FBAN|FBAV|FB_IAB|FBIOS|Line\/|Snapchat|Messenger|LinkedInApp|TikTok/i.test(ua);
-}
-
-async function fetchJsonWithTimeout(url, ms) {
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), ms);
-  try {
-    const res = await fetch(url, { signal: ctrl.signal });
-    if (!res.ok) throw new Error(`${url} ${res.status}`);
-    return await res.json();
-  } finally {
-    clearTimeout(t);
-  }
 }
 
 function fetchWithTimeout(url, options, ms) {
@@ -197,27 +187,33 @@ function handleFile(file) {
   if (!file.type.startsWith('image/')) return setStatus('Please upload an image file.', true);
   if (file.size > MAX_BYTES) return setStatus('Image must be under 10MB.', true);
 
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    const dataUrl = e.target.result;
-    preview.src = dataUrl;
-    preview.style.display = 'block';
-    placeholder.style.display = 'none';
+  // Preview using an object URL to avoid base64 memory spikes in iOS in-app browsers.
+  selectedFile = file;
+  selectedDims = null;
+  createBtn.disabled = true;
+  setStatus('Preparing image…');
 
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width  = img.naturalWidth;
-      canvas.height = img.naturalHeight;
-      canvas.getContext('2d').drawImage(img, 0, 0);
-      const compressed = canvas.toDataURL('image/jpeg', 0.92);
-      imageBase64 = compressed.replace(/^data:image\/\w+;base64,/, '');
+  const objUrl = URL.createObjectURL(file);
+  preview.onload = () => URL.revokeObjectURL(objUrl);
+  preview.onerror = () => URL.revokeObjectURL(objUrl);
+  preview.src = objUrl;
+  preview.style.display = 'block';
+  placeholder.style.display = 'none';
+
+  // Resolve dimensions asynchronously (enables grid calc without re-encoding).
+  getImageDimensions(file)
+    .then(dims => {
+      selectedDims = dims;
       createBtn.disabled = false;
       setStatus('');
-    };
-    img.src = dataUrl;
-  };
-  reader.readAsDataURL(file);
+    })
+    .catch(err => {
+      console.error(err);
+      selectedFile = null;
+      selectedDims = null;
+      createBtn.disabled = true;
+      setStatus('Could not read that image. Please try a different photo.', true);
+    });
 }
 
 // ── Grid calculation ──────────────────────────────────────────────────────────
@@ -255,20 +251,32 @@ function scatterPieces(count, dispW, dispH, hardMode) {
 
 let cloudinaryConfigCache = null;
 
-async function uploadToCloudinary(base64Data) {
+async function uploadToCloudinary(file) {
+  if (!(file instanceof Blob)) throw new Error('Expected a File/Blob');
+
   if (!cloudinaryConfigCache) {
-    cloudinaryConfigCache = await fetchJsonWithTimeout('/api/cloudinary-config', 8000);
+    cloudinaryConfigCache = await withTimeout(
+      (async () => {
+        const r = await fetch('/api/cloudinary-config');
+        if (!r.ok) throw new Error(`cloudinary config ${r.status}`);
+        return r.json();
+      })(),
+      8000,
+      'cloudinary config'
+    );
   }
-  const { cloudName, uploadPreset } = cloudinaryConfigCache;
+  const { cloudName, uploadPreset } = cloudinaryConfigCache || {};
+  if (!cloudName || !uploadPreset) throw new Error('Missing Cloudinary config');
+
   const fd = new FormData();
-  fd.append('file',          'data:image/jpeg;base64,' + base64Data);
+  fd.append('file', file);
   fd.append('upload_preset', uploadPreset);
   const res = await fetchWithTimeout(
     `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
     { method: 'POST', body: fd },
     120000
   );
-  const data = await res.json();
+  const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error?.message || 'Cloudinary upload failed');
   return { imageUrl: data.secure_url, imagePublicId: data.public_id };
 }
@@ -278,22 +286,21 @@ async function uploadToCloudinary(base64Data) {
 createBtn.addEventListener('click', handleCreatePuzzle);
 
 async function handleCreatePuzzle() {
-  if (!imageBase64) return;
+  if (!selectedFile || !selectedDims) return;
 
   const pieceCount = Number(document.querySelector('input[name="pieces"]:checked').value);
   setStatus('Generating puzzle...');
   createBtn.disabled = true;
 
   try {
-    const img = await loadImage('data:image/jpeg;base64,' + imageBase64);
-    const { cols, rows } = calculateGrid(pieceCount, img.naturalWidth, img.naturalHeight);
+    const { cols, rows } = calculateGrid(pieceCount, selectedDims.width, selectedDims.height);
     const actualCount = cols * rows;
 
-    const pieceW = Math.floor(img.naturalWidth  / cols);
-    const pieceH = Math.floor(img.naturalHeight / rows);
+    const pieceW = Math.floor(selectedDims.width  / cols);
+    const pieceH = Math.floor(selectedDims.height / rows);
 
     const boardW = 900, boardH = 650;
-    const scale    = Math.min((boardW * 0.55) / img.naturalWidth, (boardH * 0.55) / img.naturalHeight, 1);
+    const scale    = Math.min((boardW * 0.55) / selectedDims.width, (boardH * 0.55) / selectedDims.height, 1);
     const displayW = Math.floor(pieceW * scale);
     const displayH = Math.floor(pieceH * scale);
 
@@ -302,16 +309,16 @@ async function handleCreatePuzzle() {
     const pieces   = scatterPieces(actualCount, displayW, displayH, hardMode);
 
     setStatus('Uploading image...');
-    const { imageUrl, imagePublicId } = await uploadToCloudinary(imageBase64);
+    const { imageUrl, imagePublicId } = await withTimeout(uploadToCloudinary(selectedFile), 30000, 'image upload');
 
     const meta = { imageUrl, imagePublicId, cols, rows, pieceW, pieceH, displayW, displayH, edges, hardMode };
 
     setStatus(`Creating ${actualCount}-piece puzzle...`);
-    const puzzleId = await createPuzzle(meta, pieces);
+    const puzzleId = await withTimeout(createPuzzle(meta, pieces), 15000, 'puzzle creation');
     window.location.href = `/puzzle.html?id=${puzzleId}`;
   } catch (err) {
     console.error(err);
-    let msg = 'Something went wrong. Please try again.';
+    let msg = err?.message || 'Something went wrong. Please try again.';
     if (err.name === 'AbortError') {
       msg = 'Upload or setup timed out. In-app browsers (Instagram, Messenger, TikTok) often block image uploads.';
     }
@@ -324,15 +331,6 @@ async function handleCreatePuzzle() {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-function loadImage(src) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload  = () => resolve(img);
-    img.onerror = reject;
-    img.src = src;
-  });
-}
 
 function setStatus(msg, isError = false) {
   statusEl.textContent = msg;
