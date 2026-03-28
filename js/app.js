@@ -1,6 +1,6 @@
 import { createPuzzle, getPOTD, onPOTDLeaderboard } from './firebase.js';
 import { generateEdges } from './jigsaw.js';
-import { getImageDimensions, withTimeout, loadImage } from './image-utils.js';
+import { getImageDimensions, withTimeout } from './image-utils.js';
 
 const fileInput   = document.getElementById('file-input');
 const uploadZone  = document.getElementById('upload-zone');
@@ -11,8 +11,6 @@ const statusEl    = document.getElementById('status');
 const modeHint    = document.getElementById('mode-hint');
 
 const MAX_BYTES = 10 * 1024 * 1024;
-/** Stay under Vercel serverless body limits; server default max is 4MB unless PUZZLE_UPLOAD_MAX_BYTES is set. */
-const MAX_PROXY_UPLOAD_BYTES = 3_600_000;
 
 let selectedFile = null;
 let selectedDims = null;
@@ -249,60 +247,37 @@ function scatterPieces(count, dispW, dispH, hardMode) {
   }));
 }
 
-// ── Upload (same-origin → server → Cloudinary) ────────────────────────────────
-// In-app browsers often block direct POSTs to api.cloudinary.com.
+// ── Cloudinary upload (direct from browser; in-app WebViews may block — see status copy) ──
 
-async function prepareBlobForServerUpload(file, maxBytes) {
+let cloudinaryConfigCache = null;
+
+async function uploadToCloudinary(file) {
   if (!(file instanceof Blob)) throw new Error('Expected a File/Blob');
-  if (file.size <= maxBytes) return file;
 
-  const url = URL.createObjectURL(file);
-  try {
-    const img = await loadImage(url);
-    let maxEdge = 2048;
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('Could not prepare image for upload');
-
-    for (let iter = 0; iter < 14; iter++) {
-      const iw = img.naturalWidth || img.width;
-      const ih = img.naturalHeight || img.height;
-      const scale = Math.min(1, maxEdge / Math.max(iw, ih));
-      const w = Math.max(1, Math.round(iw * scale));
-      const h = Math.max(1, Math.round(ih * scale));
-      canvas.width = w;
-      canvas.height = h;
-      ctx.drawImage(img, 0, 0, w, h);
-
-      let q = 0.9;
-      let blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', q));
-      if (!blob) throw new Error('Could not encode image');
-      while (blob.size > maxBytes && q > 0.45) {
-        q -= 0.07;
-        blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', q));
-        if (!blob) break;
-      }
-      if (blob && blob.size <= maxBytes) return blob;
-      maxEdge = Math.floor(maxEdge * 0.8);
-      if (maxEdge < 400) break;
-    }
-    throw new Error('Could not compress image enough. Try a smaller photo.');
-  } finally {
-    URL.revokeObjectURL(url);
+  if (!cloudinaryConfigCache) {
+    cloudinaryConfigCache = await withTimeout(
+      (async () => {
+        const r = await fetch('/api/cloudinary-config');
+        if (!r.ok) throw new Error(`cloudinary config ${r.status}`);
+        return r.json();
+      })(),
+      8000,
+      'cloudinary config'
+    );
   }
-}
+  const { cloudName, uploadPreset } = cloudinaryConfigCache || {};
+  if (!cloudName || !uploadPreset) throw new Error('Missing Cloudinary config');
 
-async function uploadPuzzleImageToServer(blob) {
-  if (!(blob instanceof Blob)) throw new Error('Expected a Blob');
-  const ct = blob.type && blob.type.startsWith('image/') ? blob.type : 'image/jpeg';
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('upload_preset', uploadPreset);
   const res = await fetchWithTimeout(
-    '/api/upload-puzzle-image',
-    { method: 'POST', headers: { 'Content-Type': ct }, body: blob },
+    `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
+    { method: 'POST', body: fd },
     120000
   );
   const data = await res.json().catch(() => ({}));
-  if (res.status === 413) throw new Error(data.error || 'Image too large for this server.');
-  if (!res.ok) throw new Error(data.error || 'Upload failed');
+  if (!res.ok) throw new Error(data.error?.message || 'Cloudinary upload failed');
   return { imageUrl: data.secure_url, imagePublicId: data.public_id };
 }
 
@@ -318,18 +293,14 @@ async function handleCreatePuzzle() {
   createBtn.disabled = true;
 
   try {
-    setStatus('Preparing image for upload…');
-    const uploadBlob = await prepareBlobForServerUpload(selectedFile, MAX_PROXY_UPLOAD_BYTES);
-    const dims = await getImageDimensions(uploadBlob);
-
-    const { cols, rows } = calculateGrid(pieceCount, dims.width, dims.height);
+    const { cols, rows } = calculateGrid(pieceCount, selectedDims.width, selectedDims.height);
     const actualCount = cols * rows;
 
-    const pieceW = Math.floor(dims.width  / cols);
-    const pieceH = Math.floor(dims.height / rows);
+    const pieceW = Math.floor(selectedDims.width  / cols);
+    const pieceH = Math.floor(selectedDims.height / rows);
 
     const boardW = 900, boardH = 650;
-    const scale    = Math.min((boardW * 0.55) / dims.width, (boardH * 0.55) / dims.height, 1);
+    const scale    = Math.min((boardW * 0.55) / selectedDims.width, (boardH * 0.55) / selectedDims.height, 1);
     const displayW = Math.floor(pieceW * scale);
     const displayH = Math.floor(pieceH * scale);
 
@@ -339,7 +310,7 @@ async function handleCreatePuzzle() {
 
     setStatus('Uploading image...');
     const { imageUrl, imagePublicId } = await withTimeout(
-      uploadPuzzleImageToServer(uploadBlob),
+      uploadToCloudinary(selectedFile),
       120000,
       'image upload'
     );
@@ -352,7 +323,7 @@ async function handleCreatePuzzle() {
   } catch (err) {
     console.error(err);
     let msg = err?.message || 'Something went wrong. Please try again.';
-    if (err.name === 'AbortError') {
+    if (err.name === 'AbortError' || /timed out/i.test(String(err?.message || ''))) {
       msg = 'Upload or setup timed out. In-app browsers (Instagram, Messenger, TikTok) often block image uploads.';
     }
     if (isLikelyInAppBrowser()) {
