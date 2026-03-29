@@ -378,7 +378,8 @@ function attachDragListeners() {
   window.addEventListener('mousemove',  onMouseMove);
   window.addEventListener('mouseup',    onMouseUp);
   if (!isMobileLike) {
-    // Desktop: allow wheel-zoom with Ctrl/trackpad pinch gesture.
+    // Desktop: zoom only with Ctrl/⌘+wheel or trackpad pinch (same as browser zoom on the landing page).
+    // Plain wheel scrolls the board viewport (overflow: auto), not the scale.
     boardWrap.addEventListener('wheel', onWheelZoom, { passive: false });
   }
   // Double-tap for mobile rotation (hard mode only)
@@ -913,6 +914,8 @@ function flushWheelZoom() {
 
 function onWheelZoom(e) {
   if (dragging) return;
+  // Unmodified wheel: let the wrap scroll natively (matches landing-page scroll feel).
+  if (!e.ctrlKey && !e.metaKey) return;
   e.preventDefault();
   let delta = e.deltaY;
   if (e.deltaMode === 1) delta *= 16;
@@ -1452,7 +1455,7 @@ function setupHelp() {
     { key: 'Dbl-click board', desc: 'Drop all hand pieces at that spot' },
   ];
   if (!isMobileLike) {
-    controls.push({ key: 'Scroll wheel', desc: 'Zoom at cursor position (desktop)' });
+    controls.push({ key: 'Ctrl/⌘ + scroll', desc: 'Zoom board at cursor (desktop; or trackpad pinch)' });
   }
   if (isMobileLike) {
     controls.push({ key: 'Pinch (mobile)', desc: 'Zoom in / out' });
