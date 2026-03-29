@@ -841,13 +841,15 @@ function applyScale(s, opts = {}) {
   const { anchorClientX, anchorClientY } = opts;
   const hasAnchor = Number.isFinite(anchorClientX) && Number.isFinite(anchorClientY);
 
-  let mx, my, bx, by;
+  let bx, by, ox, oy, scrollLeft0, scrollTop0;
   if (hasAnchor) {
     const wr = boardWrap.getBoundingClientRect();
-    mx = boardWrap.scrollLeft + (anchorClientX - wr.left);
-    my = boardWrap.scrollTop + (anchorClientY - wr.top);
-    const ox = board.offsetLeft;
-    const oy = board.offsetTop;
+    const mx = boardWrap.scrollLeft + (anchorClientX - wr.left);
+    const my = boardWrap.scrollTop + (anchorClientY - wr.top);
+    ox = board.offsetLeft;
+    oy = board.offsetTop;
+    scrollLeft0 = boardWrap.scrollLeft;
+    scrollTop0 = boardWrap.scrollTop;
     bx = (mx - ox) / prev;
     by = (my - oy) / prev;
   }
@@ -860,8 +862,10 @@ function applyScale(s, opts = {}) {
   if (hasAnchor) {
     const ox2 = board.offsetLeft;
     const oy2 = board.offsetTop;
-    const sl = mx - ox2 - bx * next;
-    const st = my - oy2 - by * next;
+    // Keep the same board-local point (bx, by) under the cursor: incremental scroll from
+    // previous position, not scrollLeft = mx - ox2 - bx*next (that was wrong and inverts the pivot).
+    let sl = scrollLeft0 + (ox2 - ox) + bx * (next - prev);
+    let st = scrollTop0 + (oy2 - oy) + by * (next - prev);
     const maxSl = Math.max(0, boardWrap.scrollWidth - boardWrap.clientWidth);
     const maxSt = Math.max(0, boardWrap.scrollHeight - boardWrap.clientHeight);
     // At max scroll the browser clamps — cursor-locked zoom cannot be perfect at edges.
