@@ -79,13 +79,11 @@ body::before {
 }
 
 .card {
-  /* 90s style app window */
-  background: var(--surface);
+  /* Flat 2D window */
+  background: #e4e4f4;
   border-radius: 0;
-  border: 2px solid #c08bff;
-  box-shadow:
-    0 0 0 1px #ffffff,
-    var(--shadow);
+  border: 2px solid #808080;
+  box-shadow: none;
   padding: 36px;
   width: 100%;
   max-width: 480px;
@@ -172,22 +170,23 @@ body::before {
   display: block;
   width: 100%;
   padding: 14px;
-  border-radius: 8px;
-  border: 1px solid rgba(255,255,255,0.24);
-  background: linear-gradient(180deg, #ff78e7 0%, #c843c7 45%, #6b2fba 100%);
-  color: #fff;
+  border-radius: 0;
+  border: 2px solid #404040;
+  background: #d4d0c8;
+  color: #000;
   font-size: 1rem;
   font-weight: 700;
   cursor: pointer;
-  box-shadow:
-    0 0 16px rgba(255, 79, 216, 0.35),
-    inset 0 1px 0 rgba(255,255,255,0.45),
-    inset 0 -1px 0 rgba(10,0,24,0.55);
-  transition: opacity 0.15s, transform 0.1s, box-shadow 0.15s;
+  box-shadow: inset -1px -1px 0 #404040, inset 1px 1px 0 #ffffff;
+  transition: background 0.1s, box-shadow 0.1s, transform 0.05s;
 }
 
-.btn:hover { opacity: 0.95; box-shadow: 0 0 24px rgba(255, 79, 216, 0.5); }
-.btn:active { transform: scale(0.98); }
+.btn:hover { background: #e0ddd6; }
+.btn:active {
+  background: #c0bcb4;
+  box-shadow: inset 1px 1px 0 #404040, inset -1px -1px 0 #ffffff;
+  transform: translateY(1px);
+}
 .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
 
 .piece-section {
@@ -330,10 +329,10 @@ body.puzzle-body {
   justify-content: space-between;
   padding: 10px 14px;
   padding-top: max(10px, env(safe-area-inset-top, 0px));
-  padding-left: max(14px, env(safe-area-inset-left, 0px));
-  padding-right: max(14px, env(safe-area-inset-right, 0px));
-  background: linear-gradient(90deg, #f48fff, #e0a7ff, #a4c1ff);
-  border-bottom: 2px solid #c08bff;
+  padding-left: max(10px, env(safe-area-inset-left, 0px));
+  padding-right: max(10px, env(safe-area-inset-right, 0px));
+  background: #000080;
+  border-bottom: 2px solid #404040;
   flex-shrink: 0;
   gap: 12px;
   width: 100%;
@@ -346,6 +345,7 @@ body.puzzle-body {
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  color: #ffffff;
 }
 
 .hard-badge {
@@ -361,11 +361,10 @@ body.puzzle-body {
 }
 
 .icon-btn {
-  background: linear-gradient(180deg, rgba(117, 41, 169, 0.98), rgba(71, 19, 129, 0.95));
-  border: 1px solid rgba(255,255,255,0.2);
-  border: none;
-  color: var(--text);
-  border-radius: 8px;
+  background: #d4d0c8;
+  border: 2px solid #404040;
+  color: #000;
+  border-radius: 0;
   width: 32px;
   height: 32px;
   font-size: 0.95rem;
@@ -375,29 +374,19 @@ body.puzzle-body {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  box-shadow: 0 0 10px rgba(255, 79, 216, 0.2);
-  transition: background 0.15s, box-shadow 0.15s, transform 0.1s;
+  box-shadow: inset -1px -1px 0 #404040, inset 1px 1px 0 #ffffff;
+  transition: background 0.1s, box-shadow 0.1s, transform 0.05s;
   text-decoration: none;
 }
 
-.icon-btn:hover { background: var(--accent); box-shadow: 0 0 16px rgba(255, 79, 216, 0.45); transform: translateY(-1px); }
-
-.card, .modal, .share-box, .puzzle-header {
-  position: relative;
+.icon-btn:hover { background: #e0ddd6; }
+.icon-btn:active {
+  background: #c0bcb4;
+  box-shadow: inset 1px 1px 0 #404040, inset -1px -1px 0 #ffffff;
+  transform: translateY(1px);
 }
 
-/* Neon frame edge for retro UI feel */
-.card::after,
-.modal::after,
-.puzzle-header::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  border: 1px solid rgba(90, 242, 255, 0.18);
-  box-shadow: inset 0 0 18px rgba(255, 79, 216, 0.12);
-}
+/* Remove neon frame for flatter 2D look */
 .icon-btn.active {
   background: var(--accent);
   color: #fff;
@@ -664,7 +653,7 @@ body.puzzle-body {
   flex: 1;
   overflow: auto;
   position: relative;
-  background: rgba(255, 255, 255, 0.78);
+  background: #c0c0c0;
   touch-action: pan-x pan-y;
   overscroll-behavior: contain;
   scroll-behavior: auto;
@@ -734,8 +723,8 @@ iframe[src*="vercel.live"] {
   position: relative;
   margin: 0;
   flex-shrink: 0;
-  background: linear-gradient(135deg, #ffd9f7 0%, #f3d7ff 40%, #e2f0ff 100%);
-  border: 2px solid #c08bff;
+  background: #ffffff;
+  border: 2px solid #404040;
   border-radius: 0;
   /* width/height set by JS */
   backface-visibility: hidden;
