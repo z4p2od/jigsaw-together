@@ -1,5 +1,5 @@
 /**
- * Vercel cron job — deletes puzzles older than 24 hours.
+ * Vercel cron job — deletes user-uploaded puzzles older than 24 hours.
  * Also deletes the associated Cloudinary image if present.
  * Schedule: daily at 3am UTC (configured in vercel.json).
  *
@@ -51,11 +51,16 @@ export default async function handler(req, res) {
     if (!createdAt || createdAt >= cutoff) return;
 
     // Delete Cloudinary image only if it was user-uploaded (not from managed library folders)
-    const pidRes  = await fetch(`${dbUrl}/puzzles/${id}/meta/imagePublicId.json?auth=${secret}`);
+    const pidRes   = await fetch(`${dbUrl}/puzzles/${id}/meta/imagePublicId.json?auth=${secret}`);
     const publicId = await pidRes.json();
     const PROTECTED_PREFIXES = ['potd-pool', 'puzzle-library'];
     const isProtected = publicId && PROTECTED_PREFIXES.some(p => String(publicId).startsWith(p));
-    if (publicId && !isProtected) {
+
+    // Never delete POTD/library-backed puzzles themselves; only clean up
+    // user-uploaded puzzles (their Cloudinary images live outside the protected folders).
+    if (isProtected) return;
+
+    if (publicId) {
       try { await deleteCloudinaryImage(publicId); } catch {}
     }
 
