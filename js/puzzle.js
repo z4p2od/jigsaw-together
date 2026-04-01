@@ -169,9 +169,10 @@ async function initPuzzle() {
   }, 22000);
   try {
     loadingText.textContent = 'Loading puzzle...';
-    const data  = await loadPuzzle(puzzleId);
-    meta        = data.meta;
-    pieceStates = Object.values(data.pieces);
+    const data = await loadPuzzle(puzzleId);
+    const normalized = normalizeLoadedPuzzle(data);
+    meta = normalized.meta;
+    pieceStates = normalized.pieceStates;
     totalPieces = pieceStates.length;
     solvedCount = pieceStates.filter(p => p.solved).length;
 
@@ -220,6 +221,64 @@ async function initPuzzle() {
     const sp = loadingEl.querySelector('.spinner');
     if (sp) sp.style.display = 'none';
   }
+}
+
+function normalizeLoadedPuzzle(data) {
+  const rawMeta = data?.meta ?? {};
+  const meta = { ...rawMeta };
+  const cols = Number(meta.cols) || 0;
+  const rows = Number(meta.rows) || 0;
+  const expectedCount = Math.max(0, cols * rows);
+
+  // Legacy puzzles may miss displayW/displayH; derive the same way create flow does.
+  if (!(Number(meta.displayW) > 0) || !(Number(meta.displayH) > 0)) {
+    const pieceW = Number(meta.pieceW) || 0;
+    const pieceH = Number(meta.pieceH) || 0;
+    if (pieceW > 0 && pieceH > 0 && cols > 0 && rows > 0) {
+      const imageW = pieceW * cols;
+      const imageH = pieceH * rows;
+      const fitScale = Math.min((BOARD_W * 0.55) / imageW, (BOARD_H * 0.55) / imageH, 1);
+      meta.displayW = Math.max(1, Math.floor(pieceW * fitScale));
+      meta.displayH = Math.max(1, Math.floor(pieceH * fitScale));
+    }
+  }
+
+  // Last-resort guard so rendering math cannot produce NaN/invisible pieces.
+  if (!(Number(meta.displayW) > 0) || !(Number(meta.displayH) > 0)) {
+    meta.displayW = 80;
+    meta.displayH = 80;
+    console.warn('Puzzle metadata missing display size; applied fallback dimensions.');
+  }
+
+  const piecesObj = data?.pieces ?? {};
+  const piecesArr = Array.isArray(piecesObj)
+    ? piecesObj
+    : Object.entries(piecesObj)
+      .sort((a, b) => Number(a[0]) - Number(b[0]))
+      .map(([, v]) => v);
+
+  const count = expectedCount > 0 ? expectedCount : piecesArr.length;
+  const maxX = Math.max(0, BOARD_W - meta.displayW);
+  const maxY = Math.max(0, BOARD_H - meta.displayH);
+  const pieceStates = Array.from({ length: count }, (_, index) => {
+    const p = piecesArr[index] ?? {};
+    const x = Number.isFinite(p.x) ? p.x : Math.random() * maxX;
+    const y = Number.isFinite(p.y) ? p.y : Math.random() * maxY;
+    return {
+      x,
+      y,
+      solved: !!p.solved,
+      rotation: Number.isFinite(p.rotation) ? p.rotation : 0,
+      lockedBy: p.lockedBy ?? null,
+      groupId: p.groupId ?? null,
+    };
+  });
+
+  if (pieceStates.length === 0) {
+    console.warn('Puzzle loaded with zero pieces after normalization.', { puzzleId });
+  }
+
+  return { meta, pieceStates };
 }
 
 function setupBoard() {
@@ -1337,6 +1396,7 @@ function reconstructGroups() {
 
 function applyRemoteUpdate(index, data) {
   if (dragging && dragging.indices.includes(index)) return;
+  if (!pieceStates[index]) return;
 
   const wasSolved  = pieceStates[index]?.solved;
   const wasGroupId = pieceStates[index]?.groupId;
@@ -1359,7 +1419,9 @@ function applyRemoteUpdate(index, data) {
     removeFromHandSilent(index);
   }
 
-  movePieceEl(index, data.x, data.y);
+  if (Number.isFinite(data.x) && Number.isFinite(data.y)) {
+    movePieceEl(index, data.x, data.y);
+  }
 
   // If this piece just joined a group (from another player's snap), merge locally
   if (data.groupId && data.groupId !== wasGroupId) {
