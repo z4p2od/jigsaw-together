@@ -182,9 +182,9 @@ async function initPuzzle() {
     await renderAllPieces();
     reconstructGroups();
     if (isMobileLike) {
-      // After pieces are rendered, frame the actual piece cloud on mobile
-      // so players can start interacting without a manual zoom+pan step.
-      requestAnimationFrame(() => requestAnimationFrame(framePieceCloudInView));
+      // Keep startup deterministic on mobile: fit full board, then center.
+      // Piece-cloud framing caused edge clipping on some devices.
+      requestAnimationFrame(() => requestAnimationFrame(fitBoardToViewport));
     }
     setupShareLink();
     attachDragListeners();
