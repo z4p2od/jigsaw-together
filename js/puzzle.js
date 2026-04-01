@@ -998,6 +998,33 @@ function getPieceCloudBounds() {
   const drawH = (meta?.displayH ?? 0) + pad * 2;
   if (drawW <= 0 || drawH <= 0) return null;
 
+  // Prefer DOM-based bounds so rotations are measured exactly.
+  const br = board.getBoundingClientRect();
+  if (pieceEls?.length && br.width > 0 && br.height > 0 && scale > 0) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const el of pieceEls) {
+      if (!el) continue;
+      const r = el.getBoundingClientRect();
+      const left = (r.left - br.left) / scale;
+      const top = (r.top - br.top) / scale;
+      const right = (r.right - br.left) / scale;
+      const bottom = (r.bottom - br.top) / scale;
+      if (left < minX) minX = left;
+      if (top < minY) minY = top;
+      if (right > maxX) maxX = right;
+      if (bottom > maxY) maxY = bottom;
+    }
+    if (Number.isFinite(minX) && Number.isFinite(minY)) {
+      return {
+        cx: (minX + maxX) / 2,
+        cy: (minY + maxY) / 2,
+        w: Math.max(1, maxX - minX),
+        h: Math.max(1, maxY - minY),
+      };
+    }
+  }
+
+  // Fallback to state-based bounds if DOM boxes are unavailable.
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const p of pieceStates) {
     const left = p.x - pad;
@@ -1010,13 +1037,7 @@ function getPieceCloudBounds() {
     if (bottom > maxY) maxY = bottom;
   }
   if (!Number.isFinite(minX) || !Number.isFinite(minY)) return null;
-
-  return {
-    cx: (minX + maxX) / 2,
-    cy: (minY + maxY) / 2,
-    w: Math.max(1, maxX - minX),
-    h: Math.max(1, maxY - minY),
-  };
+  return { cx: (minX + maxX) / 2, cy: (minY + maxY) / 2, w: Math.max(1, maxX - minX), h: Math.max(1, maxY - minY) };
 }
 
 function fitBoardToViewport() {
