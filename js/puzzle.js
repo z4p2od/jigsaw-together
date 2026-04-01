@@ -182,8 +182,9 @@ async function initPuzzle() {
     await renderAllPieces();
     reconstructGroups();
     if (isMobileLike) {
-      // After pieces are rendered, center on the actual piece cloud (not just board center).
-      requestAnimationFrame(() => requestAnimationFrame(centerPieceCloudInView));
+      // After pieces are rendered, frame the actual piece cloud on mobile
+      // so players can start interacting without a manual zoom+pan step.
+      requestAnimationFrame(() => requestAnimationFrame(framePieceCloudInView));
     }
     setupShareLink();
     attachDragListeners();
@@ -948,15 +949,54 @@ function centerBoardInView() {
 }
 
 function centerPieceCloudInView() {
-  if (!pieceStates?.length || !boardWrap || !board) return;
+  const bounds = getPieceCloudBounds();
+  if (!bounds) {
+    centerBoardInView();
+    return;
+  }
+  centerBoardPointInView(bounds.cx, bounds.cy);
+}
+
+function framePieceCloudInView() {
+  const bounds = getPieceCloudBounds();
+  if (!bounds) {
+    centerBoardInView();
+    return;
+  }
+
+  // Mobile: zoom to piece cloud first (with gutter), then center on it.
+  // This avoids "pieces stuck on one side until manual zoom/pan".
+  const gutter = Math.max(24, BOARD_SCROLL_PADDING + 8);
+  const vw = Math.max(1, boardWrap.clientWidth - gutter * 2);
+  const vh = Math.max(1, boardWrap.clientHeight - gutter * 2);
+  const fitCloud = Math.min(vw / bounds.w, vh / bounds.h);
+  if (Number.isFinite(fitCloud) && fitCloud > 0) {
+    // Never zoom out below current scale; cap to avoid over-zooming tiny clouds.
+    const targetScale = clampScale(Math.min(SCALE_MAX, Math.max(scale, fitCloud, 0.65)));
+    if (Math.abs(targetScale - scale) > 0.001) {
+      applyScale(targetScale, zoomAnchorViewportCenter());
+    }
+  }
+  centerBoardPointInView(bounds.cx, bounds.cy);
+}
+
+function centerBoardPointInView(cx, cy) {
+  const targetLeft = board.offsetLeft + cx * scale - boardWrap.clientWidth / 2;
+  const targetTop = board.offsetTop + cy * scale - boardWrap.clientHeight / 2;
+
+  const maxSl = Math.max(0, boardWrap.scrollWidth - boardWrap.clientWidth);
+  const maxSt = Math.max(0, boardWrap.scrollHeight - boardWrap.clientHeight);
+  boardWrap.scrollLeft = Math.max(0, Math.min(maxSl, Math.round(targetLeft)));
+  boardWrap.scrollTop = Math.max(0, Math.min(maxSt, Math.round(targetTop)));
+}
+
+function getPieceCloudBounds() {
+  if (!pieceStates?.length || !boardWrap || !board) return null;
 
   const pad = meta?._pad ?? 0;
   const drawW = (meta?.displayW ?? 0) + pad * 2;
   const drawH = (meta?.displayH ?? 0) + pad * 2;
-  if (drawW <= 0 || drawH <= 0) {
-    centerBoardInView();
-    return;
-  }
+  if (drawW <= 0 || drawH <= 0) return null;
 
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const p of pieceStates) {
@@ -969,22 +1009,14 @@ function centerPieceCloudInView() {
     if (right > maxX) maxX = right;
     if (bottom > maxY) maxY = bottom;
   }
+  if (!Number.isFinite(minX) || !Number.isFinite(minY)) return null;
 
-  if (!Number.isFinite(minX) || !Number.isFinite(minY)) {
-    centerBoardInView();
-    return;
-  }
-
-  const cx = (minX + maxX) / 2;
-  const cy = (minY + maxY) / 2;
-
-  const targetLeft = board.offsetLeft + cx * scale - boardWrap.clientWidth / 2;
-  const targetTop = board.offsetTop + cy * scale - boardWrap.clientHeight / 2;
-
-  const maxSl = Math.max(0, boardWrap.scrollWidth - boardWrap.clientWidth);
-  const maxSt = Math.max(0, boardWrap.scrollHeight - boardWrap.clientHeight);
-  boardWrap.scrollLeft = Math.max(0, Math.min(maxSl, Math.round(targetLeft)));
-  boardWrap.scrollTop = Math.max(0, Math.min(maxSt, Math.round(targetTop)));
+  return {
+    cx: (minX + maxX) / 2,
+    cy: (minY + maxY) / 2,
+    w: Math.max(1, maxX - minX),
+    h: Math.max(1, maxY - minY),
+  };
 }
 
 function fitBoardToViewport() {
