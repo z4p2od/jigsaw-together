@@ -27,7 +27,7 @@ import { cutPiece, getPad } from './jigsaw.js';
 const BOARD_W   = 900;
 const BOARD_H   = 650;
 /** Must match .puzzle-board-scroll-content padding in style.css */
-const BOARD_SCROLL_PADDING = 140;
+const BOARD_SCROLL_PADDING = 20;
 const SCALE_MIN = 0.3;
 const SCALE_MAX = 3.0;
 
@@ -181,11 +181,6 @@ async function initPuzzle() {
     setupBoard();
     await renderAllPieces();
     reconstructGroups();
-    if (isMobileLike) {
-      // Keep startup deterministic on mobile: fit full board, then center.
-      // Piece-cloud framing caused edge clipping on some devices.
-      requestAnimationFrame(() => requestAnimationFrame(fitBoardToViewport));
-    }
     setupShareLink();
     attachDragListeners();
 

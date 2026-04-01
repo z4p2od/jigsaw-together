@@ -672,7 +672,7 @@ body.puzzle-body {
   align-items: center;
   justify-content: center;
   min-height: 100%;
-  padding: 140px;
+  padding: 20px;
   box-sizing: border-box;
 }
 .puzzle-board-wrap.panning {
