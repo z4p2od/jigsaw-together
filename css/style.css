@@ -672,7 +672,7 @@ body.puzzle-body {
   align-items: center;
   justify-content: center;
   min-height: 100%;
-  padding: 20px;
+  padding: 140px;
   box-sizing: border-box;
 }
 .puzzle-board-wrap.panning {
@@ -728,9 +728,9 @@ iframe[src*="vercel.live"] {
   position: relative;
   margin: 0;
   flex-shrink: 0;
-  background: rgba(255,255,255,0.03);
-  border: 1px solid var(--surface2);
-  border-radius: 4px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
   /* width/height set by JS */
   backface-visibility: hidden;
   /* Must match applyScale() math (zoom toward point uses top-left origin). */

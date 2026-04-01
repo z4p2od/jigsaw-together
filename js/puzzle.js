@@ -27,7 +27,7 @@ import { cutPiece, getPad } from './jigsaw.js';
 const BOARD_W   = 900;
 const BOARD_H   = 650;
 /** Must match .puzzle-board-scroll-content padding in style.css */
-const BOARD_SCROLL_PADDING = 20;
+const BOARD_SCROLL_PADDING = 140;
 const SCALE_MIN = 0.3;
 const SCALE_MAX = 3.0;
 
@@ -1041,10 +1041,8 @@ function flushWheelZoom() {
   if (sum === 0) return;
   const capped = Math.max(-280, Math.min(280, sum));
   const factor = Math.exp(-capped * 0.00135);
-  applyScale(
-    scale * factor,
-    zoomAnchorFromClient(wheelZoomAnchor.anchorClientX, wheelZoomAnchor.anchorClientY)
-  );
+  // Keep desktop zoom behavior stable/predictable: zoom toward viewport center.
+  applyScale(scale * factor, zoomAnchorViewportCenter());
 }
 
 function onWheelZoom(e) {
