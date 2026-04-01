@@ -971,8 +971,8 @@ function framePieceCloudInView() {
   const vh = Math.max(1, boardWrap.clientHeight - gutter * 2);
   const fitCloud = Math.min(vw / bounds.w, vh / bounds.h);
   if (Number.isFinite(fitCloud) && fitCloud > 0) {
-    // Never zoom out below current scale; cap to avoid over-zooming tiny clouds.
-    const targetScale = clampScale(Math.min(SCALE_MAX, Math.max(scale, fitCloud, 0.65)));
+    // Use true fit on mobile so wide scatters remain reachable on smaller screens.
+    const targetScale = clampScale(fitCloud);
     if (Math.abs(targetScale - scale) > 0.001) {
       applyScale(targetScale, zoomAnchorViewportCenter());
     }
@@ -1041,14 +1041,16 @@ function flushWheelZoom() {
   if (sum === 0) return;
   const capped = Math.max(-280, Math.min(280, sum));
   const factor = Math.exp(-capped * 0.00135);
-  // Keep desktop zoom behavior stable/predictable: zoom toward viewport center.
-  applyScale(scale * factor, zoomAnchorViewportCenter());
+  // Cursor-anchored zoom feels closest to expected desktop behavior.
+  applyScale(
+    scale * factor,
+    zoomAnchorFromClient(wheelZoomAnchor.anchorClientX, wheelZoomAnchor.anchorClientY)
+  );
 }
 
 function onWheelZoom(e) {
   if (dragging) return;
-  // Unmodified wheel: let the wrap scroll natively (matches landing-page scroll feel).
-  if (!e.ctrlKey && !e.metaKey) return;
+  // Desktop wheel/trackpad zoom: anchor around cursor position.
   e.preventDefault();
   let delta = e.deltaY;
   if (e.deltaMode === 1) delta *= 16;
