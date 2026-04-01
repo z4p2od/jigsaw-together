@@ -12,6 +12,20 @@ const modeHint    = document.getElementById('mode-hint');
 
 const MAX_BYTES = 10 * 1024 * 1024;
 
+function jtDbgLog(payload) {
+  const line = { sessionId: 'c7426d', timestamp: Date.now(), ...payload };
+  try {
+    window.__JT_DEBUG_LOGS = window.__JT_DEBUG_LOGS || [];
+    window.__JT_DEBUG_LOGS.push(line);
+    if (window.__JT_DEBUG_LOGS.length > 120) window.__JT_DEBUG_LOGS.shift();
+  } catch (_) { /* ignore */ }
+  fetch('http://127.0.0.1:7319/ingest/be2f6902-b67c-428c-8ee3-1dabde1e3930', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'c7426d' },
+    body: JSON.stringify(line),
+  }).catch(() => {});
+}
+
 let selectedFile = null;
 let selectedDims = null;
 
@@ -307,6 +321,24 @@ async function handleCreatePuzzle() {
     const hardMode = document.querySelector('input[name="mode"]:checked').value === 'hard';
     const edges    = generateEdges(cols, rows);
     const pieces   = scatterPieces(actualCount, displayW, displayH, hardMode);
+    // #region agent log
+    {
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const p of pieces) {
+        if (p.x < minX) minX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y > maxY) maxY = p.y;
+      }
+      jtDbgLog({
+        runId: 'pre-fix-2',
+        hypothesisId: 'H6',
+        location: 'app.js:handleCreatePuzzle:scatter',
+        message: 'pieces scattered on create',
+        data: { pieceCount: actualCount, cols, rows, displayW, displayH, boardW, boardH, minX, minY, maxX, maxY },
+      });
+    }
+    // #endregion
 
     setStatus('Uploading image...');
     const { imageUrl, imagePublicId } = await withTimeout(
@@ -316,6 +348,24 @@ async function handleCreatePuzzle() {
     );
 
     const meta = { imageUrl, imagePublicId, cols, rows, pieceW, pieceH, displayW, displayH, edges, hardMode };
+    // #region agent log
+    jtDbgLog({
+      runId: 'pre-fix-2',
+      hypothesisId: 'H6-H1',
+      location: 'app.js:handleCreatePuzzle:meta',
+      message: 'createPuzzle request meta',
+      data: {
+        cols,
+        rows,
+        pieceW,
+        pieceH,
+        displayW,
+        displayH,
+        hardMode,
+        imagePublicIdPrefix: String(imagePublicId || '').split('/').slice(0, 2).join('/'),
+      },
+    });
+    // #endregion
 
     setStatus(`Creating ${actualCount}-piece puzzle...`);
     const puzzleId = await withTimeout(createPuzzle(meta, pieces), 15000, 'puzzle creation');

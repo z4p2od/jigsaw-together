@@ -31,6 +31,21 @@ const BOARD_SCROLL_PADDING = 20;
 const SCALE_MIN = 0.3;
 const SCALE_MAX = 3.0;
 
+/** Debug: mirror to window + optional local ingest (ingest only works with `vercel dev` + Cursor debug server). */
+function jtDbgLog(payload) {
+  const line = { sessionId: 'c7426d', timestamp: Date.now(), ...payload };
+  try {
+    window.__JT_DEBUG_LOGS = window.__JT_DEBUG_LOGS || [];
+    window.__JT_DEBUG_LOGS.push(line);
+    if (window.__JT_DEBUG_LOGS.length > 120) window.__JT_DEBUG_LOGS.shift();
+  } catch (_) { /* ignore */ }
+  fetch('http://127.0.0.1:7319/ingest/be2f6902-b67c-428c-8ee3-1dabde1e3930', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'c7426d' },
+    body: JSON.stringify(line),
+  }).catch(() => {});
+}
+
 // ── State ─────────────────────────────────────────────────────────────────────
 
 const puzzleId  = new URLSearchParams(location.search).get('id');
@@ -162,6 +177,23 @@ function showNameModal() {
 }
 
 async function initPuzzle() {
+  // #region agent log
+  jtDbgLog({
+    runId: 'pre-fix-1',
+    hypothesisId: 'H1-H3',
+    location: 'puzzle.js:initPuzzle:start',
+    message: 'initPuzzle start',
+    data: {
+      puzzleId,
+      isMobileLike,
+      isLikelySafari,
+      dpr: window.devicePixelRatio || 1,
+      screenW: window.innerWidth,
+      screenH: window.innerHeight,
+      ua: (navigator.userAgent || '').slice(0, 180),
+    },
+  });
+  // #endregion
   const watchdog = window.setTimeout(() => {
     if (!loadingEl || getComputedStyle(loadingEl).display === 'none') return;
     loadingText.textContent =
@@ -170,6 +202,22 @@ async function initPuzzle() {
   try {
     loadingText.textContent = 'Loading puzzle...';
     const data = await loadPuzzle(puzzleId);
+    // #region agent log
+    jtDbgLog({
+      runId: 'pre-fix-1',
+      hypothesisId: 'H1-H2',
+      location: 'puzzle.js:initPuzzle:afterLoad',
+      message: 'loadPuzzle resolved',
+      data: {
+        hasMeta: !!data?.meta,
+        piecesType: Array.isArray(data?.pieces) ? 'array' : typeof data?.pieces,
+        piecesKeys:
+          data?.pieces && typeof data.pieces === 'object' && !Array.isArray(data.pieces)
+            ? Object.keys(data.pieces).length
+            : null,
+      },
+    });
+    // #endregion
     const normalized = normalizeLoadedPuzzle(data);
     meta = normalized.meta;
     pieceStates = normalized.pieceStates;
@@ -179,6 +227,23 @@ async function initPuzzle() {
     if (meta.hardMode) document.getElementById('hard-badge').style.display = '';
 
     setupBoard();
+    // #region agent log
+    jtDbgLog({
+      runId: 'pre-fix-1',
+      hypothesisId: 'H4',
+      location: 'puzzle.js:initPuzzle:afterSetupBoard',
+      message: 'board setup snapshot',
+      data: {
+        scale,
+        wrapW: boardWrap?.clientWidth || 0,
+        wrapH: boardWrap?.clientHeight || 0,
+        scrollW: boardWrap?.scrollWidth || 0,
+        scrollH: boardWrap?.scrollHeight || 0,
+        scrollLeft: boardWrap?.scrollLeft || 0,
+        scrollTop: boardWrap?.scrollTop || 0,
+      },
+    });
+    // #endregion
     await renderAllPieces();
     reconstructGroups();
     setupShareLink();
@@ -211,6 +276,19 @@ async function initPuzzle() {
     loadingEl.style.display = 'none';
     updateProgress();
   } catch (err) {
+    // #region agent log
+    jtDbgLog({
+      runId: 'pre-fix-1',
+      hypothesisId: 'H1-H3',
+      location: 'puzzle.js:initPuzzle:catch',
+      message: 'initPuzzle failed',
+      data: {
+        name: err?.name || 'Error',
+        message: String(err?.message || err),
+        stack: String(err?.stack || '').slice(0, 220),
+      },
+    });
+    // #endregion
     window.clearTimeout(watchdog);
     console.error(err);
     loadingText.textContent =
@@ -302,6 +380,36 @@ async function renderAllPieces() {
   const { cols, rows, pieceW, pieceH, edges, displayW, displayH } = meta;
   const pad = getPad(displayW, displayH);
   const textureScale = getTextureScale(totalPieces);
+  // #region agent log
+  jtDbgLog({
+    runId: 'pre-fix-1',
+    hypothesisId: 'H2-H3',
+    location: 'puzzle.js:renderAllPieces:start',
+    message: 'render pieces start',
+    data: {
+      srcScheme: (() => {
+        try {
+          return new URL(src, location.href).protocol;
+        } catch {
+          return 'invalid';
+        }
+      })(),
+      totalPieces,
+      cols,
+      rows,
+      pieceW,
+      pieceH,
+      displayW,
+      displayH,
+      pad,
+      textureScale,
+      imgNaturalW: img.naturalWidth,
+      imgNaturalH: img.naturalHeight,
+      hasEdges: Array.isArray(edges),
+      edgesLen: Array.isArray(edges) ? edges.length : null,
+    },
+  });
+  // #endregion
   const texDisplayW = Math.round(displayW * textureScale);
   const texDisplayH = Math.round(displayH * textureScale);
 
@@ -317,13 +425,55 @@ async function renderAllPieces() {
     for (let i = start; i < end; i++) {
       const col    = i % cols;
       const row    = Math.floor(i / cols);
-      const dataUrl = cutPiece(img, col, row, pieceW, pieceH, texDisplayW, texDisplayH, edges[i]);
+      let dataUrl;
+      try {
+        dataUrl = cutPiece(img, col, row, pieceW, pieceH, texDisplayW, texDisplayH, edges[i]);
+      } catch (cutErr) {
+        // #region agent log
+        jtDbgLog({
+          runId: 'pre-fix-1',
+          hypothesisId: 'H3',
+          location: 'puzzle.js:renderAllPieces:cutPiece',
+          message: 'cutPiece threw',
+          data: {
+            i,
+            col,
+            row,
+            name: cutErr?.name,
+            msg: String(cutErr?.message || cutErr),
+          },
+        });
+        // #endregion
+        throw cutErr;
+      }
       const p      = pieceStates[i];
       // Keep gameplay dimensions exactly unchanged; only improve texture density.
       renderPiece(i, dataUrl, p.x, p.y, p.solved, displayW + pad * 2, displayH + pad * 2);
     }
     loadingText.textContent = `Cutting pieces... ${Math.min(end, totalPieces)} / ${totalPieces}`;
   }
+  // #region agent log
+  const firstEl = pieceEls.find(Boolean);
+  jtDbgLog({
+    runId: 'pre-fix-1',
+    hypothesisId: 'H3-H4',
+    location: 'puzzle.js:renderAllPieces:end',
+    message: 'render pieces completed',
+    data: {
+      pieceElsCount: pieceEls.filter(Boolean).length,
+      firstImgW: firstEl?.naturalWidth,
+      firstImgH: firstEl?.naturalHeight,
+      firstComplete: firstEl?.complete,
+      scale,
+      wrapW: boardWrap?.clientWidth || 0,
+      wrapH: boardWrap?.clientHeight || 0,
+      scrollW: boardWrap?.scrollWidth || 0,
+      scrollH: boardWrap?.scrollHeight || 0,
+      scrollLeft: boardWrap?.scrollLeft || 0,
+      scrollTop: boardWrap?.scrollTop || 0,
+    },
+  });
+  // #endregion
 }
 
 function renderPiece(index, dataUrl, x, y, solved, elW, elH) {
@@ -1044,6 +1194,25 @@ function fitBoardToViewport() {
   );
   applyScale(clampScale(fit || 1));
   centerBoardInView();
+  // #region agent log
+  jtDbgLog({
+    runId: 'pre-fix-1',
+    hypothesisId: 'H4',
+    location: 'puzzle.js:fitBoardToViewport:end',
+    message: 'fitBoardToViewport applied',
+    data: {
+      fit,
+      scale,
+      clientW: boardWrap?.clientWidth || 0,
+      clientH: boardWrap?.clientHeight || 0,
+      scrollW: boardWrap?.scrollWidth || 0,
+      scrollH: boardWrap?.scrollHeight || 0,
+      scrollLeft: boardWrap?.scrollLeft || 0,
+      scrollTop: boardWrap?.scrollTop || 0,
+      padding: BOARD_SCROLL_PADDING,
+    },
+  });
+  // #endregion
 }
 
 function flushWheelZoom() {
@@ -1930,9 +2099,17 @@ function isEmojiGrapheme(ch) {
 function loadImage(src) {
   return new Promise((resolve, reject) => {
     const img = new Image();
-    img.crossOrigin = 'anonymous';
+    // Safari: crossOrigin on data:/blob: can break loads or canvas export; http(s) needs CORS for cutPiece().
+    try {
+      const abs = new URL(src, location.href);
+      if (abs.protocol === 'http:' || abs.protocol === 'https:') {
+        img.crossOrigin = 'anonymous';
+      }
+    } catch (_) {
+      /* leave unset */
+    }
     img.onload  = () => resolve(img);
-    img.onerror = reject;
+    img.onerror = () => reject(new Error('Image failed to load'));
     img.src = src;
   });
 }
