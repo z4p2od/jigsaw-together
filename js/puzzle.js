@@ -1,3 +1,5 @@
+window.__puzzleModuleLoaded = true;
+
 import {
   loadPuzzle,
   lockGroup,
@@ -32,6 +34,7 @@ const SCALE_MIN = 0.3;
 const SCALE_MAX = 3.0;
 
 /** Debug: mirror to window + optional local ingest (ingest only works with `vercel dev` + Cursor debug server). */
+const _isLocalDev = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
 function jtDbgLog(payload) {
   const line = { sessionId: 'c7426d', timestamp: Date.now(), ...payload };
   try {
@@ -39,6 +42,7 @@ function jtDbgLog(payload) {
     window.__JT_DEBUG_LOGS.push(line);
     if (window.__JT_DEBUG_LOGS.length > 120) window.__JT_DEBUG_LOGS.shift();
   } catch (_) { /* ignore */ }
+  if (!_isLocalDev) return;
   fetch('http://127.0.0.1:7319/ingest/be2f6902-b67c-428c-8ee3-1dabde1e3930', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'c7426d' },

@@ -114,10 +114,7 @@
     </div>
   </div>
 
-  <script type="module" src="/js/puzzle.js"></script>
   <script>
-    // Hardening: if module init fails, show a visible error and the open-in-Safari hint.
-    // We must NOT hide the overlay — just switch it to error state (same as initPuzzle catch).
     var _moduleErrorShown = false;
     function showModuleError() {
       if (_moduleErrorShown) return;
@@ -132,32 +129,18 @@
       var hint = document.getElementById('in-app-hint');
       if (hint) hint.hidden = false;
     }
-    // Do NOT call showModuleError on every window 'error' — cross-origin scripts,
-    // extensions, and benign resource failures fire here too and would lock everyone
-    // into "Could not load puzzle". Only surface failures tied to our core scripts.
-    var _ourScriptRe = /\/js\/(puzzle|firebase|jigsaw|feedback)\.js(\?|$)/i;
-    window.addEventListener('error', function (ev) {
-      var t = ev.target;
-      if (t && t.nodeName === 'SCRIPT' && t.src && _ourScriptRe.test(t.src)) {
-        showModuleError();
-        return;
-      }
-      var fn = ev.filename || '';
-      if (fn && _ourScriptRe.test(fn)) {
-        showModuleError();
-      }
-    });
-    // Only trigger for unhandled rejections that occur while the puzzle is still
-    // in its initial loading phase — gameplay rejections (Firebase writes, etc.)
-    // happen after the overlay is gone and must not hijack the UI.
-    window.addEventListener('unhandledrejection', function() {
+    // Safety net: if the module hasn't executed after 20s, something is wrong.
+    // This covers WebView quirks, network stalls, and silent script failures.
+    setTimeout(function () {
       var overlay = document.getElementById('loading-overlay');
-      if (overlay && overlay.style.display !== 'none'
+      if (!window.__puzzleModuleLoaded && overlay
+          && overlay.style.display !== 'none'
           && !overlay.classList.contains('loading-overlay--error')) {
         showModuleError();
       }
-    });
+    }, 20000);
   </script>
+  <script type="module" src="/js/puzzle.js" onerror="showModuleError()"></script>
   <script type="module" src="/js/feedback.js"></script>
 </body>
 </html>
