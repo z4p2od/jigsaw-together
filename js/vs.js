@@ -49,7 +49,7 @@ let latestPlayers = {};        // latest snapshot from handleRoomUpdate
 
 const groups    = {};
 const pieceGroup = [];
-let dragging    = null;
+let dragging    = null; // { indices, anchorIndex, relOffsets, locked, activePointerId, ... }
 let scale       = 1;
 let pinch       = null;
 let lastTap     = { time: 0, el: null };
@@ -955,19 +955,24 @@ function syncCursorVisibility() {
 }
 
 function attachDragListeners() {
-  board.addEventListener('mousedown',   onMouseDown);
-  window.addEventListener('mousemove',  onMouseMove);
-  window.addEventListener('mouseup',    onMouseUp);
+  // Piece drag via pointer events — works for mouse, touch, pen
+  board.addEventListener('pointerdown',   onBoardPointerDown);
+  board.addEventListener('pointermove',   onBoardPointerMove, { passive: false });
+  board.addEventListener('pointerup',     onBoardPointerUp);
+  board.addEventListener('pointercancel', onBoardPointerUp);
+
+  // Pinch-to-zoom (two-finger touch)
   const wrap = board.parentElement;
-  wrap.addEventListener('mousemove', e => updateFakeCursor(e.clientX, e.clientY));
-  wrap.addEventListener('mouseleave', () => {
-    // Hide fake cursor when leaving board area, but keep cursor:none if invert active
-    if (fakeCursor) fakeCursor.style.display = 'none';
-    if (!invertActive) board.parentElement.style.cursor = '';
-  });
   wrap.addEventListener('touchstart', onTouchStart, { passive: false });
   wrap.addEventListener('touchmove',  onTouchMove,  { passive: false });
   wrap.addEventListener('touchend',   onTouchEnd);
+
+  // Fake-cursor tracking for invert effect (desktop only)
+  wrap.addEventListener('mousemove',  e => updateFakeCursor(e.clientX, e.clientY));
+  wrap.addEventListener('mouseleave', () => {
+    if (fakeCursor) fakeCursor.style.display = 'none';
+    if (!invertActive) board.parentElement.style.cursor = '';
+  });
 }
 
 function attachRotateListeners() {
@@ -1028,24 +1033,29 @@ function rotateAtIndex(index) {
   updateVSGroupRotationAndPositions(roomId, myBoardKey, positions, newRot);
 }
 
-function onMouseDown(e) {
-  const { clientX, clientY } = mirrorCoords(e.clientX, e.clientY);
-  const el = invertActive
-    ? document.elementFromPoint(clientX, clientY)?.closest('.piece')
-    : e.target.closest('.piece');
+function onBoardPointerDown(e) {
+  if (!e.isPrimary) return;
+  if (e.pointerType === 'mouse' && (e.button !== 0 || e.ctrlKey)) return;
+
+  // Resolve the piece under the pointer (mirrors invert if active)
+  const { clientX: cx, clientY: cy } = mirrorCoords(e.clientX, e.clientY);
+  const el = (invertActive
+    ? document.elementFromPoint(cx, cy)
+    : (e.target.closest('.piece') ?? document.elementFromPoint(cx, cy))
+  )?.closest('.piece');
+
   if (!el || el.classList.contains('solved')) return;
   const index = Number(el.dataset.index);
 
-  // Chaos: face-down flip on click
-  if (faceDownPieces.has(index)) {
-    setFaceDown(index, false);
-    return;
-  }
+  // Chaos: face-down flip on tap
+  if (faceDownPieces.has(index)) { setFaceDown(index, false); return; }
+
   const state = pieceStates[index];
   if (state.lockedBy && state.lockedBy !== playerId) return;
   const gid     = pieceGroup[index];
   const indices = gid ? [...groups[gid]] : [index];
   if (indices.some(i => pieceStates[i].lockedBy && pieceStates[i].lockedBy !== playerId)) return;
+
   const boardRect = board.getBoundingClientRect();
   const anchorX   = pieceStates[index].x;
   const anchorY   = pieceStates[index].y;
@@ -1053,14 +1063,23 @@ function onMouseDown(e) {
   indices.forEach(i => {
     relOffsets[i] = { dx: pieceStates[i].x - anchorX, dy: pieceStates[i].y - anchorY };
   });
-  const rawX0 = (clientX - boardRect.left) / scale;
-  const rawY0 = (clientY - boardRect.top)  / scale;
-  dragging = { indices, anchorIndex: index, relOffsets, locked: false,
-    invertAnchorX: anchorX, invertAnchorY: anchorY, invertLastX: rawX0, invertLastY: rawY0 };
+  const rawX0 = (cx - boardRect.left) / scale;
+  const rawY0 = (cy - boardRect.top)  / scale;
+  dragging = {
+    indices, anchorIndex: index, relOffsets, locked: false,
+    invertAnchorX: anchorX, invertAnchorY: anchorY,
+    invertLastX: rawX0, invertLastY: rawY0,
+    activePointerId: e.pointerId,
+  };
+
+  try { board.setPointerCapture(e.pointerId); } catch (_) {}
+  e.preventDefault();
 }
 
-function onMouseMove(e) {
-  if (!dragging) return;
+function onBoardPointerMove(e) {
+  if (!dragging || e.pointerId !== dragging.activePointerId) return;
+  if (e.cancelable) e.preventDefault();
+
   const { indices, relOffsets } = dragging;
   if (!dragging.locked) {
     dragging.locked = true;
@@ -1071,6 +1090,7 @@ function onMouseMove(e) {
       if (pieceEls[i]) pieceEls[i].style.zIndex = 1000;
     });
   }
+
   const boardRect = board.getBoundingClientRect();
   const { clientX: cx, clientY: cy } = mirrorCoords(e.clientX, e.clientY);
   const rawX = (cx - boardRect.left) / scale;
@@ -1081,6 +1101,7 @@ function onMouseMove(e) {
   dragging.invertAnchorY += dy;
   dragging.invertLastX = rawX;
   dragging.invertLastY = rawY;
+
   const anchorX = dragging.invertAnchorX;
   const anchorY = dragging.invertAnchorY;
   const positions = [];
@@ -1095,16 +1116,18 @@ function onMouseMove(e) {
   updateVSGroupPosition(roomId, myBoardKey, positions);
 }
 
-async function onMouseUp(e) {
-  if (!dragging) return;
-  const { indices, anchorIndex, locked } = dragging;
+async function onBoardPointerUp(e) {
+  if (!dragging || e.pointerId !== dragging.activePointerId) return;
+  try { board.releasePointerCapture(e.pointerId); } catch (_) {}
+
+  const { indices, locked } = dragging;
   dragging = null;
   indices.forEach(i => {
     pieceEls[i]?.classList.remove('dragging');
     if (pieceEls[i]) pieceEls[i].style.zIndex = '';
   });
   if (!locked) return;
-  // Piece positions are already up to date from the last onMouseMove delta
+
   const snap = findNeighbourSnap(indices);
   if (snap) {
     const { cols, _displayW: dW, _displayH: dH } = meta;
@@ -1112,9 +1135,9 @@ async function onMouseUp(e) {
       ? [...groups[pieceGroup[snap.neighbourIndex]]]
       : [snap.neighbourIndex];
     const allIndices = [...new Set([...indices, ...neighbourGroupIndices])];
-    const anchorIdx = snap.neighbourIndex;
-    const anchorCol = anchorIdx % cols;
-    const anchorRow = Math.floor(anchorIdx / cols);
+    const anchorIdx  = snap.neighbourIndex;
+    const anchorCol  = anchorIdx % cols;
+    const anchorRow  = Math.floor(anchorIdx / cols);
     const aX = pieceStates[anchorIdx].x;
     const aY = pieceStates[anchorIdx].y;
     const rot = pieceStates[snap.neighbourIndex].rotation ?? 0;
@@ -1145,40 +1168,32 @@ async function onMouseUp(e) {
   }
 }
 
+/** Pinch-to-zoom only. Single-finger drag handled by board pointer events. */
 function onTouchStart(e) {
-  if (e.touches.length === 2) {
-    if (dragging) {
-      if (dragging.locked) unlockVSGroup(roomId, myBoardKey, dragging.indices);
-      dragging.indices.forEach(i => { pieceEls[i]?.classList.remove('dragging'); if (pieceEls[i]) pieceEls[i].style.zIndex = ''; });
-      dragging = null;
-    }
-    pinch = { dist0: touchDist(e.touches), scale0: scale };
-    e.preventDefault(); return;
+  if (e.touches.length !== 2) return;
+  if (dragging) {
+    if (dragging.locked) unlockVSGroup(roomId, myBoardKey, dragging.indices);
+    dragging.indices.forEach(i => {
+      pieceEls[i]?.classList.remove('dragging');
+      if (pieceEls[i]) pieceEls[i].style.zIndex = '';
+    });
+    try { board.releasePointerCapture(dragging.activePointerId); } catch (_) {}
+    dragging = null;
   }
-  if (pinch) return;
-  const touch = e.touches[0];
-  onMouseDown({ clientX: touch.clientX, clientY: touch.clientY,
-    target: document.elementFromPoint(touch.clientX, touch.clientY) });
-  if (dragging) e.preventDefault();
+  pinch = { dist0: touchDist(e.touches), scale0: scale };
+  e.preventDefault();
 }
 
 function onTouchMove(e) {
   if (e.touches.length === 2 && pinch) {
     e.preventDefault();
     const raw = pinch.scale0 * (touchDist(e.touches) / pinch.dist0);
-    applyScale(Math.min(SCALE_MAX, Math.max(SCALE_MIN, raw))); return;
+    applyScale(Math.min(SCALE_MAX, Math.max(SCALE_MIN, raw)));
   }
-  if (!dragging) return;
-  e.preventDefault();
-  const touch = e.touches[0];
-  onMouseMove({ clientX: touch.clientX, clientY: touch.clientY });
 }
 
 function onTouchEnd(e) {
-  if (pinch && e.touches.length < 2) { pinch = null; return; }
-  if (!dragging) return;
-  const touch = e.changedTouches[0];
-  onMouseUp({ clientX: touch.clientX, clientY: touch.clientY });
+  if (pinch && e.touches.length < 2) { pinch = null; }
 }
 
 function touchDist(touches) {
