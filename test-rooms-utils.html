@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Rooms Utils Sanity Check</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <main class="landing">
+    <div>
+      <h1>Rooms Utils <span>Sanity</span></h1>
+    </div>
+    <div class="card" style="gap:16px">
+      <p class="field-label" style="margin:0">Standalone check (no Firebase)</p>
+      <pre id="out" style="white-space:pre-wrap;font-size:0.85rem;margin:0"></pre>
+      <p id="status" style="margin:0;text-align:center;font-size:0.9rem"></p>
+    </div>
+  </main>
+
+  <script type="module">
+    import { selectOpenRooms } from '/js/rooms-utils.js';
+
+    const out = document.getElementById('out');
+    const status = document.getElementById('status');
+
+    function assert(name, cond) {
+      if (!cond) throw new Error(`Assertion failed: ${name}`);
+      return `✅ ${name}`;
+    }
+
+    const now = Date.now();
+    const roomsIndex = {
+      a: { status: 'active', createdAt: now - 1000, pieces: 100, solvedCount: 2, playerCount: 1, imageUrl: 'https://res.cloudinary.com/demo/image/upload/sample.jpg' },
+      b: { status: 'done', createdAt: now - 500, pieces: 24, solvedCount: 24, playerCount: 3, imageUrl: 'https://res.cloudinary.com/demo/image/upload/sample.jpg' },
+      c: { status: 'active', createdAt: now - 2000, pieces: 250, solvedCount: 0, playerCount: 0, imageUrl: null }, // missing imageUrl
+      d: { status: null, createdAt: now - 3000, pieces: 100 }, // missing/invalid status
+    };
+
+    const selected = selectOpenRooms(roomsIndex);
+    out.textContent = JSON.stringify(selected, null, 2);
+
+    const lines = [];
+    lines.push(assert('filters out done rooms', selected.every(([, room]) => room.status !== 'done')));
+    lines.push(assert('sorts newest first', selected.length < 2 || selected[0][1].createdAt >= selected[1][1].createdAt));
+    lines.push(assert('keeps active room without imageUrl', selected.some(([roomId]) => roomId === 'c')));
+    lines.push(assert('treats missing status as open', selected.some(([roomId]) => roomId === 'd')));
+
+    status.textContent = lines.join('\n');
+    status.style.color = 'var(--accent2)';
+  </script>
+</body>
+</html>

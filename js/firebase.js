@@ -495,10 +495,19 @@ export function setVSWinnerTeam(roomId, winnerTeamId, secs) {
 // ── VS Index (open rooms browser) ─────────────────────────────────────────────
 
 export function onVSIndex(callback) {
-  const r = ref(_db, 'vs-index');
-  const handler = snap => callback(snap.val() || {});
-  onValue(r, handler);
-  return () => off(r, 'value', handler);
+  let detach = null;
+  let cancelled = false;
+  _dbReady.then((db) => {
+    if (cancelled) return;
+    const r = ref(db, 'vs-index');
+    const handler = snap => callback(snap.val() || {});
+    onValue(r, handler);
+    detach = () => off(r, 'value', handler);
+  });
+  return () => {
+    cancelled = true;
+    if (detach) detach();
+  };
 }
 
 export function updateVSIndex(roomId, fields) {
@@ -512,10 +521,19 @@ export function setVSFinished(roomId, playerId, finishedAt) {
 // ── Public Rooms Index ────────────────────────────────────────────────────────
 
 export function onRoomsIndex(callback) {
-  const r = ref(_db, 'rooms-index');
-  const handler = snap => callback(snap.val() || {});
-  onValue(r, handler);
-  return () => off(r, 'value', handler);
+  let detach = null;
+  let cancelled = false;
+  _dbReady.then((db) => {
+    if (cancelled) return;
+    const r = ref(db, 'rooms-index');
+    const handler = snap => callback(snap.val() || {});
+    onValue(r, handler);
+    detach = () => off(r, 'value', handler);
+  });
+  return () => {
+    cancelled = true;
+    if (detach) detach();
+  };
 }
 
 export function updateRoomsIndex(roomId, fields) {
