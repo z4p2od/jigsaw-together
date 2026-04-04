@@ -207,7 +207,17 @@ async function askNameThenInit() {
     safeSessionSet('playerName', playerName);
   }
   nameModal.style.display = 'none';
-  initPuzzle();
+  initPuzzle().catch(fatalOverlayError);
+}
+
+function fatalOverlayError(err) {
+  console.error('initPuzzle rejected:', err);
+  if (loadingEl) {
+    loadingText.textContent = 'Something went wrong. Please refresh the page.';
+    loadingEl.classList.add('loading-overlay--error');
+    const sp = loadingEl.querySelector('.spinner');
+    if (sp) sp.style.display = 'none';
+  }
 }
 
 function showNameModal() {
@@ -224,29 +234,27 @@ function showNameModal() {
 }
 
 async function initPuzzle() {
-  // #region agent log
-  jtDbgLog({
-    runId: 'pre-fix-1',
-    hypothesisId: 'H1-H3',
-    location: 'puzzle.js:initPuzzle:start',
-    message: 'initPuzzle start',
-    data: {
-      puzzleId,
-      isMobileLike,
-      isLikelySafari,
-      dpr: window.devicePixelRatio || 1,
-      screenW: window.innerWidth,
-      screenH: window.innerHeight,
-      ua: (navigator.userAgent || '').slice(0, 180),
-    },
-  });
-  // #endregion
   const watchdog = window.setTimeout(() => {
     if (!loadingEl || getComputedStyle(loadingEl).display === 'none') return;
     loadingText.textContent =
       'Still loading… In-app browsers often block this. Try opening in Safari (Share → Open in Browser).';
   }, 22000);
   try {
+    jtDbgLog({
+      runId: 'pre-fix-1',
+      hypothesisId: 'H1-H3',
+      location: 'puzzle.js:initPuzzle:start',
+      message: 'initPuzzle start',
+      data: {
+        puzzleId,
+        isMobileLike,
+        isLikelySafari,
+        dpr: window.devicePixelRatio || 1,
+        screenW: window.innerWidth,
+        screenH: window.innerHeight,
+        ua: (navigator.userAgent || '').slice(0, 180),
+      },
+    });
     loadingText.textContent = 'Loading puzzle...';
     const data = await loadPuzzle(puzzleId);
     // #region agent log
@@ -324,7 +332,8 @@ async function initPuzzle() {
     scheduleMobilePieceFraming();
     updateProgress();
   } catch (err) {
-    // #region agent log
+    window.clearTimeout(watchdog);
+    try { console.error(err); } catch (_) { /* */ }
     jtDbgLog({
       runId: 'pre-fix-1',
       hypothesisId: 'H1-H3',
@@ -336,15 +345,13 @@ async function initPuzzle() {
         stack: String(err?.stack || '').slice(0, 220),
       },
     });
-    // #endregion
-    window.clearTimeout(watchdog);
-    console.error(err);
-    loadingText.textContent =
-      err.name === 'AbortError' || /Failed to fetch|NetworkError|load failed/i.test(String(err.message || err))
+    const msg = (err && typeof err === 'object' && err.name === 'AbortError')
+      || /Failed to fetch|NetworkError|load failed/i.test(String(err?.message || err))
         ? 'Could not reach the server. Try Safari if you opened this link from a social app.'
         : 'Puzzle not found.';
-    loadingEl.classList.add('loading-overlay--error');
-    const sp = loadingEl.querySelector('.spinner');
+    if (loadingText) loadingText.textContent = msg;
+    if (loadingEl) loadingEl.classList.add('loading-overlay--error');
+    const sp = loadingEl?.querySelector('.spinner');
     if (sp) sp.style.display = 'none';
   }
 }

@@ -129,16 +129,16 @@
       var hint = document.getElementById('in-app-hint');
       if (hint) hint.hidden = false;
     }
-    // Safety net: if the module hasn't executed after 20s, something is wrong.
-    // This covers WebView quirks, network stalls, and silent script failures.
+    // Safety net: if the overlay is still in its initial loading state after 25s,
+    // show the error. Covers module-load failures, silent initPuzzle rejections,
+    // hanging Firebase reads, and WebView quirks.
     setTimeout(function () {
       var overlay = document.getElementById('loading-overlay');
-      if (!window.__puzzleModuleLoaded && overlay
-          && overlay.style.display !== 'none'
+      if (overlay && overlay.style.display !== 'none'
           && !overlay.classList.contains('loading-overlay--error')) {
         showModuleError();
       }
-    }, 20000);
+    }, 25000);
   </script>
   <script type="module" src="/js/puzzle.js" onerror="showModuleError()"></script>
   <script type="module" src="/js/feedback.js"></script>
