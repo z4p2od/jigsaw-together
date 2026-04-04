@@ -108,7 +108,7 @@ let totalPieces = 0;
 const groups    = {};   // groupId -> Set<number>
 const pieceGroup = [];  // pieceGroup[i] = groupId | null
 
-let dragging    = null; // { indices, anchorIndex, offsetX, offsetY, relOffsets, activePointerId?, ... }
+let dragging    = null; // { indices, anchorIndex, offsetX, offsetY, relOffsets, locked, fromTouch, ... }
 let unsubscribe = null;
 let scale       = 1;   // current zoom level applied to #puzzle-board
 let pinch       = null; // { dist0, scale0 } — active pinch gesture state
@@ -656,79 +656,53 @@ function updatePieceZIndex(index) {
 // ── Drag ──────────────────────────────────────────────────────────────────────
 
 function attachDragListeners() {
-  // ── Piece drag: pointer events (non-capture so setPointerCapture works reliably) ──
-  board.addEventListener('pointerdown',   onBoardPointerDown);
-  board.addEventListener('pointermove',   onBoardPointerMove, { passive: false });
-  board.addEventListener('pointerup',     onBoardPointerUp);
-  board.addEventListener('pointercancel', onBoardPointerUp);
-  board.addEventListener('dragstart',     e => e.preventDefault()); // block native <img> drag
-
-  // ── Viewport pan (desktop only: mouse drag on empty board area) ───────────
+  board.addEventListener('mousedown',   onMouseDown);
   boardWrap.addEventListener('mousedown', onViewportPanStart);
-  window.addEventListener('mousemove',    onMouseMove);
-  window.addEventListener('mouseup',      onMouseUp);
-
-  // ── Pinch-to-zoom (two-finger touch), misc ────────────────────────────────
-  boardWrap.addEventListener('touchstart', onTouchStart, { passive: false });
-  boardWrap.addEventListener('touchmove',  onTouchMove,  { passive: false });
-  boardWrap.addEventListener('touchend',   onTouchEnd);
-  board.addEventListener('contextmenu',    onContextMenu);
-  board.addEventListener('touchend',       onDoubleTap);
-  boardWrap.addEventListener('dblclick',   onBoardDblClick);
-
+  board.addEventListener('contextmenu', onContextMenu);
+  board.addEventListener('dragstart', e => e.preventDefault()); // block native <img> drag
+  window.addEventListener('mousemove',  onMouseMove);
+  window.addEventListener('mouseup',    onMouseUp);
   if (!isMobileLike) {
-    boardWrap.addEventListener('wheel',        onWheelZoom,            { passive: false });
+    boardWrap.addEventListener('wheel', onWheelZoom, { passive: false });
     boardWrap.addEventListener('pointerover',  onBoardWrapPointerOver, { passive: true });
     boardWrap.addEventListener('pointermove',  onBoardWrapPointerMove, { passive: true });
     boardWrap.addEventListener('pointerleave', onBoardWrapPointerLeave,{ passive: true });
   }
+  board.addEventListener('touchend', onDoubleTap);
+  boardWrap.addEventListener('dblclick', onBoardDblClick);
+  boardWrap.addEventListener('touchstart', onTouchStart, { passive: false });
+  boardWrap.addEventListener('touchmove',  onTouchMove,  { passive: false });
+  boardWrap.addEventListener('touchend',   onTouchEnd);
   window.addEventListener('resize', syncBoardScrollContentSize, { passive: true });
 }
 
-function resolvePiecePick(target, clientX, clientY) {
-  let el = target?.nodeType === 1 ? target.closest('.piece') : null;
-  if (!el && Number.isFinite(clientX) && Number.isFinite(clientY)) {
-    el = document.elementFromPoint(clientX, clientY)?.closest('.piece');
-  }
-  return el;
-}
+function onMouseDown(e) {
+  if (typeof e.button === 'number' && e.button !== 0) return;
+  if (e.button === 0 && e.ctrlKey) return;
+  const el = e.target.closest('.piece');
 
-function releaseDragPointerCaptureIfAny() {
-  const id = dragging?.activePointerId;
-  if (id == null) return;
-  try {
-    board.releasePointerCapture(id);
-  } catch (_) { /* already released */ }
-}
-
-/**
- * Start a piece pickup (no Firebase lock until movement passes dead zone).
- * @returns {boolean} whether dragging was started
- */
-function beginPieceDrag(el, clientX, clientY, opts = {}) {
-  const { activePointerId = null, fromTouch = false } = opts;
-  if (!el || el.classList.contains('solved')) return false;
+  if (!el || el.classList.contains('solved')) return;
 
   const index = Number(el.dataset.index);
   const state = pieceStates[index];
 
   if (state.lockedBy && state.lockedBy !== playerId) {
     tryForceRelease(index);
-    return false;
+    return;
   }
 
-  if (hand.includes(index)) return false;
+  if (hand.includes(index)) return;
 
   const gid     = pieceGroup[index];
   const indices = gid ? [...groups[gid]] : [index];
 
-  if (indices.some(i => pieceStates[i].lockedBy && pieceStates[i].lockedBy !== playerId)) return false;
+  if (indices.some(i => pieceStates[i].lockedBy && pieceStates[i].lockedBy !== playerId)) return;
 
   const boardRect = board.getBoundingClientRect();
   const anchorX   = pieceStates[index].x;
   const anchorY   = pieceStates[index].y;
-  const offsetX   = (clientX - boardRect.left) / scale - anchorX;
-  const offsetY   = (clientY - boardRect.top)  / scale - anchorY;
+  const offsetX   = (e.clientX - boardRect.left) / scale - anchorX;
+  const offsetY   = (e.clientY - boardRect.top)  / scale - anchorY;
 
   const relOffsets = {};
   indices.forEach(i => {
@@ -745,64 +719,26 @@ function beginPieceDrag(el, clientX, clientY, opts = {}) {
     offsetY,
     relOffsets,
     locked: false,
-    startClientX: clientX,
-    startClientY: clientY,
+    startClientX: e.clientX,
+    startClientY: e.clientY,
     startTs: Date.now(),
-    fromTouch,
-    activePointerId,
+    fromTouch: !!e?.isTouch,
   };
-  return true;
 }
 
-function onBoardPointerDown(e) {
-  if (!e.isPrimary) return;
-  if (e.pointerType === 'mouse' && (e.button !== 0 || e.ctrlKey)) return;
-
-  const el = resolvePiecePick(e.target, e.clientX, e.clientY);
-  if (!beginPieceDrag(el, e.clientX, e.clientY, {
-    activePointerId: e.pointerId,
-    fromTouch: e.pointerType !== 'mouse',
-  })) return;
-
-  // setPointerCapture routes all future pointer events for this ID to board,
-  // regardless of where the finger/cursor moves. Must be non-capture pointerdown.
-  try { board.setPointerCapture(e.pointerId); } catch (_) {}
-  e.preventDefault();
-
-  if (e.pointerType !== 'mouse' && isMobileLike && dragging.indices.length === 1) {
-    startTouchHoldSelection(dragging.anchorIndex, e.clientX, e.clientY);
+function onMouseMove(e) {
+  if (viewportPan) {
+    e.preventDefault();
+    boardWrap.scrollLeft = viewportPan.scrollLeft - (e.clientX - viewportPan.startX);
+    boardWrap.scrollTop  = viewportPan.scrollTop  - (e.clientY - viewportPan.startY);
+    return;
   }
-}
-
-function onBoardPointerMove(e) {
-  if (!dragging || e.pointerId !== dragging.activePointerId) return;
-
-  // Cancel touch-hold if the finger has moved beyond the slop threshold
-  if (touchHold) {
-    const dx = Math.abs(e.clientX - touchHold.startX);
-    const dy = Math.abs(e.clientY - touchHold.startY);
-    if (dx > TOUCH_HOLD_SLOP || dy > TOUCH_HOLD_SLOP) cancelTouchHoldSelection();
-  }
-
-  if (e.cancelable) e.preventDefault();
-  moveDraggingTo(e.clientX, e.clientY);
-}
-
-function onBoardPointerUp(e) {
-  if (!dragging || e.pointerId !== dragging.activePointerId) return;
-  try { board.releasePointerCapture(e.pointerId); } catch (_) {}
-  dropDragging(e.clientX, e.clientY, e.pointerType !== 'mouse');
-}
-
-/** Move the currently dragged piece(s) to (clientX, clientY). */
-function moveDraggingTo(clientX, clientY) {
   if (!dragging) return;
   const { indices, offsetX, offsetY, relOffsets } = dragging;
 
-  // Dead zone: ignore tiny movements so a shaky tap still registers as a click.
   if (!dragging.locked) {
-    const dx = clientX - dragging.startClientX;
-    const dy = clientY - dragging.startClientY;
+    const dx = e.clientX - dragging.startClientX;
+    const dy = e.clientY - dragging.startClientY;
     const dist = Math.hypot(dx, dy);
     const threshold = dragging.fromTouch ? DRAG_DEAD_ZONE_TOUCH : DRAG_DEAD_ZONE_DESKTOP;
     const elapsed = Date.now() - (dragging.startTs || 0);
@@ -819,13 +755,16 @@ function moveDraggingTo(clientX, clientY) {
       if (pieceEls[i]) pieceEls[i].style.zIndex = 1000;
     });
     if (!startedAt) {
-      setStartedAt(puzzleId).then(t => { startedAt = t; startTimer(); });
+      setStartedAt(puzzleId).then(t => {
+        startedAt = t;
+        startTimer();
+      });
     }
   }
 
   const boardRect = board.getBoundingClientRect();
-  const anchorX = (clientX - boardRect.left) / scale - offsetX;
-  const anchorY = (clientY - boardRect.top)  / scale - offsetY;
+  const anchorX = (e.clientX - boardRect.left) / scale - offsetX;
+  const anchorY = (e.clientY - boardRect.top)  / scale - offsetY;
 
   const positions = [];
   indices.forEach(i => {
@@ -836,15 +775,23 @@ function moveDraggingTo(clientX, clientY) {
     movePieceEl(i, x, y);
     positions.push({ index: i, x, y });
   });
+
   updateGroupPosition(puzzleId, positions);
   const ap = pieceStates[dragging?.anchorIndex ?? indices[0]];
   if (ap) lastPlayerPos[playerId] = { x: ap.x, y: ap.y };
 }
 
-/** Finish a drag: snap, unlock, or add to hand. */
-async function dropDragging(clientX, clientY, isTouch) {
+async function onMouseUp(e) {
+  if (viewportPan) {
+    viewportPan = null;
+    boardWrap.classList.remove('panning');
+    return;
+  }
   if (!dragging) return;
-  releaseDragPointerCaptureIfAny();
+  if (typeof e.button === 'number' && e.button !== 0) {
+    if (!dragging.locked) dragging = null;
+    return;
+  }
   const { indices, anchorIndex, offsetX, offsetY, relOffsets, locked } = dragging;
   dragging = null;
 
@@ -853,17 +800,15 @@ async function dropDragging(clientX, clientY, isTouch) {
     if (pieceEls[i]) pieceEls[i].style.zIndex = '';
   });
 
-  // Click / tap without movement — desktop adds to hand, touch uses tap-hold
   if (!locked) {
-    if (!isTouch && !pieceGroup[anchorIndex]) addToHand(anchorIndex);
+    if (!e?.isTouch && !pieceGroup[anchorIndex]) addToHand(anchorIndex);
     return;
   }
 
   const boardRect = board.getBoundingClientRect();
-  const anchorX   = (clientX - boardRect.left) / scale - offsetX;
-  const anchorY   = (clientY - boardRect.top)  / scale - offsetY;
+  const anchorX   = (e.clientX - boardRect.left) / scale - offsetX;
+  const anchorY   = (e.clientY - boardRect.top)  / scale - offsetY;
 
-  // Apply final positions locally
   indices.forEach(i => {
     const x = anchorX + relOffsets[i].dx;
     const y = anchorY + relOffsets[i].dy;
@@ -872,26 +817,21 @@ async function dropDragging(clientX, clientY, isTouch) {
     movePieceEl(i, x, y);
   });
 
-  // Check if any piece in the dragged group is close enough to snap to a neighbour
   const snap = findNeighbourSnap(indices);
   if (snap) {
     const { cols, _displayW: dW, _displayH: dH } = meta;
 
-    // Collect every piece index in the newly merged group
     const neighbourGroupIndices = pieceGroup[snap.neighbourIndex]
       ? [...groups[pieceGroup[snap.neighbourIndex]]]
       : [snap.neighbourIndex];
     const allIndices = [...new Set([...indices, ...neighbourGroupIndices])];
 
-    // Anchor = the stationary neighbour piece. Compute every piece's exact position
-    // from grid coordinates relative to the anchor. This prevents any accumulated error.
     const anchorIdx = snap.neighbourIndex;
     const anchorCol = anchorIdx % cols;
     const anchorRow = Math.floor(anchorIdx / cols);
     const anchorX   = pieceStates[anchorIdx].x;
     const anchorY   = pieceStates[anchorIdx].y;
 
-    // Rotation of the snapping pieces (both sides share the same rotation)
     const rot = pieceStates[snap.neighbourIndex].rotation ?? 0;
 
     const positions = [];
@@ -900,8 +840,6 @@ async function dropDragging(clientX, clientY, isTouch) {
       const iRow = Math.floor(i / cols);
       const dcI  = iCol - anchorCol;
       const drI  = iRow - anchorRow;
-      // Offset from anchor to piece i in inner-rect coords.
-      // Same rotation formula: 90° CW maps (dx,dy)→(-dy,dx).
       let ox, oy;
       if (rot === 0)        { ox =  dcI * dW;   oy =  drI * dH;  }
       else if (rot === 90)  { ox = -drI * dH;   oy =  dcI * dW;  }
@@ -914,10 +852,7 @@ async function dropDragging(clientX, clientY, isTouch) {
       positions.push({ index: i, x, y });
     });
 
-    // Write snapped positions + clear locks in one batch so Firebase is
-    // authoritative and the remote listener won't overwrite our positions.
     mergeGroups(allIndices);
-    // Persist groupId so late-joining players reconstruct the same groups
     const gid = pieceGroup[allIndices[0]];
     await writeSnappedPositions(puzzleId, positions, gid);
     checkSolvedState();
@@ -929,60 +864,80 @@ async function dropDragging(clientX, clientY, isTouch) {
   }
 }
 
-/** Viewport pan (desktop: mouse drag on empty board). Piece drag is handled by onBoardPointerMove. */
-function onMouseMove(e) {
-  if (!viewportPan) return;
-  e.preventDefault();
-  boardWrap.scrollLeft = viewportPan.scrollLeft - (e.clientX - viewportPan.startX);
-  boardWrap.scrollTop  = viewportPan.scrollTop  - (e.clientY - viewportPan.startY);
-}
-
-function onMouseUp() {
-  if (!viewportPan) return;
-  viewportPan = null;
-  boardWrap.classList.remove('panning');
-}
-
-/** Pinch-to-zoom only. Single-finger touch drag is handled by board.pointerdown/move/up. */
 function onTouchStart(e) {
-  if (e.touches.length !== 2) return;
-  cancelTouchHoldSelection();
-  if (dragging) {
-    if (dragging.locked) unlockGroup(puzzleId, dragging.indices);
-    dragging.indices.forEach(i => {
-      pieceEls[i]?.classList.remove('dragging');
-      if (pieceEls[i]) pieceEls[i].style.zIndex = '';
-    });
-    releaseDragPointerCaptureIfAny();
-    dragging = null;
+  if (e.touches.length === 2) {
+    cancelTouchHoldSelection();
+    if (dragging) {
+      if (dragging.locked) unlockGroup(puzzleId, dragging.indices);
+      dragging.indices.forEach(i => {
+        pieceEls[i]?.classList.remove('dragging');
+        if (pieceEls[i]) pieceEls[i].style.zIndex = '';
+      });
+      dragging = null;
+    }
+    pinch = { dist0: touchDist(e.touches), scale0: scale };
+    e.preventDefault();
+    return;
   }
-  pinch = { dist0: touchDist(e.touches), scale0: scale };
-  e.preventDefault();
+
+  if (pinch) return;
+
+  const touch = e.touches[0];
+  const target = document.elementFromPoint(touch.clientX, touch.clientY);
+  onMouseDown({ clientX: touch.clientX, clientY: touch.clientY, target, isTouch: true });
+  if (dragging) {
+    e.preventDefault();
+    if (isMobileLike && dragging.indices.length === 1) {
+      startTouchHoldSelection(dragging.anchorIndex, touch.clientX, touch.clientY);
+    }
+  }
 }
 
 function onTouchMove(e) {
   if (e.touches.length === 2 && pinch) {
     e.preventDefault();
-    const raw = pinch.scale0 * (touchDist(e.touches) / pinch.dist0);
+    const newDist = touchDist(e.touches);
+    const raw     = pinch.scale0 * (newDist / pinch.dist0);
     const mid = touchMidpoint(e.touches);
     applyScale(Math.min(SCALE_MAX, Math.max(SCALE_MIN, raw)), zoomAnchorFromClient(mid.x, mid.y));
+    return;
   }
+
+  const touch = e.touches[0];
+  if (touchHold) {
+    const dx = Math.abs(touch.clientX - touchHold.startX);
+    const dy = Math.abs(touch.clientY - touchHold.startY);
+    if (dx > TOUCH_HOLD_SLOP || dy > TOUCH_HOLD_SLOP) cancelTouchHoldSelection();
+  }
+
+  if (!dragging) return;
+  e.preventDefault();
+  onMouseMove({ clientX: touch.clientX, clientY: touch.clientY });
 }
 
 function onTouchEnd(e) {
   const holdActivated = !!touchHold?.activated;
   cancelTouchHoldSelection();
 
-  if (pinch && e.touches.length < 2) { pinch = null; return; }
+  if (pinch && e.touches.length < 2) {
+    pinch = null;
+    return;
+  }
+
   if (holdActivated) return;
 
-  // Double-tap on empty board to drop hand (piece drag ends via onBoardPointerUp)
-  if (!dragging && hand.length > 0 && e.changedTouches.length === 1) {
-    const t = e.changedTouches[0];
-    if (!document.elementFromPoint(t.clientX, t.clientY)?.closest('.piece')) {
-      checkEmptyDoubleTap(t.clientX, t.clientY);
+  if (!dragging) {
+    if (hand.length > 0 && e.changedTouches.length === 1) {
+      const t = e.changedTouches[0];
+      const target = document.elementFromPoint(t.clientX, t.clientY);
+      if (!target?.closest('.piece')) {
+        if (checkEmptyDoubleTap(t.clientX, t.clientY)) return;
+      }
     }
+    return;
   }
+  const touch = e.changedTouches[0];
+  onMouseUp({ clientX: touch.clientX, clientY: touch.clientY, isTouch: true });
 }
 
 function startTouchHoldSelection(index, startX, startY) {
@@ -991,7 +946,6 @@ function startTouchHoldSelection(index, startX, startY) {
   touchHold.timer = setTimeout(() => {
     if (!touchHold || touchHold.index !== index) return;
     if (!dragging || dragging.locked || dragging.anchorIndex !== index) return;
-    releaseDragPointerCaptureIfAny();
     dragging = null;
     addToHand(index);
     touchHold.activated = true;
@@ -1014,7 +968,6 @@ function onContextMenu(e) {
   const index = Number(el.dataset.index);
   // Cancel in-progress "click to hand" on same piece (e.g. Ctrl+click path started mousedown).
   if (dragging && !dragging.locked && dragging.anchorIndex === index) {
-    releaseDragPointerCaptureIfAny();
     dragging = null;
   }
   if (pieceStates[index].lockedBy && pieceStates[index].lockedBy !== playerId) return;
