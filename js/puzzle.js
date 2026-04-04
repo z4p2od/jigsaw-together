@@ -117,6 +117,9 @@ let viewportPan = null; // { startX, startY, scrollLeft, scrollTop }
 let wheelZoomRaf = null;
 let wheelDeltaFrame = 0;
 let wheelZoomAnchor = { anchorClientX: 0, anchorClientY: 0 };
+/** Trackpad pinch often maps to ctrl+wheel with wrong clientX/Y in Chromium; prefer real pointer. */
+let lastBoardWrapPointerClient = { x: NaN, y: NaN };
+let hasLastBoardWrapPointer = false;
 /** Avoid duplicate resize / visualViewport listeners from setupViewportControls. */
 let boardViewportListenersAttached = false;
 let hand = [];           // indices of pieces currently in the player's hand
@@ -658,6 +661,9 @@ function attachDragListeners() {
     // trackpad pinch to wheel+ctrlKey (Chrome/Edge). Plain two-finger scroll must not
     // call preventDefault — otherwise vertical scroll becomes zoom and horizontal pan breaks.
     boardWrap.addEventListener('wheel', onWheelZoom, { passive: false });
+    boardWrap.addEventListener('pointerover', onBoardWrapPointerOver, { passive: true });
+    boardWrap.addEventListener('pointermove', onBoardWrapPointerMove, { passive: true });
+    boardWrap.addEventListener('pointerleave', onBoardWrapPointerLeave, { passive: true });
   }
   // Double-tap for mobile rotation (hard mode only)
   board.addEventListener('touchend', onDoubleTap);
@@ -1125,15 +1131,15 @@ function applyScale(s, opts = {}) {
 
   let bx, by, ox, oy, scrollLeft0, scrollTop0;
   if (hasAnchor) {
-    const wr = boardWrap.getBoundingClientRect();
-    const mx = boardWrap.scrollLeft + (anchorClientX - wr.left);
-    const my = boardWrap.scrollTop + (anchorClientY - wr.top);
+    // Board-local point under the anchor using the board’s on-screen rect (after transform).
+    // scrollLeft + (client - wrap) − offsetLeft mixes scroll content vs padding/flex and skews the pivot.
+    const br = board.getBoundingClientRect();
+    bx = (anchorClientX - br.left) / prev;
+    by = (anchorClientY - br.top) / prev;
     ox = board.offsetLeft;
     oy = board.offsetTop;
     scrollLeft0 = boardWrap.scrollLeft;
     scrollTop0 = boardWrap.scrollTop;
-    bx = (mx - ox) / prev;
-    by = (my - oy) / prev;
   }
 
   scale = next;
@@ -1335,6 +1341,23 @@ function flushWheelZoom() {
   );
 }
 
+function onBoardWrapPointerOver(e) {
+  lastBoardWrapPointerClient.x = e.clientX;
+  lastBoardWrapPointerClient.y = e.clientY;
+  hasLastBoardWrapPointer = true;
+}
+
+function onBoardWrapPointerMove(e) {
+  lastBoardWrapPointerClient.x = e.clientX;
+  lastBoardWrapPointerClient.y = e.clientY;
+  hasLastBoardWrapPointer = true;
+}
+
+function onBoardWrapPointerLeave(e) {
+  const rel = e.relatedTarget;
+  if (!rel || !boardWrap.contains(rel)) hasLastBoardWrapPointer = false;
+}
+
 function onWheelZoom(e) {
   if (dragging) return;
   const wantsZoom = e.ctrlKey || e.metaKey;
@@ -1344,7 +1367,13 @@ function onWheelZoom(e) {
   if (e.deltaMode === 1) delta *= 16;
   if (e.deltaMode === 2) delta *= boardWrap.clientHeight;
   wheelDeltaFrame += delta;
-  wheelZoomAnchor = { anchorClientX: e.clientX, anchorClientY: e.clientY };
+  let ax = e.clientX;
+  let ay = e.clientY;
+  if (hasLastBoardWrapPointer && Number.isFinite(lastBoardWrapPointerClient.x)) {
+    ax = lastBoardWrapPointerClient.x;
+    ay = lastBoardWrapPointerClient.y;
+  }
+  wheelZoomAnchor = { anchorClientX: ax, anchorClientY: ay };
   if (!wheelZoomRaf) wheelZoomRaf = requestAnimationFrame(flushWheelZoom);
 }
 
