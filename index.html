@@ -30,45 +30,19 @@
 
     <!-- Puzzle of the Day — hidden until JS confirms today's puzzles exist -->
     <div id="potd-section" style="display:none">
-      <p class="field-label" style="text-align:center;margin-bottom:8px">Puzzle of the Day</p>
-      <div class="potd-grid">
-
-        <div id="potd-easy" class="potd-card" style="display:none">
-          <div class="potd-card-header">
-            <span class="potd-difficulty">🟢 Easy</span>
-            <span class="potd-pieces">25 pieces</span>
-          </div>
-          <a class="potd-play btn" href="#">Play Today's Puzzle</a>
-          <div class="potd-leaderboard">
-            <p class="potd-lb-title">Today's Top Times</p>
-            <ol id="potd-lb-easy" class="potd-lb-list"><li class="lb-empty">No completions yet</li></ol>
-          </div>
+      <p class="field-label potd-heading">Puzzle of the Day</p>
+      <div class="potd-card potd-card--compact">
+        <div id="potd-tabs" class="potd-tabs" role="tablist" aria-label="Daily difficulty">
+          <button type="button" class="potd-tab" role="tab" data-diff="easy" id="potd-tab-easy" hidden aria-selected="false" tabindex="-1">🟢 Easy</button>
+          <button type="button" class="potd-tab" role="tab" data-diff="medium" id="potd-tab-medium" hidden aria-selected="false" tabindex="-1">🟡 Medium</button>
+          <button type="button" class="potd-tab" role="tab" data-diff="hard" id="potd-tab-hard" hidden aria-selected="false" tabindex="-1">🔴 Hard 🔥</button>
         </div>
-
-        <div id="potd-medium" class="potd-card" style="display:none">
-          <div class="potd-card-header">
-            <span class="potd-difficulty">🟡 Medium</span>
-            <span class="potd-pieces">100 pieces</span>
-          </div>
-          <a class="potd-play btn" href="#">Play Today's Puzzle</a>
-          <div class="potd-leaderboard">
-            <p class="potd-lb-title">Today's Top Times</p>
-            <ol id="potd-lb-medium" class="potd-lb-list"><li class="lb-empty">No completions yet</li></ol>
-          </div>
+        <p id="potd-desc" class="potd-desc"></p>
+        <a id="potd-play" class="btn potd-play" href="#">Play today's puzzle</a>
+        <div class="potd-leaderboard">
+          <p class="potd-lb-title">Today's top times</p>
+          <ol id="potd-lb" class="potd-lb-list"><li class="lb-empty">No completions yet — be the first!</li></ol>
         </div>
-
-        <div id="potd-hard" class="potd-card" style="display:none">
-          <div class="potd-card-header">
-            <span class="potd-difficulty">🔴 Hard 🔥</span>
-            <span class="potd-pieces">100 pieces · rotated</span>
-          </div>
-          <a class="potd-play btn" href="#">Play Today's Puzzle</a>
-          <div class="potd-leaderboard">
-            <p class="potd-lb-title">Today's Top Times</p>
-            <ol id="potd-lb-hard" class="potd-lb-list"><li class="lb-empty">No completions yet</li></ol>
-          </div>
-        </div>
-
       </div>
     </div>
 

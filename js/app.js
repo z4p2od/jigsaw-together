@@ -55,34 +55,31 @@ const DIFFICULTIES = [
   { key: 'hard',   label: 'Hard',   emoji: '🔴', pieces: 100, hard: true },
 ];
 
-async function loadPOTD() {
-  const today = new Date().toLocaleDateString('sv', { timeZone: 'Europe/Athens' });
-  let anyShown = false;
+const potdSection = document.getElementById('potd-section');
+const potdLb      = document.getElementById('potd-lb');
+const potdPlay    = document.getElementById('potd-play');
+const potdDesc    = document.getElementById('potd-desc');
 
-  for (const diff of DIFFICULTIES) {
-    try {
-      const data = await getPOTD(diff.key);
-      if (!data || data.date !== today) continue;
+let selectedPotdKey = 'easy';
+const leaderboardCache = Object.create(null);
 
-      const card = document.getElementById(`potd-${diff.key}`);
-      if (!card) continue;
-      card.querySelector('.potd-play').href = `/api/potd-play?difficulty=${diff.key}`;
-      card.style.display = '';
-      anyShown = true;
-
-      // Subscribe to leaderboard updates
-      onPOTDLeaderboard(diff.key, today, entries => renderLeaderboard(diff.key, entries));
-    } catch {}
-  }
-
-  if (anyShown) document.getElementById('potd-section').style.display = '';
+function setSelectedPotd(key) {
+  if (!potdPlay || !potdDesc) return;
+  selectedPotdKey = key;
+  document.querySelectorAll('.potd-tab').forEach((btn) => {
+    if (btn.hidden) return;
+    const on = btn.dataset.diff === key;
+    btn.classList.toggle('is-active', on);
+    btn.setAttribute('aria-selected', on ? 'true' : 'false');
+    btn.tabIndex = on ? 0 : -1;
+  });
+  potdPlay.href = `/api/potd-play?difficulty=${key}`;
+  const d = DIFFICULTIES.find((x) => x.key === key);
+  potdDesc.textContent = d ? (d.hard ? `${d.pieces} pieces · rotated` : `${d.pieces} pieces`) : '';
+  paintPotdLeaderboard();
 }
 
-function renderLeaderboard(diffKey, entries) {
-  const el = document.getElementById(`potd-lb-${diffKey}`);
-  if (!el) return;
-
-  // Sort by time ascending, take top 5
+function renderLeaderboardList(el, entries) {
   const sorted = Object.values(entries || {})
     .sort((a, b) => a.secs - b.secs)
     .slice(0, 5);
@@ -97,6 +94,52 @@ function renderLeaderboard(diffKey, entries) {
     const time  = formatTime(e.secs);
     return `<li><span class="lb-rank">${i + 1}</span><span class="lb-names">${names}</span><span class="lb-time">${time}</span></li>`;
   }).join('');
+}
+
+function paintPotdLeaderboard() {
+  if (!potdLb) return;
+  renderLeaderboardList(potdLb, leaderboardCache[selectedPotdKey]);
+}
+
+function onPotdLeaderboardUpdate(diffKey, entries) {
+  leaderboardCache[diffKey] = entries;
+  if (diffKey === selectedPotdKey) paintPotdLeaderboard();
+}
+
+document.querySelectorAll('.potd-tab').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    if (btn.hidden) return;
+    setSelectedPotd(btn.dataset.diff);
+  });
+});
+
+async function loadPOTD() {
+  if (!potdSection || !potdLb || !potdPlay || !potdDesc) return;
+
+  const today = new Date().toLocaleDateString('sv', { timeZone: 'Europe/Athens' });
+  const available = [];
+
+  for (const diff of DIFFICULTIES) {
+    try {
+      const data = await getPOTD(diff.key);
+      if (!data || data.date !== today) continue;
+      available.push(diff.key);
+      const tab = document.querySelector(`.potd-tab[data-diff="${diff.key}"]`);
+      if (tab) tab.hidden = false;
+    } catch { /* ignore */ }
+  }
+
+  if (available.length === 0) return;
+
+  const tabsRow = document.getElementById('potd-tabs');
+  if (tabsRow) tabsRow.style.display = available.length <= 1 ? 'none' : '';
+
+  potdSection.style.display = '';
+  setSelectedPotd(available[0]);
+
+  for (const key of available) {
+    onPOTDLeaderboard(key, today, (entries) => onPotdLeaderboardUpdate(key, entries));
+  }
 }
 
 function formatNames(names) {

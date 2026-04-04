@@ -934,10 +934,9 @@ iframe[src*="vercel.live"] {
   max-width: 480px;
 }
 
-.potd-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+.potd-heading {
+  text-align: center;
+  margin-bottom: 8px;
 }
 
 .potd-card {
@@ -950,19 +949,53 @@ iframe[src*="vercel.live"] {
   gap: 12px;
 }
 
-.potd-card-header {
+.potd-card--compact {
+  padding: 14px 16px;
+  gap: 10px;
+}
+
+.potd-tabs {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
 }
 
-.potd-difficulty {
-  font-size: 0.95rem;
-  font-weight: 700;
+.potd-tab {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 8px 10px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--text-muted);
+  background: var(--surface2);
+  border: 1px solid transparent;
+  border-radius: calc(var(--radius) * 0.65);
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+
+.potd-tab:hover {
   color: var(--text);
+  background: var(--bg);
 }
 
-.potd-pieces {
+.potd-tab.is-active {
+  color: var(--text);
+  background: var(--surface);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.potd-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.potd-desc {
+  margin: 0;
+  text-align: center;
   font-size: 0.78rem;
   color: var(--text-muted);
 }
