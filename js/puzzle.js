@@ -117,6 +117,11 @@ let viewportPan = null; // { startX, startY, scrollLeft, scrollTop }
 let wheelZoomRaf = null;
 let wheelDeltaFrame = 0;
 let wheelZoomAnchor = { anchorClientX: 0, anchorClientY: 0 };
+/** True only while applyScale runs from flushWheelZoom — skip scroll-content resize to cut reflow. */
+let desktopWheelZoomFrame = false;
+/** After last Ctrl+wheel: one layout sync + clamp (ms). */
+let wheelZoomSettleTimer = null;
+const WHEEL_ZOOM_SETTLE_MS = 88;
 /** Avoid duplicate resize / visualViewport listeners from setupViewportControls. */
 let boardViewportListenersAttached = false;
 let hand = [];           // indices of pieces currently in the player's hand
@@ -548,6 +553,14 @@ function renderPiece(index, dataUrl, x, y, solved, elW, elH) {
 }
 
 function getTextureScale(total) {
+  // Desktop: always use denser piece textures (HQ is always on); more RAM than phones.
+  if (!isMobileLike) {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+    if (total <= 40) return Math.max(1.35, Math.min(2.5, dpr));
+    if (total <= 120) return Math.max(1.22, Math.min(2.15, dpr * 0.98));
+    if (total <= 250) return Math.max(1.12, Math.min(1.7, dpr * 0.88));
+    return Math.max(1.06, Math.min(1.38, dpr * 0.72));
+  }
   if (highQualityMode) {
     // HQ still needs per-puzzle caps to avoid canvas memory pressure on smaller phones.
     const dpr = Math.min(window.devicePixelRatio || 1, 2.2);
@@ -662,7 +675,12 @@ function attachDragListeners() {
   boardWrap.addEventListener('touchmove',  onTouchMove,  { passive: false });
   boardWrap.addEventListener('touchend',   onTouchEnd);
 
-  window.addEventListener('resize', syncBoardScrollContentSize, { passive: true });
+  window.addEventListener('resize', onWindowResizeForBoardScroll, { passive: true });
+}
+
+function onWindowResizeForBoardScroll() {
+  cancelWheelZoomSettle();
+  syncBoardScrollContentSize();
 }
 
 function onMouseDown(e) {
@@ -1084,6 +1102,35 @@ function syncBoardScrollContentSize() {
   boardScrollContent.style.height = Math.max(innerH, ch, minLayoutH) + 'px';
 }
 
+function clampBoardWrapScroll() {
+  if (!boardWrap) return;
+  const maxSl = Math.max(0, boardWrap.scrollWidth - boardWrap.clientWidth);
+  const maxSt = Math.max(0, boardWrap.scrollHeight - boardWrap.clientHeight);
+  boardWrap.scrollLeft = Math.max(0, Math.min(maxSl, boardWrap.scrollLeft));
+  boardWrap.scrollTop = Math.max(0, Math.min(maxSt, boardWrap.scrollTop));
+}
+
+function cancelWheelZoomSettle() {
+  if (wheelZoomSettleTimer) {
+    clearTimeout(wheelZoomSettleTimer);
+    wheelZoomSettleTimer = null;
+  }
+  board?.classList.remove('board-zooming');
+}
+
+/** Desktop Ctrl+wheel: defer expensive scroll-content layout until idle (see applyScale). */
+function bumpWheelZoomSettleTimer() {
+  if (isMobileLike || !board) return;
+  board.classList.add('board-zooming');
+  if (wheelZoomSettleTimer) clearTimeout(wheelZoomSettleTimer);
+  wheelZoomSettleTimer = setTimeout(() => {
+    wheelZoomSettleTimer = null;
+    board.classList.remove('board-zooming');
+    syncBoardScrollContentSize();
+    clampBoardWrapScroll();
+  }, WHEEL_ZOOM_SETTLE_MS);
+}
+
 /** Center of the visible scroll viewport (stable zoom pivot for toolbar +/-). */
 function zoomAnchorViewportCenter() {
   const wr = boardWrap.getBoundingClientRect();
@@ -1135,7 +1182,12 @@ function applyScale(s, opts = {}) {
   scale = next;
   board.style.transform = scale === 1 ? '' : `translateZ(0) scale(${scale})`;
 
-  syncBoardScrollContentSize();
+  // Desktop wheel zoom: updating scroll-content width/height every frame forces reflow over
+  // hundreds of piece imgs. Only sync transform during the gesture; settle timer runs full sync.
+  const deferScrollContentSync = !isMobileLike && desktopWheelZoomFrame;
+  if (!deferScrollContentSync) {
+    syncBoardScrollContentSize();
+  }
 
   if (hasAnchor) {
     const ox2 = board.offsetLeft;
@@ -1323,13 +1375,18 @@ function flushWheelZoom() {
   const sum = wheelDeltaFrame;
   wheelDeltaFrame = 0;
   if (sum === 0) return;
-  const capped = Math.max(-280, Math.min(280, sum));
-  const factor = Math.exp(-capped * 0.00135);
-  // Cursor-anchored zoom feels closest to expected desktop behavior.
-  applyScale(
-    scale * factor,
-    zoomAnchorFromClient(wheelZoomAnchor.anchorClientX, wheelZoomAnchor.anchorClientY)
-  );
+  // Softer steps: smaller per-frame cap + gentler exponential (plan: smoother laptop zoom).
+  const capped = Math.max(-120, Math.min(120, sum));
+  const factor = Math.exp(-capped * 0.001);
+  desktopWheelZoomFrame = true;
+  try {
+    applyScale(
+      scale * factor,
+      zoomAnchorFromClient(wheelZoomAnchor.anchorClientX, wheelZoomAnchor.anchorClientY)
+    );
+  } finally {
+    desktopWheelZoomFrame = false;
+  }
 }
 
 function onWheelZoom(e) {
@@ -1337,6 +1394,7 @@ function onWheelZoom(e) {
   const wantsZoom = e.ctrlKey || e.metaKey;
   if (!wantsZoom) return;
   e.preventDefault();
+  if (!isMobileLike) bumpWheelZoomSettleTimer();
   let delta = e.deltaY;
   if (e.deltaMode === 1) delta *= 16;
   if (e.deltaMode === 2) delta *= boardWrap.clientHeight;
@@ -1562,6 +1620,7 @@ function setupViewportControls() {
   boardViewportListenersAttached = true;
 
   window.addEventListener('resize', () => {
+    cancelWheelZoomSettle();
     syncBoardScrollContentSize();
     if (scale <= 1.05) fitBoardToViewport();
   });
