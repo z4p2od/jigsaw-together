@@ -50,6 +50,8 @@ let latestPlayers = {};        // latest snapshot from handleRoomUpdate
 const groups    = {};
 const pieceGroup = [];
 let dragging    = null;
+/** After touch + preventDefault, ignore delayed compatibility mousedown. */
+let suppressMouseDownPickUntil = 0;
 let scale       = 1;
 let pinch       = null;
 let lastTap     = { time: 0, el: null };
@@ -905,6 +907,14 @@ function applyOppScale(s) {
 
 // ── Drag ──────────────────────────────────────────────────────────────────────
 
+function resolvePiecePickVs(target, clientX, clientY) {
+  let el = target?.nodeType === 1 ? target.closest('.piece') : null;
+  if (!el && Number.isFinite(clientX) && Number.isFinite(clientY)) {
+    el = document.elementFromPoint(clientX, clientY)?.closest('.piece');
+  }
+  return el;
+}
+
 // Fake cursor for invert effect
 let fakeCursor = null;
 
@@ -956,7 +966,7 @@ function syncCursorVisibility() {
 
 function attachDragListeners() {
   board.addEventListener('mousedown',   onMouseDown);
-  board.addEventListener('dragstart', e => e.preventDefault()); // block native <img> drag
+  board.addEventListener('dragstart', e => e.preventDefault(), true);
   window.addEventListener('mousemove',  onMouseMove);
   window.addEventListener('mouseup',    onMouseUp);
   const wrap = board.parentElement;
@@ -1029,10 +1039,14 @@ function rotateAtIndex(index) {
 }
 
 function onMouseDown(e) {
-  const { clientX, clientY } = mirrorCoords(e.clientX, e.clientY);
-  const el = invertActive
-    ? document.elementFromPoint(clientX, clientY)?.closest('.piece')
-    : e.target.closest('.piece');
+  if (Date.now() < suppressMouseDownPickUntil) return;
+  let el;
+  if (invertActive) {
+    const { clientX, clientY } = mirrorCoords(e.clientX, e.clientY);
+    el = document.elementFromPoint(clientX, clientY)?.closest('.piece');
+  } else {
+    el = resolvePiecePickVs(e.target, e.clientX, e.clientY);
+  }
   if (!el || el.classList.contains('solved')) return;
   const index = Number(el.dataset.index);
 
@@ -1155,9 +1169,11 @@ function onTouchStart(e) {
   }
   if (pinch) return;
   const touch = e.touches[0];
-  onMouseDown({ clientX: touch.clientX, clientY: touch.clientY,
-    target: document.elementFromPoint(touch.clientX, touch.clientY) });
-  if (dragging) e.preventDefault();
+  onMouseDown({ clientX: touch.clientX, clientY: touch.clientY, target: touch.target });
+  if (dragging) {
+    e.preventDefault();
+    suppressMouseDownPickUntil = Date.now() + 650;
+  }
 }
 
 function onTouchMove(e) {

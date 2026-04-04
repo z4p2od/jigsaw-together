@@ -123,6 +123,8 @@ let hasLastBoardWrapPointer = false;
 /** Translate offset on #puzzle-board to compensate when scroll can't reach the ideal position. */
 let boardTx = 0;
 let boardTy = 0;
+/** After touch + preventDefault, ignore the delayed compatibility mousedown (avoids double-pick). */
+let suppressMouseDownPickUntil = 0;
 /** Avoid duplicate resize / visualViewport listeners from setupViewportControls. */
 let boardViewportListenersAttached = false;
 let hand = [];           // indices of pieces currently in the player's hand
@@ -133,9 +135,9 @@ const forceReleaseState = {}; // index → { count, lastTime }
 let lastEmptyTap = { time: 0, x: 0, y: 0 };
 const TOUCH_HOLD_MS = 280;
 const TOUCH_HOLD_SLOP = 10;
-const DRAG_DEAD_ZONE_DESKTOP = 7;
-const DRAG_DEAD_ZONE_TOUCH = 12;
-const DRAG_START_GRACE_MS = 140;
+const DRAG_DEAD_ZONE_DESKTOP = 4;
+const DRAG_DEAD_ZONE_TOUCH = 8;
+const DRAG_START_GRACE_MS = 90;
 let touchHold = null; // { index, startX, startY, activated, timer }
 
 // Double-tap for mobile rotate (hard mode only)
@@ -655,11 +657,19 @@ function updatePieceZIndex(index) {
 
 // ── Drag ──────────────────────────────────────────────────────────────────────
 
+function resolvePiecePick(target, clientX, clientY) {
+  let el = target?.nodeType === 1 ? target.closest('.piece') : null;
+  if (!el && Number.isFinite(clientX) && Number.isFinite(clientY)) {
+    el = document.elementFromPoint(clientX, clientY)?.closest('.piece');
+  }
+  return el;
+}
+
 function attachDragListeners() {
   board.addEventListener('mousedown',   onMouseDown);
   boardWrap.addEventListener('mousedown', onViewportPanStart);
   board.addEventListener('contextmenu', onContextMenu);
-  board.addEventListener('dragstart', e => e.preventDefault()); // block native <img> drag
+  board.addEventListener('dragstart', e => e.preventDefault(), true); // capture: block native <img> drag
   window.addEventListener('mousemove',  onMouseMove);
   window.addEventListener('mouseup',    onMouseUp);
   if (!isMobileLike) {
@@ -679,7 +689,8 @@ function attachDragListeners() {
 function onMouseDown(e) {
   if (typeof e.button === 'number' && e.button !== 0) return;
   if (e.button === 0 && e.ctrlKey) return;
-  const el = e.target.closest('.piece');
+  if (Date.now() < suppressMouseDownPickUntil) return;
+  const el = resolvePiecePick(e.target, e.clientX, e.clientY);
 
   if (!el || el.classList.contains('solved')) return;
 
@@ -883,10 +894,16 @@ function onTouchStart(e) {
   if (pinch) return;
 
   const touch = e.touches[0];
-  const target = document.elementFromPoint(touch.clientX, touch.clientY);
-  onMouseDown({ clientX: touch.clientX, clientY: touch.clientY, target, isTouch: true });
+  // Prefer the real touch target — elementFromPoint is wrong under zoom/transform on mobile Safari.
+  onMouseDown({
+    clientX: touch.clientX,
+    clientY: touch.clientY,
+    target: touch.target,
+    isTouch: true,
+  });
   if (dragging) {
     e.preventDefault();
+    suppressMouseDownPickUntil = Date.now() + 650;
     if (isMobileLike && dragging.indices.length === 1) {
       startTouchHoldSelection(dragging.anchorIndex, touch.clientX, touch.clientY);
     }
