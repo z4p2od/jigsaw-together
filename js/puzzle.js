@@ -568,7 +568,11 @@ function initHighQualityPreference() {
   const saved = safeLocalGet('jt-high-quality');
   if (saved === '1') return true;
   if (saved === '0') return false;
-  if (!isMobileLike) return false;
+  if (!isMobileLike) {
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false;
+    // CSS zoom scales bitmap piece images — default to denser canvas textures on laptop/desktop.
+    return !reduceMotion;
+  }
   return shouldAutoEnableHQ();
 }
 
@@ -1877,8 +1881,11 @@ function setupHelp() {
   }
   if (isMobileLike) {
     controls.push({ key: 'Pinch (mobile)', desc: 'Zoom in / out' });
-    controls.push({ key: 'HQ button',      desc: 'Toggle sharper pieces (uses more memory)' });
   }
+  controls.push({
+    key: 'HQ',
+    desc: 'Sharper piece textures when zoomed (reloads page; uses more memory)',
+  });
   if (meta.hardMode) {
     controls.push({ key: 'Right-click',  desc: 'Rotate a piece or group 90°' });
     controls.push({ key: 'Double-tap',   desc: 'Rotate a piece or group on mobile' });
@@ -1900,17 +1907,11 @@ function setupHelp() {
 
 function setupQualityMode() {
   if (!qualityBtn) return;
-  if (!isMobileLike) {
-    highQualityMode = false;
-    safeLocalSet('jt-high-quality', '0');
-    qualityBtn.style.display = 'none';
-    return;
-  }
   const applyState = () => {
     qualityBtn.classList.toggle('active', highQualityMode);
     qualityBtn.title = highQualityMode
-      ? 'High quality ON (tap to disable)'
-      : 'High quality OFF (tap to enable)';
+      ? 'High quality ON (click for standard textures)'
+      : 'High quality OFF (click for sharper zoomed pieces)';
   };
   applyState();
 
