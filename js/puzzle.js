@@ -690,7 +690,10 @@ function onMouseDown(e) {
   if (typeof e.button === 'number' && e.button !== 0) return;
   // macOS: Ctrl+primary click opens context menu but uses button === 0 — don't start pickup/drag.
   if (e.button === 0 && e.ctrlKey) return;
-  const el = e.target.closest('.piece');
+  let el = e.target?.closest?.('.piece');
+  if (!el && Number.isFinite(e.clientX) && Number.isFinite(e.clientY)) {
+    el = document.elementFromPoint(e.clientX, e.clientY)?.closest('.piece');
+  }
 
   if (!el || el.classList.contains('solved')) return;
 
@@ -920,8 +923,16 @@ function onTouchStart(e) {
   if (pinch) return; // ignore single-finger start during active pinch
 
   const touch = e.touches[0];
-  const target = document.elementFromPoint(touch.clientX, touch.clientY);
-  onMouseDown({ clientX: touch.clientX, clientY: touch.clientY, target, isTouch: true });
+  // Prefer the real touch target — elementFromPoint can miss under zoom / compositing on iOS.
+  const fromTarget = touch.target?.nodeType === 1 ? touch.target.closest('.piece') : null;
+  const fromPoint  = document.elementFromPoint(touch.clientX, touch.clientY)?.closest('.piece');
+  const pickEl     = fromTarget || fromPoint;
+  onMouseDown({
+    clientX: touch.clientX,
+    clientY: touch.clientY,
+    target: pickEl || touch.target,
+    isTouch: true,
+  });
   if (dragging) {
     e.preventDefault();
     if (isMobileLike && dragging.indices.length === 1) {
@@ -942,15 +953,24 @@ function onTouchMove(e) {
   }
 
   const touch = e.touches[0];
+  if (dragging) {
+    // Claim the sequence before onMouseMove's dead-zone returns — otherwise
+    // setupHorizontalPageLock's document touchmove may preventDefault and break drags/taps.
+    e.preventDefault();
+    if (touchHold) {
+      const dx = Math.abs(touch.clientX - touchHold.startX);
+      const dy = Math.abs(touch.clientY - touchHold.startY);
+      if (dx > TOUCH_HOLD_SLOP || dy > TOUCH_HOLD_SLOP) cancelTouchHoldSelection();
+    }
+    onMouseMove({ clientX: touch.clientX, clientY: touch.clientY });
+    return;
+  }
+
   if (touchHold) {
     const dx = Math.abs(touch.clientX - touchHold.startX);
     const dy = Math.abs(touch.clientY - touchHold.startY);
     if (dx > TOUCH_HOLD_SLOP || dy > TOUCH_HOLD_SLOP) cancelTouchHoldSelection();
   }
-
-  if (!dragging) return;
-  e.preventDefault();
-  onMouseMove({ clientX: touch.clientX, clientY: touch.clientY });
 }
 
 function onTouchEnd(e) {
@@ -2005,19 +2025,21 @@ function setupHorizontalPageLock() {
       x: t.clientX,
       y: t.clientY,
       inBoardWrap: !!e.target.closest('.puzzle-board-wrap'),
+      onPiece: !!e.target.closest('.piece'),
     };
   }, { passive: true });
 
   document.addEventListener('touchmove', e => {
     if (!pageTouchStart || e.touches.length !== 1) return;
+    if (pageTouchStart.onPiece) return;
     const t = e.touches[0];
     const dx = Math.abs(t.clientX - pageTouchStart.x);
     const dy = Math.abs(t.clientY - pageTouchStart.y);
     if (dx <= dy || dx <= 5) return;
 
-    // Only allow horizontal pan if gesture started in the board area AND board is wider
-    // than viewport at current zoom (real horizontal content exists).
-    const canPanBoardX = (BOARD_W * scale) > (boardWrap.clientWidth + 2);
+    // Only allow horizontal pan if gesture started in the board area AND the wrap
+    // actually has horizontal scroll slack (layout width, zoom, padding).
+    const canPanBoardX = boardWrap && (boardWrap.scrollWidth - boardWrap.clientWidth) > 2;
     const allowHorizontal = pageTouchStart.inBoardWrap && canPanBoardX;
     if (!allowHorizontal) e.preventDefault();
   }, { passive: false });
