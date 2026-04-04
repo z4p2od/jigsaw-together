@@ -1174,16 +1174,20 @@ function applyScale(s, opts = {}) {
   if (hasAnchor) {
     const ox2 = board.offsetLeft;
     const oy2 = board.offsetTop;
-    // The sum (scrollLeft + boardTx) must equal this target to keep (bx,by) under the cursor.
-    const targetX = scrollLeft0 + boardTx + (ox2 - ox) + bx * (next - prev);
-    const targetY = scrollTop0 + boardTy + (oy2 - oy) + by * (next - prev);
+    // Invariant: screenX = wrapLeft - scrollLeft + offsetLeft + tx + bx*scale
+    // scroll subtracts, tx adds → the conserved quantity is (scrollLeft - tx).
+    const kx = scrollLeft0 - boardTx + (ox2 - ox) + bx * (next - prev);
+    const ky = scrollTop0 - boardTy + (oy2 - oy) + by * (next - prev);
     const maxSl = Math.max(0, boardWrap.scrollWidth - boardWrap.clientWidth);
     const maxSt = Math.max(0, boardWrap.scrollHeight - boardWrap.clientHeight);
-    // Prefer scroll (keeps translate near 0). Clamped excess goes into translate.
-    const sl = Math.max(0, Math.min(maxSl, Math.round(targetX)));
-    const st = Math.max(0, Math.min(maxSt, Math.round(targetY)));
-    boardTx = targetX - sl;
-    boardTy = targetY - st;
+    const sl = Math.max(0, Math.min(maxSl, Math.round(kx)));
+    const st = Math.max(0, Math.min(maxSt, Math.round(ky)));
+    boardTx = sl - kx;
+    boardTy = st - ky;
+    // When the board fits in the viewport there is no scroll room and any residual
+    // translate would push pieces off-screen. Snap to 0 so flex centering takes over.
+    if (maxSl <= 0) { boardTx = 0; }
+    if (maxSt <= 0) { boardTy = 0; }
     boardWrap.scrollLeft = sl;
     boardWrap.scrollTop = st;
   }
