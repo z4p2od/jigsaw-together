@@ -925,10 +925,8 @@ function onTouchMove(e) {
     const newDist = touchDist(e.touches);
     const raw     = pinch.scale0 * (newDist / pinch.dist0);
     const mid = touchMidpoint(e.touches);
-    applyScale(Math.min(SCALE_MAX, Math.max(SCALE_MIN, raw)), {
-      anchorClientX: mid.x,
-      anchorClientY: mid.y,
-    });
+    const anchor = zoomAnchorFromClient(mid.x, mid.y);
+    applyScale(Math.min(SCALE_MAX, Math.max(SCALE_MIN, raw)), anchor);
     return;
   }
 
@@ -1102,20 +1100,18 @@ function zoomAnchorViewportCenter() {
 }
 
 /**
- * Zoom toward cursor when it lies over the board; otherwise use viewport center
- * (e.g. wheel on gutter/scrollbar still feels anchored sensibly).
+ * Zoom anchor in viewport (client) coords. Clamp to boardWrap so Ctrl+wheel and
+ * pinch always zoom toward the pointer / pinch midpoint — not the board center
+ * when the cursor is over padding, gutters, or the scaled board’s visual edge.
  */
 function zoomAnchorFromClient(clientX, clientY) {
-  const br = board.getBoundingClientRect();
-  if (
-    clientX >= br.left &&
-    clientX <= br.right &&
-    clientY >= br.top &&
-    clientY <= br.bottom
-  ) {
+  if (!boardWrap) {
     return { anchorClientX: clientX, anchorClientY: clientY };
   }
-  return zoomAnchorViewportCenter();
+  const wr = boardWrap.getBoundingClientRect();
+  const x = Math.max(wr.left, Math.min(wr.right, clientX));
+  const y = Math.max(wr.top, Math.min(wr.bottom, clientY));
+  return { anchorClientX: x, anchorClientY: y };
 }
 
 function applyScale(s, opts = {}) {
