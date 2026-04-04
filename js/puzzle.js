@@ -46,6 +46,16 @@ function jtDbgLog(payload) {
   }).catch(() => {});
 }
 
+// crypto.randomUUID() requires Safari 15.4. Use a polyfill so iOS 14/15.0–15.3 works.
+function generateUUID() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
+    (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4)).toString(16)
+  );
+}
+
 function safeSessionGet(key) {
   try {
     return sessionStorage.getItem(key) || null;
@@ -1718,7 +1728,7 @@ function checkAndMerge(index) {
 function mergeGroups(indices) {
   // Collect all existing groupIds among these indices
   const existingIds = [...new Set(indices.map(i => pieceGroup[i]).filter(Boolean))];
-  const keepId = existingIds[0] ?? crypto.randomUUID();
+  const keepId = existingIds[0] ?? generateUUID();
 
   if (!groups[keepId]) groups[keepId] = new Set();
 
@@ -2214,12 +2224,12 @@ function getOrCreatePlayerId() {
   try {
     let id = sessionStorage.getItem('playerId');
     if (!id) {
-      id = crypto.randomUUID();
+      id = generateUUID();
       sessionStorage.setItem('playerId', id);
     }
     return id;
   } catch (_) {
-    if (!fallbackPlayerId) fallbackPlayerId = crypto.randomUUID();
+    if (!fallbackPlayerId) fallbackPlayerId = generateUUID();
     return fallbackPlayerId;
   }
 }

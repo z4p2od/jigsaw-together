@@ -116,15 +116,24 @@
 
   <script type="module" src="/js/puzzle.js"></script>
   <script>
-    // Hardening: if module init fails, don't leave the user stuck on the overlay forever.
-    const hideLoading = (msg) => {
-      const overlay = document.getElementById('loading-overlay');
-      const text = document.getElementById('loading-text');
-      if (overlay) overlay.style.display = 'none';
-      if (text && msg) text.textContent = msg;
-    };
-    window.addEventListener('error', (e) => hideLoading('Failed to load puzzle. Please refresh.'));
-    window.addEventListener('unhandledrejection', () => hideLoading('Failed to load puzzle. Please refresh.'));
+    // Hardening: if module init fails, show a visible error and the open-in-Safari hint.
+    // We must NOT hide the overlay — just switch it to error state (same as initPuzzle catch).
+    var _moduleErrorShown = false;
+    function showModuleError() {
+      if (_moduleErrorShown) return;
+      _moduleErrorShown = true;
+      var overlay = document.getElementById('loading-overlay');
+      var text    = document.getElementById('loading-text');
+      var spinner = overlay ? overlay.querySelector('.spinner') : null;
+      if (overlay) overlay.classList.add('loading-overlay--error');
+      if (spinner) spinner.style.display = 'none';
+      if (text) text.textContent =
+        'Could not load puzzle. If you opened this from a social app, tap Share → Open in Safari. Otherwise refresh the page.';
+      var hint = document.getElementById('in-app-hint');
+      if (hint) hint.hidden = false;
+    }
+    window.addEventListener('error', showModuleError);
+    window.addEventListener('unhandledrejection', showModuleError);
   </script>
   <script type="module" src="/js/feedback.js"></script>
 </body>
