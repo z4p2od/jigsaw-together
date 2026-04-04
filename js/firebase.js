@@ -271,41 +271,15 @@ export async function getPOTD(difficulty) {
 
 /** Subscribe to POTD leaderboard for a difficulty, filtered to today's date. */
 export function onPOTDLeaderboard(difficulty, date, callback) {
-  const r = ref(_db, `potd/${difficulty}/leaderboard`);
-  const handler = snap => {
-    const all     = snap.val() || {};
-    const today   = Object.fromEntries(Object.entries(all).filter(([, v]) => v.date === date));
-    callback(today);
-  };
-  onValue(r, handler);
-  return () => off(r, 'value', handler);
-}
-
-const POTD_DIFF_KEYS = ['easy', 'medium', 'hard'];
-
-/**
- * One listener on potd/ — shared live data for all difficulties. Callback receives
- * { easy: {}, medium: {}, hard: {} } (today's leaderboard entries per puzzle).
- */
-export function onPOTDLeaderboardsShared(date, callback) {
   let detach = null;
   let cancelled = false;
   _dbReady.then((db) => {
     if (cancelled) return;
-    const r = ref(db, 'potd');
+    const r = ref(db, `potd/${difficulty}/leaderboard`);
     const handler = (snap) => {
-      if (cancelled) return;
-      const val = snap.val() || {};
-      const boards = { easy: {}, medium: {}, hard: {} };
-      for (const diff of POTD_DIFF_KEYS) {
-        const node = val[diff];
-        const all =
-          node && typeof node === 'object' && node.leaderboard ? node.leaderboard : {};
-        boards[diff] = Object.fromEntries(
-          Object.entries(all).filter(([, v]) => v && v.date === date)
-        );
-      }
-      callback(boards);
+      const all   = snap.val() || {};
+      const today = Object.fromEntries(Object.entries(all).filter(([, v]) => v.date === date));
+      callback(today);
     };
     onValue(r, handler);
     detach = () => off(r, 'value', handler);
@@ -314,6 +288,13 @@ export function onPOTDLeaderboardsShared(date, callback) {
     cancelled = true;
     if (detach) detach();
   };
+}
+
+/** Cover image URL stored on a puzzle (e.g. POTD template). */
+export async function getPuzzleImageUrl(puzzleId) {
+  const db = await _dbReady;
+  const snap = await get(ref(db, `puzzles/${puzzleId}/meta/imageUrl`));
+  return snap.val() || null;
 }
 
 /** Send a chat message (or emoji reaction) to a puzzle's chat. */
