@@ -120,6 +120,9 @@ let wheelZoomAnchor = { anchorClientX: 0, anchorClientY: 0 };
 /** Trackpad pinch often maps to ctrl+wheel with wrong clientX/Y in Chromium; prefer real pointer. */
 let lastBoardWrapPointerClient = { x: NaN, y: NaN };
 let hasLastBoardWrapPointer = false;
+/** Translate offset on #puzzle-board to compensate when scroll can't reach the ideal position. */
+let boardTx = 0;
+let boardTy = 0;
 /** Avoid duplicate resize / visualViewport listeners from setupViewportControls. */
 let boardViewportListenersAttached = false;
 let hand = [];           // indices of pieces currently in the player's hand
@@ -425,6 +428,8 @@ function setupBoard() {
   board.style.transformOrigin = 'top left';
   board.style.marginRight = '';
   board.style.marginBottom = '';
+  boardTx = 0;
+  boardTy = 0;
   syncBoardScrollContentSize();
   if (isMobileLike) {
     setupViewportControls();
@@ -1081,6 +1086,23 @@ function clampScale(s) {
   return Math.min(SCALE_MAX, Math.max(SCALE_MIN, s));
 }
 
+function updateBoardTransform() {
+  const needsTranslate = Math.abs(boardTx) > 0.5 || Math.abs(boardTy) > 0.5;
+  if (scale === 1 && !needsTranslate) {
+    board.style.transform = '';
+  } else if (needsTranslate) {
+    board.style.transform = `translate3d(${boardTx}px,${boardTy}px,0) scale(${scale})`;
+  } else {
+    board.style.transform = `translateZ(0) scale(${scale})`;
+  }
+}
+
+function resetBoardTranslate() {
+  boardTx = 0;
+  boardTy = 0;
+  updateBoardTransform();
+}
+
 function syncBoardScrollContentSize() {
   if (!boardScrollContent || !boardWrap) return;
   const cw = boardWrap.clientWidth || 0;
@@ -1147,27 +1169,32 @@ function applyScale(s, opts = {}) {
   }
 
   scale = next;
-  board.style.transform = scale === 1 ? '' : `translateZ(0) scale(${scale})`;
-
   syncBoardScrollContentSize();
 
   if (hasAnchor) {
     const ox2 = board.offsetLeft;
     const oy2 = board.offsetTop;
-    // Keep the same board-local point (bx, by) under the cursor: incremental scroll from
-    // previous position, not scrollLeft = mx - ox2 - bx*next (that was wrong and inverts the pivot).
-    let sl = scrollLeft0 + (ox2 - ox) + bx * (next - prev);
-    let st = scrollTop0 + (oy2 - oy) + by * (next - prev);
+    // The sum (scrollLeft + boardTx) must equal this target to keep (bx,by) under the cursor.
+    const targetX = scrollLeft0 + boardTx + (ox2 - ox) + bx * (next - prev);
+    const targetY = scrollTop0 + boardTy + (oy2 - oy) + by * (next - prev);
     const maxSl = Math.max(0, boardWrap.scrollWidth - boardWrap.clientWidth);
     const maxSt = Math.max(0, boardWrap.scrollHeight - boardWrap.clientHeight);
-    // At max scroll the browser clamps — cursor-locked zoom cannot be perfect at edges.
-    boardWrap.scrollLeft = Math.max(0, Math.min(maxSl, Math.round(sl)));
-    boardWrap.scrollTop = Math.max(0, Math.min(maxSt, Math.round(st)));
+    // Prefer scroll (keeps translate near 0). Clamped excess goes into translate.
+    const sl = Math.max(0, Math.min(maxSl, Math.round(targetX)));
+    const st = Math.max(0, Math.min(maxSt, Math.round(targetY)));
+    boardTx = targetX - sl;
+    boardTy = targetY - st;
+    boardWrap.scrollLeft = sl;
+    boardWrap.scrollTop = st;
   }
+
+  updateBoardTransform();
 }
 
 function centerBoardInView() {
   if (!boardWrap || boardWrap.clientWidth < 8 || boardWrap.clientHeight < 8) return;
+  boardTx = 0; boardTy = 0;
+  updateBoardTransform();
   const maxSl = Math.max(0, boardWrap.scrollWidth - boardWrap.clientWidth);
   const maxSt = Math.max(0, boardWrap.scrollHeight - boardWrap.clientHeight);
   boardWrap.scrollLeft = Math.round(maxSl / 2);
@@ -1238,6 +1265,8 @@ function framePieceCloudInView() {
 
 function centerBoardPointInView(cx, cy) {
   if (!boardWrap || boardWrap.clientWidth < 8 || boardWrap.clientHeight < 8) return;
+  boardTx = 0; boardTy = 0;
+  updateBoardTransform();
   const targetLeft = board.offsetLeft + cx * scale - boardWrap.clientWidth / 2;
   const targetTop = board.offsetTop + cy * scale - boardWrap.clientHeight / 2;
 
