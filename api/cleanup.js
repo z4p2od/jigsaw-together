@@ -1,10 +1,12 @@
 /**
  * Vercel cron job — removes puzzle *sessions* (Firebase RTDB) older than 24 hours.
  *
- * Cloudinary: only destroys images that live under the user-upload folder (default
- * `puzzles`). Library picks (`/api/room-create`), POTD templates, and POTD clones
- * all reference shared assets under `puzzle-library` / `potd-pool` (or have no
- * `imagePublicId`) — those are never destroyed here.
+ * Cloudinary: only destroys images under the user-upload folder (default `puzzles`).
+ * Library (`/api/room-create`), POTD, and POTD clones use `puzzle-library` /
+ * `potd-pool` public IDs (or no `imagePublicId`) — never destroyed.
+ *
+ * Skips Firebase rows for the three live POTD template IDs (`potd/easy|medium|hard`
+ * → puzzleId) so a delayed POTD cron does not leave broken pointers.
  *
  * Optional env: CLOUDINARY_USER_UPLOAD_FOLDER — must match the folder on your
  * unsigned upload preset (default: puzzles).
@@ -45,6 +47,16 @@ function isUserUploadCloudinaryPublicId(publicId) {
   );
 }
 
+async function getLivePotdTemplateIds(dbUrl, secret) {
+  const keys = ['easy', 'medium', 'hard'];
+  const ids = await Promise.all(
+    keys.map((k) =>
+      fetch(`${dbUrl}/potd/${k}/puzzleId.json?auth=${secret}`).then((r) => r.json())
+    )
+  );
+  return new Set(ids.filter(Boolean));
+}
+
 async function deleteCloudinaryImage(publicId) {
   if (!isUserUploadCloudinaryPublicId(publicId)) return;
 
@@ -78,8 +90,12 @@ export default async function handler(req, res) {
   const puzzleIds = await listRes.json();
   if (!puzzleIds) return res.json({ deleted: 0 });
 
+  const livePotdIds = await getLivePotdTemplateIds(dbUrl, secret);
+
   let deleted = 0;
   await Promise.all(Object.keys(puzzleIds).map(async (id) => {
+    if (livePotdIds.has(id)) return;
+
     const metaRes   = await fetch(`${dbUrl}/puzzles/${id}/meta/createdAt.json?auth=${secret}`);
     const createdAt = await metaRes.json();
     if (!createdAt || createdAt >= cutoff) return;
