@@ -661,6 +661,7 @@ function attachDragListeners() {
   board.addEventListener('pointermove',   onBoardPointerMove, { passive: false });
   board.addEventListener('pointerup',     onBoardPointerUp);
   board.addEventListener('pointercancel', onBoardPointerUp);
+  board.addEventListener('dragstart',     e => e.preventDefault()); // block native <img> drag
 
   // ── Viewport pan (desktop only: mouse drag on empty board area) ───────────
   boardWrap.addEventListener('mousedown', onViewportPanStart);

@@ -960,6 +960,7 @@ function attachDragListeners() {
   board.addEventListener('pointermove',   onBoardPointerMove, { passive: false });
   board.addEventListener('pointerup',     onBoardPointerUp);
   board.addEventListener('pointercancel', onBoardPointerUp);
+  board.addEventListener('dragstart',     e => e.preventDefault()); // block native <img> drag
 
   // Pinch-to-zoom (two-finger touch)
   const wrap = board.parentElement;

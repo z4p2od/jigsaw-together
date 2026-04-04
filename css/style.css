@@ -701,6 +701,7 @@ iframe[src*="vercel.live"] {
   position: absolute;
   cursor: grab;
   user-select: none;
+  -webkit-user-drag: none;
   will-change: transform;
   touch-action: none;
 }
