@@ -1049,8 +1049,13 @@ function syncBoardScrollContentSize() {
   const ch = boardWrap.clientHeight || 0;
   const innerW = BOARD_SCROLL_PADDING * 2 + BOARD_W * scale;
   const innerH = BOARD_SCROLL_PADDING * 2 + BOARD_H * scale;
-  boardScrollContent.style.width = Math.max(innerW, cw) + 'px';
-  boardScrollContent.style.height = Math.max(innerH, ch) + 'px';
+  // #puzzle-board layout stays BOARD_W×BOARD_H; transform scale does not shrink the flex child.
+  // Keep scroll content at least that wide/tall so flex centering never yields negative offsetLeft
+  // and centerBoardPointInView does not clamp scroll to 0 on mobile.
+  const minLayoutW = BOARD_SCROLL_PADDING * 2 + BOARD_W;
+  const minLayoutH = BOARD_SCROLL_PADDING * 2 + BOARD_H;
+  boardScrollContent.style.width = Math.max(innerW, cw, minLayoutW) + 'px';
+  boardScrollContent.style.height = Math.max(innerH, ch, minLayoutH) + 'px';
 }
 
 /** Center of the visible scroll viewport (stable zoom pivot for toolbar +/-). */
