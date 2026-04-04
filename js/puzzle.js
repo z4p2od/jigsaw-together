@@ -130,15 +130,16 @@ let boardViewportListenersAttached = false;
 let hand = [];           // indices of pieces currently in the player's hand
 let handTimers = {};     // index → setTimeout id for auto-release
 let handAddedAt = {};    // index → Date.now() when piece entered hand
+let lastAddToHandAt = 0;
 let handContainer = null;
 const HAND_RELEASE_MS = 15000;
 const forceReleaseState = {}; // index → { count, lastTime }
 let lastEmptyTap = { time: 0, x: 0, y: 0 };
 const TOUCH_HOLD_MS = 280;
 const TOUCH_HOLD_SLOP = 10;
-const DRAG_DEAD_ZONE_DESKTOP = 4;
-const DRAG_DEAD_ZONE_TOUCH = 4;
-const DRAG_START_GRACE_MS = 90;
+const DRAG_DEAD_ZONE_DESKTOP = 6;
+const DRAG_DEAD_ZONE_TOUCH = 10;
+const DRAG_START_GRACE_MS = 150;
 let touchHold = null; // { index, startX, startY, activated, timer }
 
 // Double-tap for mobile rotate (hard mode only)
@@ -840,6 +841,7 @@ async function onMouseUp(e) {
   });
 
   if (!locked) {
+    if (!pieceGroup[anchorIndex]) addToHand(anchorIndex);
     return;
   }
 
@@ -1431,6 +1433,7 @@ function onWheelZoom(e) {
 function onBoardDblClick(e) {
   if (hand.length === 0) return;
   if (e.target.closest('.piece')) return;
+  if (Date.now() - lastAddToHandAt < 600) return;
   e.preventDefault();
   dropHandAt(e.clientX, e.clientY);
 }
@@ -1469,7 +1472,9 @@ function addToHand(index) {
   pieceStates[index].lockedBy = playerId;
   hand.push(index);
   pieceEls[index]?.classList.add('in-hand');
-  handAddedAt[index] = Date.now();
+  const now = Date.now();
+  handAddedAt[index] = now;
+  lastAddToHandAt = now;
 
   handTimers[index] = setTimeout(() => {
     if (hand.includes(index)) removeFromHand(index);
@@ -1621,6 +1626,7 @@ function renderHand() {
 
 function checkEmptyDoubleTap(cx, cy) {
   const now = Date.now();
+  if (now - lastAddToHandAt < 600) return false;
   const dist = Math.hypot(cx - lastEmptyTap.x, cy - lastEmptyTap.y);
   if (now - lastEmptyTap.time < 400 && dist < 40) {
     dropHandAt(cx, cy);
