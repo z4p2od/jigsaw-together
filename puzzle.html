@@ -133,7 +133,16 @@
       if (hint) hint.hidden = false;
     }
     window.addEventListener('error', showModuleError);
-    window.addEventListener('unhandledrejection', showModuleError);
+    // Only trigger for unhandled rejections that occur while the puzzle is still
+    // in its initial loading phase — gameplay rejections (Firebase writes, etc.)
+    // happen after the overlay is gone and must not hijack the UI.
+    window.addEventListener('unhandledrejection', function() {
+      var overlay = document.getElementById('loading-overlay');
+      if (overlay && overlay.style.display !== 'none'
+          && !overlay.classList.contains('loading-overlay--error')) {
+        showModuleError();
+      }
+    });
   </script>
   <script type="module" src="/js/feedback.js"></script>
 </body>

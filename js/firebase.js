@@ -34,6 +34,11 @@ const _dbReady = fetchJsonWithTimeout('/api/config', 8000).then(config => {
   _db = getDatabase(app);
   return _db;
 });
+// Suppress unhandledrejection at module level — the rejection still surfaces when
+// callers do `await _dbReady` inside initPuzzle's try/catch. Without this, a
+// transient /api/config failure fires window.unhandledrejection before loadPuzzle
+// ever runs, incorrectly triggering the module-error overlay.
+_dbReady.catch(() => {});
 
 // UUID polyfill — crypto.randomUUID() requires Safari 15.4+.
 function generateUUID() {
