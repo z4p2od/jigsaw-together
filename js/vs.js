@@ -908,7 +908,9 @@ function applyOppScale(s) {
 // ── Drag ──────────────────────────────────────────────────────────────────────
 
 function resolvePiecePickVs(target, clientX, clientY) {
-  let el = target?.nodeType === 1 ? target.closest('.piece') : null;
+  let node = target;
+  if (node && node.nodeType === Node.TEXT_NODE) node = node.parentElement;
+  let el = node?.nodeType === 1 ? node.closest('.piece') : null;
   if (!el && Number.isFinite(clientX) && Number.isFinite(clientY)) {
     el = document.elementFromPoint(clientX, clientY)?.closest('.piece');
   }
@@ -966,6 +968,9 @@ function syncCursorVisibility() {
 
 function attachDragListeners() {
   board.addEventListener('mousedown',   onMouseDown);
+  if (typeof PointerEvent === 'function') {
+    board.addEventListener('pointerdown', onBoardPointerDownPickVs, { passive: false });
+  }
   board.addEventListener('dragstart', e => e.preventDefault(), true);
   window.addEventListener('mousemove',  onMouseMove);
   window.addEventListener('mouseup',    onMouseUp);
@@ -978,6 +983,16 @@ function attachDragListeners() {
   wrap.addEventListener('touchstart', onTouchStart, { passive: false });
   wrap.addEventListener('touchmove',  onTouchMove,  { passive: false });
   wrap.addEventListener('touchend',   onTouchEnd);
+}
+
+function onBoardPointerDownPickVs(e) {
+  if (!e.isPrimary) return;
+  if (e.pointerType !== 'touch' && e.pointerType !== 'pen') return;
+  onMouseDown({ clientX: e.clientX, clientY: e.clientY, target: e.target });
+  if (dragging) {
+    e.preventDefault();
+    suppressMouseDownPickUntil = Date.now() + 650;
+  }
 }
 
 function attachRotateListeners() {
@@ -1039,6 +1054,7 @@ function rotateAtIndex(index) {
 }
 
 function onMouseDown(e) {
+  if (e?.sourceCapabilities?.firesTouchEvents === true) return;
   if (Date.now() < suppressMouseDownPickUntil) return;
   let el;
   if (invertActive) {
@@ -1168,8 +1184,13 @@ function onTouchStart(e) {
     e.preventDefault(); return;
   }
   if (pinch) return;
+  if (typeof PointerEvent === 'function' && dragging) {
+    e.preventDefault();
+    return;
+  }
   const touch = e.touches[0];
-  onMouseDown({ clientX: touch.clientX, clientY: touch.clientY, target: touch.target });
+  const root = touch.target?.nodeType === Node.TEXT_NODE ? touch.target.parentElement : touch.target;
+  onMouseDown({ clientX: touch.clientX, clientY: touch.clientY, target: root });
   if (dragging) {
     e.preventDefault();
     suppressMouseDownPickUntil = Date.now() + 650;

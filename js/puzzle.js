@@ -658,7 +658,9 @@ function updatePieceZIndex(index) {
 // ── Drag ──────────────────────────────────────────────────────────────────────
 
 function resolvePiecePick(target, clientX, clientY) {
-  let el = target?.nodeType === 1 ? target.closest('.piece') : null;
+  let node = target;
+  if (node && node.nodeType === Node.TEXT_NODE) node = node.parentElement;
+  let el = node?.nodeType === 1 ? node.closest('.piece') : null;
   if (!el && Number.isFinite(clientX) && Number.isFinite(clientY)) {
     el = document.elementFromPoint(clientX, clientY)?.closest('.piece');
   }
@@ -667,6 +669,10 @@ function resolvePiecePick(target, clientX, clientY) {
 
 function attachDragListeners() {
   board.addEventListener('mousedown',   onMouseDown);
+  // Touch/pen: pointerdown runs before touchstart — pickup here only, then touchstart skips duplicate onMouseDown.
+  if (typeof PointerEvent === 'function') {
+    board.addEventListener('pointerdown', onBoardPointerDownPick, { passive: false });
+  }
   boardWrap.addEventListener('mousedown', onViewportPanStart);
   board.addEventListener('contextmenu', onContextMenu);
   board.addEventListener('dragstart', e => e.preventDefault(), true); // capture: block native <img> drag
@@ -686,9 +692,31 @@ function attachDragListeners() {
   window.addEventListener('resize', syncBoardScrollContentSize, { passive: true });
 }
 
+/** Touch / pen pickup (mouse still uses mousedown — avoids double onMouseDown from touchstart). */
+function onBoardPointerDownPick(e) {
+  if (!e.isPrimary) return;
+  if (e.pointerType !== 'touch' && e.pointerType !== 'pen') return;
+
+  onMouseDown({
+    clientX: e.clientX,
+    clientY: e.clientY,
+    target: e.target,
+    isTouch: true,
+  });
+  if (dragging) {
+    e.preventDefault();
+    suppressMouseDownPickUntil = Date.now() + 650;
+    if (isMobileLike && dragging.indices.length === 1) {
+      startTouchHoldSelection(dragging.anchorIndex, e.clientX, e.clientY);
+    }
+  }
+}
+
 function onMouseDown(e) {
   if (typeof e.button === 'number' && e.button !== 0) return;
   if (e.button === 0 && e.ctrlKey) return;
+  // Ignore compatibility mouse synthesized after touch (otherwise 2nd "click" steals the gesture).
+  if (!e?.isTouch && e?.sourceCapabilities?.firesTouchEvents === true) return;
   if (Date.now() < suppressMouseDownPickUntil) return;
   const el = resolvePiecePick(e.target, e.clientX, e.clientY);
 
@@ -811,8 +839,10 @@ async function onMouseUp(e) {
     if (pieceEls[i]) pieceEls[i].style.zIndex = '';
   });
 
+  // Desktop: plain click used to call addToHand — that put the piece in-hand (pointer-events: none),
+  // so the next click passed through and felt like "first tap dead, second works". Use Shift+click for hand.
   if (!locked) {
-    if (!e?.isTouch && !pieceGroup[anchorIndex]) addToHand(anchorIndex);
+    if (!e?.isTouch && !pieceGroup[anchorIndex] && e?.shiftKey) addToHand(anchorIndex);
     return;
   }
 
@@ -893,12 +923,20 @@ function onTouchStart(e) {
 
   if (pinch) return;
 
+  // PointerEvent path already ran onBoardPointerDownPick (before this touchstart).
+  if (typeof PointerEvent === 'function') {
+    if (dragging) {
+      e.preventDefault();
+      return;
+    }
+  }
+
   const touch = e.touches[0];
-  // Prefer the real touch target — elementFromPoint is wrong under zoom/transform on mobile Safari.
+  const root = touch.target?.nodeType === Node.TEXT_NODE ? touch.target.parentElement : touch.target;
   onMouseDown({
     clientX: touch.clientX,
     clientY: touch.clientY,
-    target: touch.target,
+    target: root,
     isTouch: true,
   });
   if (dragging) {
@@ -1915,7 +1953,8 @@ function setupHelp() {
     { key: 'Drag',            desc: 'Move a piece or a connected group' },
     { key: 'Drop near edge',  desc: 'Pieces snap together automatically' },
     { key: 'Scroll / drag bg',desc: 'Pan the board' },
-    { key: 'Click piece',     desc: 'Pick up into hand (tap again to deselect)' },
+    { key: 'Shift+click piece', desc: 'Pick up into hand (Shift+click again to deselect)' },
+    { key: 'Mobile hand',       desc: 'Tap and hold a piece to add to hand' },
     { key: 'Dbl-click board', desc: 'Drop all hand pieces at that spot' },
   ];
   if (!isMobileLike) {
