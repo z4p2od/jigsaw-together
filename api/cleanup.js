@@ -1,6 +1,14 @@
 /**
- * Vercel cron job — deletes user-uploaded puzzles older than 24 hours.
- * Also deletes the associated Cloudinary image if present.
+ * Vercel cron job — removes puzzle *sessions* (Firebase RTDB) older than 24 hours.
+ *
+ * Cloudinary: only destroys images that live under the user-upload folder (default
+ * `puzzles`). Library picks (`/api/room-create`), POTD templates, and POTD clones
+ * all reference shared assets under `puzzle-library` / `potd-pool` (or have no
+ * `imagePublicId`) — those are never destroyed here.
+ *
+ * Optional env: CLOUDINARY_USER_UPLOAD_FOLDER — must match the folder on your
+ * unsigned upload preset (default: puzzles).
+ *
  * Schedule: daily at 3am UTC (configured in vercel.json).
  *
  * Required env vars:
@@ -13,7 +21,33 @@
  */
 import crypto from 'crypto';
 
+function normalizeFolder(s) {
+  return String(s ?? '')
+    .trim()
+    .replace(/^\/+/, '')
+    .replace(/\/+$/, '');
+}
+
+/** Only these Cloudinary paths may be destroyed (ephemeral user uploads). */
+function userUploadFolderRoots() {
+  const raw = process.env.CLOUDINARY_USER_UPLOAD_FOLDER || 'puzzles';
+  return raw
+    .split(',')
+    .map(normalizeFolder)
+    .filter(Boolean);
+}
+
+function isUserUploadCloudinaryPublicId(publicId) {
+  const id = normalizeFolder(publicId);
+  if (!id) return false;
+  return userUploadFolderRoots().some(
+    (root) => id === root || id.startsWith(`${root}/`)
+  );
+}
+
 async function deleteCloudinaryImage(publicId) {
+  if (!isUserUploadCloudinaryPublicId(publicId)) return;
+
   const ts  = Math.floor(Date.now() / 1000);
   const sig = crypto.createHash('sha1')
     .update(`public_id=${publicId}&timestamp=${ts}${process.env.CLOUDINARY_API_SECRET}`)
@@ -50,22 +84,13 @@ export default async function handler(req, res) {
     const createdAt = await metaRes.json();
     if (!createdAt || createdAt >= cutoff) return;
 
-    // Delete Cloudinary image only if it was user-uploaded (not from managed library folders)
     const pidRes   = await fetch(`${dbUrl}/puzzles/${id}/meta/imagePublicId.json?auth=${secret}`);
     const publicId = await pidRes.json();
-    const PROTECTED_PREFIXES = ['potd-pool', 'puzzle-library'];
-    const isProtected = publicId && PROTECTED_PREFIXES.some(p => String(publicId).startsWith(p));
-
-    // Never delete POTD/library-backed puzzles themselves; only clean up
-    // user-uploaded puzzles (their Cloudinary images live outside the protected folders).
-    if (isProtected) return;
-
     if (publicId) {
       try { await deleteCloudinaryImage(publicId); } catch {}
     }
 
     await fetch(`${dbUrl}/puzzles/${id}.json?auth=${secret}`, { method: 'DELETE' });
-    // Also remove from rooms-index if it was a public room
     await fetch(`${dbUrl}/rooms-index/${id}.json?auth=${secret}`, { method: 'DELETE' });
     deleted++;
   }));
