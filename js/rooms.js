@@ -1,12 +1,11 @@
 import { onRoomsIndex } from './firebase.js';
+import { selectOpenRooms } from './rooms-utils.js';
 
 const listEl  = document.getElementById('rooms-list');
 const emptyEl = document.getElementById('rooms-empty');
 
 onRoomsIndex(rooms => {
-  const active = Object.entries(rooms)
-    .filter(([, r]) => r.status !== 'done')
-    .sort(([, a], [, b]) => b.createdAt - a.createdAt); // newest first
+  const active = selectOpenRooms(rooms);
 
   listEl.querySelectorAll('.room-row').forEach(el => el.remove());
 
@@ -20,13 +19,16 @@ onRoomsIndex(rooms => {
     const row = document.createElement('div');
     row.className = 'room-row';
 
-    const pct      = room.pieces > 0 ? Math.round((room.solvedCount / room.pieces) * 100) : 0;
+    const pct      = room.pieces > 0 ? Math.round(((room.solvedCount || 0) / room.pieces) * 100) : 0;
     const players  = room.playerCount || 0;
     const creator  = room.creatorName || 'Someone';
     const modeTag  = room.hardMode ? '<span class="hard-badge" style="font-size:0.7rem">Hard 🔥</span>' : '';
 
     // Cloudinary URL transformation for thumbnail
-    const thumbUrl = room.imageUrl.replace('/upload/', '/upload/w_80,h_60,c_fill,g_auto/');
+    const imgUrl = room.imageUrl || '';
+    const thumbUrl = imgUrl.includes('/upload/')
+      ? imgUrl.replace('/upload/', '/upload/w_80,h_60,c_fill,g_auto/')
+      : imgUrl;
 
     row.innerHTML = `
       <img class="room-thumbnail" src="${escapeHtml(thumbUrl)}" alt="" />
