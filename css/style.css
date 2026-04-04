@@ -770,7 +770,6 @@ iframe[src*="vercel.live"] {
   height: 3px;
   background: rgba(255, 222, 120, 0.7);
   border-radius: 0 0 6px 6px;
-  transition: width 15s linear;
 }
 
 /* Player avatar shown on pieces being moved by another player */

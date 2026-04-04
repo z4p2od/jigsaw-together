@@ -129,6 +129,7 @@ let suppressMouseDownPickUntil = 0;
 let boardViewportListenersAttached = false;
 let hand = [];           // indices of pieces currently in the player's hand
 let handTimers = {};     // index → setTimeout id for auto-release
+let handAddedAt = {};    // index → Date.now() when piece entered hand
 let handContainer = null;
 const HAND_RELEASE_MS = 15000;
 const forceReleaseState = {}; // index → { count, lastTime }
@@ -136,7 +137,7 @@ let lastEmptyTap = { time: 0, x: 0, y: 0 };
 const TOUCH_HOLD_MS = 280;
 const TOUCH_HOLD_SLOP = 10;
 const DRAG_DEAD_ZONE_DESKTOP = 4;
-const DRAG_DEAD_ZONE_TOUCH = 8;
+const DRAG_DEAD_ZONE_TOUCH = 4;
 const DRAG_START_GRACE_MS = 90;
 let touchHold = null; // { index, startX, startY, activated, timer }
 
@@ -839,7 +840,6 @@ async function onMouseUp(e) {
   });
 
   if (!locked) {
-    if (!e?.isTouch && !pieceGroup[anchorIndex]) addToHand(anchorIndex);
     return;
   }
 
@@ -1469,6 +1469,7 @@ function addToHand(index) {
   pieceStates[index].lockedBy = playerId;
   hand.push(index);
   pieceEls[index]?.classList.add('in-hand');
+  handAddedAt[index] = Date.now();
 
   handTimers[index] = setTimeout(() => {
     if (hand.includes(index)) removeFromHand(index);
@@ -1485,6 +1486,7 @@ function removeFromHand(index) {
   hand = hand.filter(i => i !== index);
   clearTimeout(handTimers[index]);
   delete handTimers[index];
+  delete handAddedAt[index];
   pieceEls[index]?.classList.remove('in-hand');
   unlockGroup(puzzleId, [index]);
   pieceStates[index].lockedBy = null;
@@ -1495,6 +1497,7 @@ function removeFromHandSilent(index) {
   hand = hand.filter(i => i !== index);
   clearTimeout(handTimers[index]);
   delete handTimers[index];
+  delete handAddedAt[index];
   pieceEls[index]?.classList.remove('in-hand');
   renderHand();
 }
@@ -1533,6 +1536,7 @@ async function dropHandAt(clientX, clientY) {
     pieceEls[idx]?.classList.remove('in-hand');
     clearTimeout(handTimers[idx]);
     delete handTimers[idx];
+    delete handAddedAt[idx];
   });
 
   updateGroupPosition(puzzleId, positions);
@@ -1583,6 +1587,7 @@ function renderHand() {
   if (hand.length === 0) { handContainer.style.display = 'none'; return; }
   handContainer.style.display = 'flex';
 
+  const now = Date.now();
   hand.forEach(index => {
     const wrap = document.createElement('div');
     wrap.className = 'hand-thumb-wrap';
@@ -1596,10 +1601,19 @@ function renderHand() {
       if (rot) thumb.style.transform = `rotate(${rot}deg)`;
       wrap.appendChild(thumb);
     }
+    const elapsed = now - (handAddedAt[index] || now);
+    const remaining = Math.max(0, HAND_RELEASE_MS - elapsed);
+    const pct = (remaining / HAND_RELEASE_MS) * 100;
+
     const timer = document.createElement('div');
     timer.className = 'hand-thumb-timer';
+    timer.style.width = pct + '%';
+    timer.style.transition = 'none';
     wrap.appendChild(timer);
-    requestAnimationFrame(() => { timer.style.width = '0%'; });
+    requestAnimationFrame(() => {
+      timer.style.transition = `width ${remaining}ms linear`;
+      timer.style.width = '0%';
+    });
     wrap.addEventListener('click', () => removeFromHand(index));
     handContainer.appendChild(wrap);
   });
