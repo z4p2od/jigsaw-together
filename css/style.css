@@ -696,11 +696,6 @@ iframe[src*="vercel.live"] {
   transform-origin: 0 0;
 }
 
-/* Desktop Ctrl+wheel: hint compositor during active zoom (class toggled in puzzle.js). */
-#puzzle-board.board-zooming {
-  will-change: transform;
-}
-
 /* Individual piece */
 .piece {
   position: absolute;
