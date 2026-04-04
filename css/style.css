@@ -646,11 +646,6 @@ body.puzzle-body {
   .puzzle-header h2 {
     font-size: 0.82rem;
   }
-  .board-zoom-controls .zoom-btn {
-    min-width: 32px;
-    height: 34px;
-    font-size: 0.85rem;
-  }
 }
 
 /* Board area */
@@ -677,42 +672,6 @@ body.puzzle-body {
 }
 .puzzle-board-wrap.panning {
   cursor: grabbing;
-}
-
-.board-zoom-controls {
-  position: absolute;
-  right: 10px;
-  top: 10px;
-  display: flex;
-  gap: 8px;
-  z-index: 30;
-  width: max-content;
-}
-.board-zoom-controls .zoom-btn {
-  border: 1px solid rgba(255,255,255,0.18);
-  background: rgba(15, 23, 42, 0.82);
-  color: var(--text);
-  border-radius: 10px;
-  min-width: 36px;
-  height: 38px;
-  font-weight: 700;
-  cursor: pointer;
-  touch-action: manipulation;
-  -webkit-tap-highlight-color: transparent;
-}
-.board-zoom-controls .zoom-btn:hover {
-  background: rgba(30, 41, 59, 0.95);
-}
-.board-zoom-controls .zoom-readout {
-  min-width: 60px;
-  font-size: 0.78rem;
-}
-
-@media (max-width: 860px) and (pointer: coarse) {
-  .board-zoom-controls {
-    right: 8px;
-    top: 8px;
-  }
 }
 
 /* Hide Vercel preview toolbar overlays in-app. */

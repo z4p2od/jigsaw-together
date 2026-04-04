@@ -117,6 +117,8 @@ let viewportPan = null; // { startX, startY, scrollLeft, scrollTop }
 let wheelZoomRaf = null;
 let wheelDeltaFrame = 0;
 let wheelZoomAnchor = { anchorClientX: 0, anchorClientY: 0 };
+/** Avoid duplicate resize / visualViewport listeners from setupViewportControls. */
+let boardViewportListenersAttached = false;
 let hand = [];           // indices of pieces currently in the player's hand
 let handTimers = {};     // index → setTimeout id for auto-release
 let handContainer = null;
@@ -642,8 +644,9 @@ function attachDragListeners() {
   window.addEventListener('mousemove',  onMouseMove);
   window.addEventListener('mouseup',    onMouseUp);
   if (!isMobileLike) {
-    // Desktop: zoom only with Ctrl/⌘+wheel or trackpad pinch (same as browser zoom on the landing page).
-    // Plain wheel scrolls the board viewport (overflow: auto), not the scale.
+    // Desktop: zoom only when Ctrl/⌘ is held (mouse wheel) or when the browser maps
+    // trackpad pinch to wheel+ctrlKey (Chrome/Edge). Plain two-finger scroll must not
+    // call preventDefault — otherwise vertical scroll becomes zoom and horizontal pan breaks.
     boardWrap.addEventListener('wheel', onWheelZoom, { passive: false });
   }
   // Double-tap for mobile rotation (hard mode only)
@@ -1145,8 +1148,6 @@ function applyScale(s, opts = {}) {
     boardWrap.scrollLeft = Math.max(0, Math.min(maxSl, Math.round(sl)));
     boardWrap.scrollTop = Math.max(0, Math.min(maxSt, Math.round(st)));
   }
-
-  updateZoomControls();
 }
 
 function centerBoardInView() {
@@ -1331,7 +1332,8 @@ function flushWheelZoom() {
 
 function onWheelZoom(e) {
   if (dragging) return;
-  // Desktop wheel/trackpad zoom: anchor around cursor position.
+  const wantsZoom = e.ctrlKey || e.metaKey;
+  if (!wantsZoom) return;
   e.preventDefault();
   let delta = e.deltaY;
   if (e.deltaMode === 1) delta *= 16;
@@ -1554,27 +1556,8 @@ function showForceReleaseToast() {
 }
 
 function setupViewportControls() {
-  if (boardWrap.querySelector('.board-zoom-controls')) return;
-
-  const controls = document.createElement('div');
-  controls.className = 'board-zoom-controls';
-  controls.innerHTML = `
-    <button class="zoom-btn" data-action="minus" title="Zoom out">−</button>
-    <button class="zoom-btn zoom-readout" data-action="fit" title="Fit board">100%</button>
-    <button class="zoom-btn" data-action="plus" title="Zoom in">+</button>
-    <button class="zoom-btn" data-action="center" title="Center board">◎</button>
-  `;
-  boardWrap.appendChild(controls);
-
-  controls.addEventListener('click', e => {
-    const btn = e.target.closest('button[data-action]');
-    if (!btn) return;
-    const action = btn.dataset.action;
-    if (action === 'minus') applyScale(scale / 1.18, zoomAnchorViewportCenter());
-    if (action === 'plus')  applyScale(scale * 1.18, zoomAnchorViewportCenter());
-    if (action === 'fit')   fitBoardToViewport();
-    if (action === 'center') centerBoardInView();
-  });
+  if (boardViewportListenersAttached) return;
+  boardViewportListenersAttached = true;
 
   window.addEventListener('resize', () => {
     syncBoardScrollContentSize();
@@ -1599,14 +1582,6 @@ function setupViewportControls() {
       if (pieceEls?.length) framePieceCloudInView();
     }, 380);
   });
-
-  updateZoomControls();
-}
-
-function updateZoomControls() {
-  const readout = boardWrap.querySelector('.board-zoom-controls .zoom-readout');
-  if (!readout) return;
-  readout.textContent = `${Math.round(scale * 100)}%`;
 }
 
 // ── Snap / merge ──────────────────────────────────────────────────────────────
@@ -1895,7 +1870,10 @@ function setupHelp() {
     { key: 'Dbl-click board', desc: 'Drop all hand pieces at that spot' },
   ];
   if (!isMobileLike) {
-    controls.push({ key: 'Ctrl/⌘ + scroll', desc: 'Zoom board at cursor (desktop; or trackpad pinch)' });
+    controls.push({
+      key: 'Two-finger scroll',
+      desc: 'Pan the board; Ctrl/⌘ + scroll (or trackpad pinch in Chrome) zooms at cursor',
+    });
   }
   if (isMobileLike) {
     controls.push({ key: 'Pinch (mobile)', desc: 'Zoom in / out' });
