@@ -46,9 +46,42 @@ function jtDbgLog(payload) {
   }).catch(() => {});
 }
 
+function safeSessionGet(key) {
+  try {
+    return sessionStorage.getItem(key) || null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function safeSessionSet(key, val) {
+  try {
+    sessionStorage.setItem(key, val);
+  } catch (_) {
+    /* In-app / private mode — session may be blocked */
+  }
+}
+
+function safeLocalGet(key) {
+  try {
+    return localStorage.getItem(key);
+  } catch (_) {
+    return null;
+  }
+}
+
+function safeLocalSet(key, val) {
+  try {
+    localStorage.setItem(key, val);
+  } catch (_) {
+    /* ignore */
+  }
+}
+
 // ── State ─────────────────────────────────────────────────────────────────────
 
 const puzzleId  = new URLSearchParams(location.search).get('id');
+let fallbackPlayerId = null;
 const playerId  = getOrCreatePlayerId();
 
 let meta        = null;
@@ -87,7 +120,7 @@ let touchHold = null; // { index, startX, startY, activated, timer }
 let lastTap = { time: 0, el: null };
 
 // Player presence
-let playerName  = sessionStorage.getItem('playerName') || null;
+let playerName  = safeSessionGet('playerName');
 let unsubPlayers = null;
 let playersMap  = {}; // id → { name, color } — kept up to date by renderPlayers
 
@@ -157,7 +190,7 @@ if (!puzzleId) {
 async function askNameThenInit() {
   if (!playerName) {
     playerName = await showNameModal();
-    sessionStorage.setItem('playerName', playerName);
+    safeSessionSet('playerName', playerName);
   }
   nameModal.style.display = 'none';
   initPuzzle();
@@ -274,6 +307,7 @@ async function initPuzzle() {
 
     window.clearTimeout(watchdog);
     loadingEl.style.display = 'none';
+    scheduleMobilePieceFraming();
     updateProgress();
   } catch (err) {
     // #region agent log
@@ -508,7 +542,7 @@ function getTextureScale(total) {
 }
 
 function initHighQualityPreference() {
-  const saved = localStorage.getItem('jt-high-quality');
+  const saved = safeLocalGet('jt-high-quality');
   if (saved === '1') return true;
   if (saved === '0') return false;
   if (!isMobileLike) return false;
@@ -857,7 +891,10 @@ function onTouchMove(e) {
     const newDist = touchDist(e.touches);
     const raw     = pinch.scale0 * (newDist / pinch.dist0);
     const mid = touchMidpoint(e.touches);
-    applyScale(Math.min(SCALE_MAX, Math.max(SCALE_MIN, raw)), zoomAnchorFromClient(mid.x, mid.y));
+    applyScale(Math.min(SCALE_MAX, Math.max(SCALE_MIN, raw)), {
+      anchorClientX: mid.x,
+      anchorClientY: mid.y,
+    });
     return;
   }
 
@@ -1087,6 +1124,7 @@ function applyScale(s, opts = {}) {
 }
 
 function centerBoardInView() {
+  if (!boardWrap || boardWrap.clientWidth < 8 || boardWrap.clientHeight < 8) return;
   const maxSl = Math.max(0, boardWrap.scrollWidth - boardWrap.clientWidth);
   const maxSt = Math.max(0, boardWrap.scrollHeight - boardWrap.clientHeight);
   boardWrap.scrollLeft = Math.round(maxSl / 2);
@@ -1094,6 +1132,7 @@ function centerBoardInView() {
 }
 
 function centerPieceCloudInView() {
+  if (!boardWrap || boardWrap.clientWidth < 8 || boardWrap.clientHeight < 8) return;
   const bounds = getPieceCloudBounds();
   if (!bounds) {
     centerBoardInView();
@@ -1102,7 +1141,36 @@ function centerPieceCloudInView() {
   centerBoardPointInView(bounds.cx, bounds.cy);
 }
 
+/** After loading overlay hides: wait for real wrap dimensions (iOS / in-app WebViews can report 0 briefly). */
+function scheduleMobilePieceFraming() {
+  if (!isMobileLike || !boardWrap) return;
+  const MIN = 40;
+  const MAX_TRIES = 20;
+  let tries = 0;
+  const step = () => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const w = boardWrap.clientWidth;
+        const h = boardWrap.clientHeight;
+        if (w >= MIN && h >= MIN) {
+          framePieceCloudInView();
+          return;
+        }
+        tries += 1;
+        if (tries < MAX_TRIES) {
+          setTimeout(step, 48);
+          return;
+        }
+        syncBoardScrollContentSize();
+        fitBoardToViewport();
+      });
+    });
+  };
+  step();
+}
+
 function framePieceCloudInView() {
+  if (!boardWrap || boardWrap.clientWidth < 32 || boardWrap.clientHeight < 32) return;
   const bounds = getPieceCloudBounds();
   if (!bounds) {
     centerBoardInView();
@@ -1126,6 +1194,7 @@ function framePieceCloudInView() {
 }
 
 function centerBoardPointInView(cx, cy) {
+  if (!boardWrap || boardWrap.clientWidth < 8 || boardWrap.clientHeight < 8) return;
   const targetLeft = board.offsetLeft + cx * scale - boardWrap.clientWidth / 2;
   const targetTop = board.offsetTop + cy * scale - boardWrap.clientHeight / 2;
 
@@ -1186,6 +1255,7 @@ function getPieceCloudBounds() {
 }
 
 function fitBoardToViewport() {
+  if (!boardWrap || boardWrap.clientWidth < 8 || boardWrap.clientHeight < 8) return;
   const gutter = BOARD_SCROLL_PADDING * 2;
   const fit = Math.min(
     1,
@@ -1481,8 +1551,29 @@ function setupViewportControls() {
   });
 
   window.addEventListener('resize', () => {
+    syncBoardScrollContentSize();
     if (scale <= 1.05) fitBoardToViewport();
   });
+
+  const vv = window.visualViewport;
+  if (vv) {
+    let vvTimer = null;
+    vv.addEventListener('resize', () => {
+      if (vvTimer) clearTimeout(vvTimer);
+      vvTimer = setTimeout(() => {
+        syncBoardScrollContentSize();
+        if (pieceEls?.length) centerPieceCloudInView();
+      }, 120);
+    });
+  }
+
+  window.addEventListener('orientationchange', () => {
+    window.setTimeout(() => {
+      syncBoardScrollContentSize();
+      if (pieceEls?.length) framePieceCloudInView();
+    }, 380);
+  });
+
   updateZoomControls();
 }
 
@@ -1807,7 +1898,7 @@ function setupQualityMode() {
   if (!qualityBtn) return;
   if (!isMobileLike) {
     highQualityMode = false;
-    localStorage.setItem('jt-high-quality', '0');
+    safeLocalSet('jt-high-quality', '0');
     qualityBtn.style.display = 'none';
     return;
   }
@@ -1821,7 +1912,7 @@ function setupQualityMode() {
 
   qualityBtn.addEventListener('click', () => {
     highQualityMode = !highQualityMode;
-    localStorage.setItem('jt-high-quality', highQualityMode ? '1' : '0');
+    safeLocalSet('jt-high-quality', highQualityMode ? '1' : '0');
     applyState();
     // Piece textures are generated at load time, so refresh to rebuild.
     location.reload();
@@ -2115,9 +2206,17 @@ function loadImage(src) {
 }
 
 function getOrCreatePlayerId() {
-  let id = sessionStorage.getItem('playerId');
-  if (!id) { id = crypto.randomUUID(); sessionStorage.setItem('playerId', id); }
-  return id;
+  try {
+    let id = sessionStorage.getItem('playerId');
+    if (!id) {
+      id = crypto.randomUUID();
+      sessionStorage.setItem('playerId', id);
+    }
+    return id;
+  } catch (_) {
+    if (!fallbackPlayerId) fallbackPlayerId = crypto.randomUUID();
+    return fallbackPlayerId;
+  }
 }
 
 window.addEventListener('beforeunload', () => {
