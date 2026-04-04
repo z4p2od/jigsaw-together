@@ -146,6 +146,8 @@ let chatUnread    = 0;
 let chatOpen      = false;
 const lastPlayerPos = {}; // playerId → { x, y } last known board position
 let startedAt     = null;
+const isCoarsePointer = window.matchMedia?.('(pointer: coarse)')?.matches ?? false;
+const isMobileLike = isCoarsePointer || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
 let highQualityMode = initHighQualityPreference();
 let pageTouchStart = null;
 const isLikelySafari = (() => {
@@ -190,8 +192,6 @@ const chatMessages    = document.getElementById('chat-messages');
 const chatInput       = document.getElementById('chat-input');
 const chatSendBtn     = document.getElementById('chat-send');
 const qualityBtn      = document.getElementById('quality-btn');
-const isCoarsePointer = window.matchMedia?.('(pointer: coarse)')?.matches ?? false;
-const isMobileLike = isCoarsePointer || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
