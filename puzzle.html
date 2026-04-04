@@ -132,7 +132,21 @@
       var hint = document.getElementById('in-app-hint');
       if (hint) hint.hidden = false;
     }
-    window.addEventListener('error', showModuleError);
+    // Do NOT call showModuleError on every window 'error' — cross-origin scripts,
+    // extensions, and benign resource failures fire here too and would lock everyone
+    // into "Could not load puzzle". Only surface failures tied to our core scripts.
+    var _ourScriptRe = /\/js\/(puzzle|firebase|jigsaw|feedback)\.js(\?|$)/i;
+    window.addEventListener('error', function (ev) {
+      var t = ev.target;
+      if (t && t.nodeName === 'SCRIPT' && t.src && _ourScriptRe.test(t.src)) {
+        showModuleError();
+        return;
+      }
+      var fn = ev.filename || '';
+      if (fn && _ourScriptRe.test(fn)) {
+        showModuleError();
+      }
+    });
     // Only trigger for unhandled rejections that occur while the puzzle is still
     // in its initial loading phase — gameplay rejections (Firebase writes, etc.)
     // happen after the overlay is gone and must not hijack the UI.
