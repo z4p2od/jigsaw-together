@@ -988,7 +988,7 @@ function attachDragListeners() {
 function onBoardPointerDownPickVs(e) {
   if (!e.isPrimary) return;
   if (e.pointerType !== 'touch' && e.pointerType !== 'pen') return;
-  onMouseDown({ clientX: e.clientX, clientY: e.clientY, target: e.target });
+  onMouseDown({ clientX: e.clientX, clientY: e.clientY, target: e.target, button: 0 });
   if (dragging) {
     e.preventDefault();
     suppressMouseDownPickUntil = Date.now() + 650;
@@ -1054,7 +1054,6 @@ function rotateAtIndex(index) {
 }
 
 function onMouseDown(e) {
-  if (e?.sourceCapabilities?.firesTouchEvents === true) return;
   if (Date.now() < suppressMouseDownPickUntil) return;
   let el;
   if (invertActive) {
@@ -1190,7 +1189,7 @@ function onTouchStart(e) {
   }
   const touch = e.touches[0];
   const root = touch.target?.nodeType === Node.TEXT_NODE ? touch.target.parentElement : touch.target;
-  onMouseDown({ clientX: touch.clientX, clientY: touch.clientY, target: root });
+  onMouseDown({ clientX: touch.clientX, clientY: touch.clientY, target: root, button: 0 });
   if (dragging) {
     e.preventDefault();
     suppressMouseDownPickUntil = Date.now() + 650;

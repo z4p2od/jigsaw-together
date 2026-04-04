@@ -701,6 +701,7 @@ function onBoardPointerDownPick(e) {
     clientX: e.clientX,
     clientY: e.clientY,
     target: e.target,
+    button: 0,
     isTouch: true,
   });
   if (dragging) {
@@ -715,8 +716,6 @@ function onBoardPointerDownPick(e) {
 function onMouseDown(e) {
   if (typeof e.button === 'number' && e.button !== 0) return;
   if (e.button === 0 && e.ctrlKey) return;
-  // Ignore compatibility mouse synthesized after touch (otherwise 2nd "click" steals the gesture).
-  if (!e?.isTouch && e?.sourceCapabilities?.firesTouchEvents === true) return;
   if (Date.now() < suppressMouseDownPickUntil) return;
   const el = resolvePiecePick(e.target, e.clientX, e.clientY);
 
@@ -839,10 +838,8 @@ async function onMouseUp(e) {
     if (pieceEls[i]) pieceEls[i].style.zIndex = '';
   });
 
-  // Desktop: plain click used to call addToHand — that put the piece in-hand (pointer-events: none),
-  // so the next click passed through and felt like "first tap dead, second works". Use Shift+click for hand.
   if (!locked) {
-    if (!e?.isTouch && !pieceGroup[anchorIndex] && e?.shiftKey) addToHand(anchorIndex);
+    if (!e?.isTouch && !pieceGroup[anchorIndex]) addToHand(anchorIndex);
     return;
   }
 
@@ -937,6 +934,7 @@ function onTouchStart(e) {
     clientX: touch.clientX,
     clientY: touch.clientY,
     target: root,
+    button: 0,
     isTouch: true,
   });
   if (dragging) {
@@ -1953,8 +1951,7 @@ function setupHelp() {
     { key: 'Drag',            desc: 'Move a piece or a connected group' },
     { key: 'Drop near edge',  desc: 'Pieces snap together automatically' },
     { key: 'Scroll / drag bg',desc: 'Pan the board' },
-    { key: 'Shift+click piece', desc: 'Pick up into hand (Shift+click again to deselect)' },
-    { key: 'Mobile hand',       desc: 'Tap and hold a piece to add to hand' },
+    { key: 'Click piece',     desc: 'Pick up into hand (tap again to deselect)' },
     { key: 'Dbl-click board', desc: 'Drop all hand pieces at that spot' },
   ];
   if (!isMobileLike) {
