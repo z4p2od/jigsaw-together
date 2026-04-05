@@ -648,6 +648,12 @@ body.puzzle-body {
   }
 }
 
+/* Co-op + VS puzzle play: custom open/closed hand cursors (fallback grab/grabbing) */
+.puzzle-page {
+  --jt-cursor-hand-open: url('/img/cursors/jt-hand-open.svg') 14 20, grab;
+  --jt-cursor-hand-closed: url('/img/cursors/jt-hand-closed.svg') 16 17, grabbing;
+}
+
 /* Board area */
 .puzzle-board-wrap {
   flex: 1;
@@ -671,7 +677,7 @@ body.puzzle-body {
   box-sizing: border-box;
 }
 .puzzle-board-wrap.panning {
-  cursor: grabbing;
+  cursor: var(--jt-cursor-hand-closed, grabbing);
 }
 
 /* Hide Vercel preview toolbar overlays in-app. */
@@ -694,13 +700,13 @@ iframe[src*="vercel.live"] {
   backface-visibility: hidden;
   /* Must match applyScale() math (zoom toward point uses top-left origin). */
   transform-origin: 0 0;
-  cursor: grab;
+  cursor: var(--jt-cursor-hand-open, grab);
 }
 
 /* Individual piece */
 .piece {
   position: absolute;
-  cursor: grab;
+  cursor: var(--jt-cursor-hand-open, grab);
   user-select: none;
   -webkit-user-drag: none;
   touch-action: none;
@@ -708,7 +714,7 @@ iframe[src*="vercel.live"] {
 
 .piece:hover { z-index: 10; }
 .piece.dragging {
-  cursor: grabbing;
+  cursor: var(--jt-cursor-hand-closed, grabbing);
   z-index: 1000;
   will-change: transform;
   filter: drop-shadow(0 8px 16px rgba(0,0,0,0.7));
@@ -718,6 +724,30 @@ iframe[src*="vercel.live"] {
   opacity: 0.25;
   filter: grayscale(0.5);
   pointer-events: none;
+}
+
+/* Click-to-pocket: brief open → gather → settle (no transform — pieces use inline transforms) */
+@keyframes jt-piece-pocket {
+  0% {
+    opacity: 1;
+    filter: brightness(1.06) drop-shadow(0 0 0 transparent);
+  }
+  28% {
+    opacity: 0.52;
+    filter: brightness(0.88) grayscale(0.12) drop-shadow(0 2px 10px rgba(255, 200, 120, 0.5));
+  }
+  55% {
+    opacity: 0.38;
+    filter: brightness(1.04) grayscale(0.28) drop-shadow(0 0 16px rgba(255, 215, 140, 0.4));
+  }
+  100% {
+    opacity: 0.25;
+    filter: grayscale(0.5);
+  }
+}
+
+.puzzle-page .piece.in-hand.pocket-pulse {
+  animation: jt-piece-pocket 0.45s ease forwards;
 }
 
 .piece.locked-by-other {

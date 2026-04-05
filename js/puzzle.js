@@ -1455,7 +1455,9 @@ function addToHand(index) {
   lockGroup(puzzleId, [index], playerId);
   pieceStates[index].lockedBy = playerId;
   hand.push(index);
-  pieceEls[index]?.classList.add('in-hand');
+  const el = pieceEls[index];
+  el?.classList.add('in-hand', 'pocket-pulse');
+  window.setTimeout(() => el?.classList.remove('pocket-pulse'), 500);
   const now = Date.now();
   handAddedAt[index] = now;
   lastAddToHandAt = now;
