@@ -1120,8 +1120,11 @@ function onMouseDown(e) {
   indices.forEach(i => {
     relOffsets[i] = { dx: pieceStates[i].x - anchorX, dy: pieceStates[i].y - anchorY };
   });
-  const rawX0 = (clientX - boardRect.left) / scale;
-  const rawY0 = (clientY - boardRect.top)  / scale;
+  const { clientX: px0, clientY: py0 } = invertActive
+    ? mirrorCoords(e.clientX, e.clientY)
+    : { clientX: e.clientX, clientY: e.clientY };
+  const rawX0 = (px0 - boardRect.left) / scale;
+  const rawY0 = (py0 - boardRect.top)  / scale;
   dragging = { indices, anchorIndex: index, relOffsets, locked: false,
     invertAnchorX: anchorX, invertAnchorY: anchorY, invertLastX: rawX0, invertLastY: rawY0 };
 }

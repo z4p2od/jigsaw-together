@@ -103,7 +103,7 @@ export default async function handler(req, res) {
     const pidRes   = await fetch(`${dbUrl}/puzzles/${id}/meta/imagePublicId.json?auth=${secret}`);
     const publicId = await pidRes.json();
     if (publicId) {
-      try { await deleteCloudinaryImage(publicId); } catch {}
+      try { await deleteCloudinaryImage(publicId); } catch { /* optional cleanup */ }
     }
 
     await fetch(`${dbUrl}/puzzles/${id}.json?auth=${secret}`, { method: 'DELETE' });

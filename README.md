@@ -41,7 +41,8 @@ A real-time multiplayer jigsaw puzzle app. Upload a photo, share a link, and sol
 ## Architecture
 
 ### Stack
-- **Frontend**: Vanilla JS (ES modules), single `style.css`, no build step
+- **Frontend**: Vanilla JS (ES modules), single `style.css`, **no production build** (ship `js/` as static files)
+- **Tooling**: npm **devDependencies** only — ESLint, Vitest, TypeScript (`npm run lint` / `npm test` / `npm run typecheck`); CI runs the same on `main`
 - **Backend**: Vercel serverless functions (`/api/*`)
 - **Database**: Firebase Realtime Database (client SDK via CDN)
 - **Images**: Cloudinary (upload, storage, CDN delivery)
@@ -50,6 +51,11 @@ A real-time multiplayer jigsaw puzzle app. Upload a photo, share a link, and sol
 ### File Structure
 
 ```
+├── package.json        Dev-only: ESLint, Vitest, TypeScript (no app bundle)
+├── eslint.config.js    Flat ESLint config for js/ + api/
+├── vitest.config.js    Unit tests (pure modules under test/)
+├── tsconfig.json       typecheck entry (types/ for now)
+│
 ├── index.html          Landing page (upload, POTD cards, VS entry)
 ├── puzzle.html         Co-op puzzle page
 ├── vs.html             VS mode game page
@@ -61,7 +67,9 @@ A real-time multiplayer jigsaw puzzle app. Upload a photo, share a link, and sol
 │   ├── vs.js           VS mode: lobby, countdown, split boards, rematch
 │   ├── vs-rooms.js     Open rooms list (live Firebase subscription)
 │   ├── firebase.js     All Firebase read/write helpers (single source of truth)
-│   └── jigsaw.js       Pure functions: edge generation, piece cutting (canvas)
+│   ├── jigsaw.js       Pure functions: edge generation, piece cutting (canvas)
+│   ├── mobile-quality.js  Texture / HQ heuristics (shared with puzzle paths)
+│   └── client-observe.js  Optional: POSTs errors to /api/client-error when configured
 │
 ├── css/
 │   └── style.css       All styles (dark theme, puzzle board, VS UI, chat)
@@ -69,6 +77,8 @@ A real-time multiplayer jigsaw puzzle app. Upload a photo, share a link, and sol
 ├── api/
 │   ├── config.js       Returns Firebase config from env vars (called by client)
 │   ├── cloudinary-config.js  Returns Cloudinary upload preset (called by client)
+│   ├── client-error.js Optional: receives truncated client error payloads (logs JSON line)
+│   ├── structured-log.js     JSON-per-line helper for function logs
 │   ├── potd.js         Cron: generates daily POTD puzzles, writes to Firebase
 │   ├── potd-play.js    Creates a private puzzle clone for each POTD player
 │   ├── vs-create.js    Creates a VS room (picks image, generates grid/edges/seed)
@@ -145,13 +155,26 @@ chat/{puzzleId}/{pushId}/  playerId, name, color, text, ts
 
 ## Local Development
 
-No build step. Serve the root directory with any static server and proxy `/api` to Vercel dev:
+**Production** does not run `npm run build`; Vercel should leave the project **build command empty** and deploy static files plus `api/` as today.
+
+Install dev tooling once:
+
+```bash
+npm install
+npm run lint
+npm test
+npm run typecheck
+```
+
+Serve the app with API routes:
 
 ```bash
 npx vercel dev
 ```
 
 Requires a `.env` file (or Vercel environment variables) with the vars above.
+
+**Client errors**: `puzzle.html` and `vs.html` set `window.__JT_CLIENT_ERROR_ENDPOINT = '/api/client-error'`, which logs a short JSON line per report in Vercel function logs (rate-limited on the client). Remove or override the global to disable.
 
 ---
 

@@ -336,7 +336,7 @@ async function createGithubPR(cfg, feedbackId, report, triage) {
   const filePath = `docs/feedback-fixes/${feedbackId}.md`;
   const content = buildFixBriefMarkdown(feedbackId, report);
 
-  const fileResp = await githubRequest(cfg, 'PUT', `/repos/${cfg.owner}/${cfg.repo}/contents/${filePath}`, {
+  await githubRequest(cfg, 'PUT', `/repos/${cfg.owner}/${cfg.repo}/contents/${filePath}`, {
     message: `Seed fix brief for feedback ${feedbackId}`,
     content: encodeBase64(content),
     branch: branchName,

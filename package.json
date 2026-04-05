@@ -1,0 +1,20 @@
+{
+  "name": "jigsaw-together",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lint": "eslint js api",
+    "lint:fix": "eslint js api --fix",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.21.0",
+    "eslint": "^9.21.0",
+    "eslint-plugin-n": "^17.15.1",
+    "globals": "^15.14.0",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
+}
