@@ -1949,6 +1949,20 @@ function clampHandFormationToBoard(pad, elW, elH) {
   }
 }
 
+/** Nudge so the outer bbox centroid sits on the drop point (re-applies clamp — fixes drift from edge fitting). */
+function snapHandFormationCentroidTo(targetX, targetY, pad, elW, elH) {
+  for (let pass = 0; pass < 5; pass++) {
+    const b = currentHandBoardBBox(pad, elW, elH);
+    const cx = (b.nMinX + b.nMaxX) / 2;
+    const cy = (b.nMinY + b.nMaxY) / 2;
+    const rdx = targetX - cx;
+    const rdy = targetY - cy;
+    if (Math.abs(rdx) < 0.4 && Math.abs(rdy) < 0.4) break;
+    shiftAllHandPieces(rdx, rdy);
+    clampHandFormationToBoard(pad, elW, elH);
+  }
+}
+
 /** Place each pocket slot as a tight row centered on the drop point (avoids huge gaps from board-space separation). */
 function applyPackedMultiSlotDrop(centerX, centerY, pad, elW, elH) {
   const slots = getHandPocketSlots();
@@ -1958,7 +1972,7 @@ function applyPackedMultiSlotDrop(centerX, centerY, pad, elW, elH) {
     if (!m) return false;
     slotBoxes.push({ slot, m });
   }
-  const sep = Math.max(10, elW * 0.2);
+  const sep = Math.max(8, elW * 0.12);
   const totalW = slotBoxes.reduce((sum, s, i) => sum + s.m.bw + (i ? sep : 0), 0);
   let leftEdge = centerX - totalW / 2;
   for (const { slot, m } of slotBoxes) {
@@ -1974,6 +1988,7 @@ function applyPackedMultiSlotDrop(centerX, centerY, pad, elW, elH) {
     leftEdge += m.bw + sep;
   }
   clampHandFormationToBoard(pad, elW, elH);
+  snapHandFormationCentroidTo(centerX, centerY, pad, elW, elH);
   return true;
 }
 
@@ -2070,6 +2085,7 @@ function dropHandAt(clientX, clientY) {
       p.y += dy;
       movePieceEl(idx, p.x, p.y);
     }
+    snapHandFormationCentroidTo(centerX, centerY, pad, elW, elH);
     finalizeRigidDrop();
     return;
   }
@@ -2093,9 +2109,12 @@ function dropHandAt(clientX, clientY) {
     pieceStates[idx].x = x;
     pieceStates[idx].y = y;
     movePieceEl(idx, x, y);
-    positions.push({ index: idx, x, y });
     pieceEls[idx]?.classList.remove('in-hand', 'pocket-pulse');
   });
+  if (elW > 0 && elH > 0) snapHandFormationCentroidTo(centerX, centerY, pad, elW, elH);
+  for (const idx of shuffled) {
+    positions.push({ index: idx, x: pieceStates[idx].x, y: pieceStates[idx].y });
+  }
   updateGroupPosition(puzzleId, positions);
   unlockGroup(puzzleId, shuffled);
   shuffled.forEach(i => { pieceStates[i].lockedBy = null; });
