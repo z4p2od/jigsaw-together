@@ -1243,6 +1243,17 @@ function zoomAnchorFromClient(clientX, clientY) {
   return { anchorClientX: x, anchorClientY: y };
 }
 
+/** Viewport → board inner coords (same space as piece x,y). Clamps to the board’s painted rect so wrap padding / missed clicks don’t skew the drop point. */
+function clientToBoardPoint(clientX, clientY) {
+  const br = board.getBoundingClientRect();
+  const ax = Math.max(br.left, Math.min(br.right - 1e-4, clientX));
+  const ay = Math.max(br.top, Math.min(br.bottom - 1e-4, clientY));
+  return {
+    x: (ax - br.left) / scale,
+    y: (ay - br.top) / scale,
+  };
+}
+
 function applyScale(s, opts = {}) {
   const next = clampScale(s);
   if (!Number.isFinite(next)) return;
@@ -2000,47 +2011,15 @@ function snapHandFormationCentroidTo(targetX, targetY, pad, elW, elH) {
   }
 }
 
-/** Place each pocket slot as a tight row centered on the drop point (avoids huge gaps from board-space separation). */
-function applyPackedMultiSlotDrop(centerX, centerY, pad, elW, elH) {
-  const slots = getHandPocketSlots();
-  const slotBoxes = [];
-  for (const slot of slots) {
-    const m = layoutMetaForHandIndices(slot, 1e6, 1e6);
-    if (!m) return false;
-    slotBoxes.push({ slot, m });
-  }
-  const sep = Math.max(8, elW * 0.12);
-  const totalW = slotBoxes.reduce((sum, s, i) => sum + s.m.bw + (i ? sep : 0), 0);
-  let leftEdge = centerX - totalW / 2;
-  for (const { slot, m } of slotBoxes) {
-    const dx = leftEdge - m.minX;
-    const slotCy = m.minY + m.bh / 2;
-    const dy = centerY - slotCy;
-    for (const idx of slot) {
-      const p = pieceStates[idx];
-      p.x += dx;
-      p.y += dy;
-      movePieceEl(idx, p.x, p.y);
-    }
-    leftEdge += m.bw + sep;
-  }
-  clampHandFormationToBoard(pad, elW, elH);
-  snapHandFormationCentroidTo(centerX, centerY, pad, elW, elH);
-  return true;
-}
-
 function dropHandAt(clientX, clientY) {
   if (hand.length === 0) return;
   clearAllHandSlotTimers();
-  const r = board.getBoundingClientRect();
-  const centerX = (clientX - r.left) / scale;
-  const centerY = (clientY - r.top) / scale;
+  const { x: centerX, y: centerY } = clientToBoardPoint(clientX, clientY);
 
   const pad = meta?._pad ?? 0;
   const elW = (meta?._displayW ?? 0) + pad * 2;
   const elH = (meta?._displayH ?? 0) + pad * 2;
   const handIndices = [...hand];
-  const slots = getHandPocketSlots();
 
   const finalizeRigidDrop = () => {
     handIndices.forEach(idx => pocketHomeByIndex.delete(idx));
@@ -2060,11 +2039,6 @@ function dropHandAt(clientX, clientY) {
     renderHand();
     syncBoardScrollContentSize();
   };
-
-  if (elW > 0 && elH > 0 && slots.length > 1 && applyPackedMultiSlotDrop(centerX, centerY, pad, elW, elH)) {
-    finalizeRigidDrop();
-    return;
-  }
 
   const pocketLayout = getHandPocketLayoutMeta();
   const bboxAfterDelta = (dx, dy) => {

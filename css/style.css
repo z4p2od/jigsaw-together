@@ -706,6 +706,8 @@ iframe[src*="vercel.live"] {
   /* Must match applyScale() math (zoom toward point uses top-left origin). */
   transform-origin: 0 0;
   cursor: grab;
+  /* Subtle edge: pocket drop / clamp uses BOARD_W×H — matches what you see. */
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.28);
 }
 
 /* Individual piece */
