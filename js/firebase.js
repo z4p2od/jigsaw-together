@@ -177,6 +177,20 @@ export function unlockGroup(puzzleId, indices) {
 }
 
 /**
+ * Write x, y, rotation when releasing from pocket back to pre-pocket positions (not throttled).
+ * entries: [{ index, x, y, rotation }, ...]
+ */
+export function writePocketRestoreStates(puzzleId, entries) {
+  const flat = {};
+  entries.forEach(({ index, x, y, rotation }) => {
+    flat[`${index}/x`] = x;
+    flat[`${index}/y`] = y;
+    flat[`${index}/rotation`] = rotation;
+  });
+  return update(ref(_db, `puzzles/${puzzleId}/pieces`), flat);
+}
+
+/**
  * Write snapped positions and clear locks in one atomic batch.
  * positions = [{ index, x, y }, ...]
  */

@@ -5,6 +5,7 @@ import {
   lockGroup,
   unlockGroup,
   updateGroupPosition,
+  writePocketRestoreStates,
   writeSnappedPositions,
   solveGroup,
   onPiecesChanged,
@@ -151,6 +152,8 @@ let suppressMouseDownPickUntil = 0;
 /** Avoid duplicate resize / visualViewport listeners from setupViewportControls. */
 let boardViewportListenersAttached = false;
 let hand = [];           // indices of pieces currently in the player's hand
+/** index → { x, y, rotation } when piece entered pocket; restored on timer / tap / remote bump (not on dbl-click drop). */
+const pocketHomeByIndex = new Map();
 let lastAddToHandAt = 0;
 let handContainer = null;
 /** Per logical pocket slot: `g:<groupId>` or `s:<pieceIndex>` → auto-release wall time. */
@@ -1705,6 +1708,27 @@ function syncHandSlotTimers() {
   }
 }
 
+/** Apply saved pre-pocket positions; returns entries for Firebase (only indices that had a snapshot). */
+function restorePocketHomeLocal(indices) {
+  const entries = [];
+  for (const i of indices) {
+    const home = pocketHomeByIndex.get(i);
+    if (!home) continue;
+    pieceStates[i].x = home.x;
+    pieceStates[i].y = home.y;
+    pieceStates[i].rotation = home.rotation;
+    movePieceEl(i, home.x, home.y);
+    pocketHomeByIndex.delete(i);
+    entries.push({
+      index: i,
+      x: home.x,
+      y: home.y,
+      rotation: home.rotation,
+    });
+  }
+  return entries;
+}
+
 /** Put pocketed pieces back on the board (one block / whole hand). */
 function releaseAllFromPocket() {
   clearAllHandSlotTimers();
@@ -1718,6 +1742,8 @@ function releaseAllFromPocket() {
     pieceEls[i]?.classList.remove('in-hand', 'pocket-pulse');
     pieceStates[i].lockedBy = null;
   }
+  const restored = restorePocketHomeLocal(idx);
+  if (restored.length) writePocketRestoreStates(puzzleId, restored);
   unlockGroup(puzzleId, idx);
   for (const i of idx) {
     if (Number.isFinite(pieceStates[i].x) && Number.isFinite(pieceStates[i].y)) {
@@ -1737,6 +1763,8 @@ function releasePocketIndicesOnly(indices) {
     pieceEls[i]?.classList.remove('in-hand', 'pocket-pulse');
     pieceStates[i].lockedBy = null;
   }
+  const restored = restorePocketHomeLocal(uniq);
+  if (restored.length) writePocketRestoreStates(puzzleId, restored);
   unlockGroup(puzzleId, uniq);
   uniq.forEach(i => {
     if (Number.isFinite(pieceStates[i].x) && Number.isFinite(pieceStates[i].y)) {
@@ -1863,7 +1891,14 @@ function addToHand(index) {
   lastAddToHandAt = now;
 
   for (const i of indices) {
-    if (!hand.includes(i)) hand.push(i);
+    if (!hand.includes(i)) {
+      pocketHomeByIndex.set(i, {
+        x: pieceStates[i].x,
+        y: pieceStates[i].y,
+        rotation: normalizeRotationDeg(pieceStates[i].rotation ?? 0),
+      });
+      hand.push(i);
+    }
     pieceStates[i].lockedBy = playerId;
     const el = pieceEls[i];
     el?.classList.add('in-hand', 'pocket-pulse');
@@ -1889,6 +1924,8 @@ function removeFromHandSilent(index) {
     hand = hand.filter(h => h !== i);
     pieceEls[i]?.classList.remove('in-hand', 'pocket-pulse');
   }
+  const restored = restorePocketHomeLocal(toRemove);
+  if (restored.length) writePocketRestoreStates(puzzleId, restored);
   for (const i of toRemove) {
     if (Number.isFinite(pieceStates[i].x) && Number.isFinite(pieceStates[i].y)) {
       refreshPieceTransformAfterPocket(i);
@@ -2006,6 +2043,7 @@ function dropHandAt(clientX, clientY) {
   const slots = getHandPocketSlots();
 
   const finalizeRigidDrop = () => {
+    handIndices.forEach(idx => pocketHomeByIndex.delete(idx));
     const positions = handIndices.map(idx => ({
       index: idx,
       x: pieceStates[idx].x,
@@ -2112,6 +2150,7 @@ function dropHandAt(clientX, clientY) {
     pieceEls[idx]?.classList.remove('in-hand', 'pocket-pulse');
   });
   if (elW > 0 && elH > 0) snapHandFormationCentroidTo(centerX, centerY, pad, elW, elH);
+  shuffled.forEach(idx => pocketHomeByIndex.delete(idx));
   for (const idx of shuffled) {
     positions.push({ index: idx, x: pieceStates[idx].x, y: pieceStates[idx].y });
   }
@@ -2458,7 +2497,13 @@ function applyRemoteUpdate(index, data) {
   const lockedBy = Object.prototype.hasOwnProperty.call(data, 'lockedBy')
     ? data.lockedBy
     : null;  // field was deleted (null-write) → piece is unlocked
-  const incoming = { ...data, lockedBy };
+  let patch = { ...data };
+  if (hand.includes(index) && pieceStates[index]?.lockedBy === playerId) {
+    delete patch.x;
+    delete patch.y;
+    delete patch.rotation;
+  }
+  const incoming = { ...patch, lockedBy };
   if (
     incoming.lockedBy === playerId
     && !dragging?.indices.includes(index)
@@ -2477,11 +2522,11 @@ function applyRemoteUpdate(index, data) {
     removeFromHandSilent(index);
   }
 
-  if (Number.isFinite(data.x) && Number.isFinite(data.y)) {
-    movePieceEl(index, data.x, data.y);
-  } else if (Object.prototype.hasOwnProperty.call(data, 'rotation')) {
-    const p = pieceStates[index];
-    if (Number.isFinite(p.x) && Number.isFinite(p.y)) movePieceEl(index, p.x, p.y);
+  const pAfter = pieceStates[index];
+  if (Number.isFinite(pAfter.x) && Number.isFinite(pAfter.y)) {
+    movePieceEl(index, pAfter.x, pAfter.y);
+  } else if (Object.prototype.hasOwnProperty.call(patch, 'rotation')) {
+    if (Number.isFinite(pAfter.x) && Number.isFinite(pAfter.y)) movePieceEl(index, pAfter.x, pAfter.y);
   }
 
   // If this piece just joined a group (from another player's snap), merge locally
