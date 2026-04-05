@@ -158,6 +158,8 @@ let handContainer = null;
 /** Timeouts for native grab/grabbing cursor phases (pocket + drag release). */
 let handCursorSeqTimerIds = [];
 const HAND_RELEASE_MS = 15000;
+/** Merged groups larger than this cannot go in the pocket (keep big assemblies on the board). */
+const POCKET_MAX_GROUP_PIECES = 5;
 const forceReleaseState = {}; // index → { count, lastTime }
 let lastEmptyTap = { time: 0, x: 0, y: 0 };
 const TOUCH_HOLD_MS = 280;
@@ -850,7 +852,7 @@ async function onMouseUp(e) {
   });
 
   if (!locked) {
-    if (!pieceGroup[anchorIndex]) addToHand(anchorIndex);
+    addToHand(anchorIndex);
     return;
   }
 
@@ -1548,6 +1550,24 @@ function onViewportPanStart(e) {
 
 // ── Hand (multi-select) system ─────────────────────────────────────────────
 
+function getPocketIndicesForPiece(index) {
+  if (!pieceStates[index] || pieceStates[index].solved) return null;
+  const gid = pieceGroup[index];
+  if (!gid) return [index];
+  const arr = [...groups[gid]];
+  if (arr.length > POCKET_MAX_GROUP_PIECES) return null;
+  return arr;
+}
+
+/** All hand indices that belong to the same merged group as `index` (or just [index] if single). */
+function handIndicesCoPocketed(index) {
+  const gid = pieceGroup[index];
+  if (!gid) return [index];
+  const members = groups[gid];
+  if (!members) return [index];
+  return hand.filter(i => members.has(i));
+}
+
 function createHandContainer() {
   const el = document.createElement('div');
   el.id = 'piece-hand';
@@ -1557,23 +1577,45 @@ function createHandContainer() {
 }
 
 function addToHand(index) {
-  if (hand.includes(index)) { removeFromHand(index); return; }
-  if (pieceStates[index].solved) return;
-  if (pieceGroup[index]) return;
+  const gid = pieceGroup[index];
+  if (gid && groups[gid].size > POCKET_MAX_GROUP_PIECES) {
+    showPocketGroupTooBigToast();
+    return;
+  }
 
-  lockGroup(puzzleId, [index], playerId);
-  pieceStates[index].lockedBy = playerId;
-  hand.push(index);
-  const el = pieceEls[index];
-  el?.classList.add('in-hand', 'pocket-pulse');
-  window.setTimeout(() => el?.classList.remove('pocket-pulse'), 500);
+  const indices = getPocketIndicesForPiece(index);
+  if (!indices) return;
+
+  if (indices.some(i => pieceStates[i].lockedBy && pieceStates[i].lockedBy !== playerId)) return;
+
+  if (indices.every(i => hand.includes(i))) {
+    removeFromHand(index);
+    return;
+  }
+
+  // Pocketing a merged group replaces the whole hand; singles can still stack one-by-one.
+  if (indices.length > 1) {
+    const outsiders = hand.filter(hIdx => !indices.includes(hIdx));
+    if (outsiders.length) outsiders.forEach(i => removeFromHand(i));
+  }
+
+  lockGroup(puzzleId, indices, playerId);
+
   const now = Date.now();
-  handAddedAt[index] = now;
   lastAddToHandAt = now;
 
-  handTimers[index] = setTimeout(() => {
-    if (hand.includes(index)) removeFromHand(index);
-  }, HAND_RELEASE_MS);
+  for (const i of indices) {
+    if (!hand.includes(i)) hand.push(i);
+    pieceStates[i].lockedBy = playerId;
+    const el = pieceEls[i];
+    el?.classList.add('in-hand', 'pocket-pulse');
+    window.setTimeout(() => el?.classList.remove('pocket-pulse'), 500);
+    clearTimeout(handTimers[i]);
+    handAddedAt[i] = now;
+    handTimers[i] = setTimeout(() => {
+      if (hand.includes(i)) removeFromHand(i);
+    }, HAND_RELEASE_MS);
+  }
 
   renderHand();
   runPocketHandCursorSequence();
@@ -1584,22 +1626,28 @@ function addToHand(index) {
 }
 
 function removeFromHand(index) {
-  hand = hand.filter(i => i !== index);
-  clearTimeout(handTimers[index]);
-  delete handTimers[index];
-  delete handAddedAt[index];
-  pieceEls[index]?.classList.remove('in-hand');
-  unlockGroup(puzzleId, [index]);
-  pieceStates[index].lockedBy = null;
+  const toRemove = handIndicesCoPocketed(index);
+  for (const i of toRemove) {
+    hand = hand.filter(h => h !== i);
+    clearTimeout(handTimers[i]);
+    delete handTimers[i];
+    delete handAddedAt[i];
+    pieceEls[i]?.classList.remove('in-hand');
+    pieceStates[i].lockedBy = null;
+  }
+  if (toRemove.length) unlockGroup(puzzleId, toRemove);
   renderHand();
 }
 
 function removeFromHandSilent(index) {
-  hand = hand.filter(i => i !== index);
-  clearTimeout(handTimers[index]);
-  delete handTimers[index];
-  delete handAddedAt[index];
-  pieceEls[index]?.classList.remove('in-hand');
+  const toRemove = handIndicesCoPocketed(index);
+  for (const i of toRemove) {
+    hand = hand.filter(h => h !== i);
+    clearTimeout(handTimers[i]);
+    delete handTimers[i];
+    delete handAddedAt[i];
+    pieceEls[i]?.classList.remove('in-hand');
+  }
   renderHand();
 }
 
@@ -1755,6 +1803,15 @@ function showForceReleaseToast() {
   t.textContent = 'Piece released!';
   document.body.appendChild(t);
   setTimeout(() => t.remove(), 2000);
+}
+
+function showPocketGroupTooBigToast() {
+  const t = document.createElement('div');
+  t.className = 'powerup-toast';
+  t.style.background = 'var(--surface2)';
+  t.textContent = `Pocket fits up to ${POCKET_MAX_GROUP_PIECES} connected pieces — split the group or drag it.`;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3200);
 }
 
 function setupViewportControls() {
@@ -2074,7 +2131,7 @@ function setupHelp() {
     { key: 'Drag',            desc: 'Move a piece or a connected group' },
     { key: 'Drop near edge',  desc: 'Pieces snap together automatically' },
     { key: 'Scroll / drag bg',desc: 'Pan the board' },
-    { key: 'Click piece',     desc: 'Pick up into hand (tap again to deselect)' },
+    { key: 'Click piece',     desc: `Pick up into pocket — singles or merged groups up to ${POCKET_MAX_GROUP_PIECES} pieces (tap again to deselect)` },
     { key: 'Dbl-click board', desc: 'Drop all hand pieces at that spot' },
   ];
   if (!isMobileLike) {
