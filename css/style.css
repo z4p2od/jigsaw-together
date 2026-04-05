@@ -787,6 +787,17 @@ iframe[src*="vercel.live"] {
   box-shadow: 0 0 10px rgba(255, 222, 120, 0.18);
   max-width: min(92vw, 280px);
   overflow: visible;
+  /* Fixed tray must not steal pointer events from the board in the same screen area. */
+  pointer-events: none;
+}
+
+.hand-pocket-slots-row {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 8px;
 }
 
 .hand-block-wrap {
@@ -794,6 +805,19 @@ iframe[src*="vercel.live"] {
   cursor: pointer;
   flex-shrink: 0;
   transition: transform 0.12s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: auto;
+}
+
+.hand-block-wrap .hand-pocket-slots-row {
+  align-self: center;
+}
+
+.hand-block-wrap .hand-block-timer-track {
+  align-self: stretch;
+  width: 100%;
 }
 
 .hand-block-wrap:hover {

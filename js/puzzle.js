@@ -162,6 +162,9 @@ const HAND_RELEASE_MS = 15000;
 /** Max size (px) of the composite pocket preview. */
 const HAND_BLOCK_MAX_W = 136;
 const HAND_BLOCK_MAX_H = 100;
+/** When the pocket holds multiple entries (merged group + loose singles), each slot preview uses this cap. */
+const HAND_BLOCK_SLOT_MAX_W = 104;
+const HAND_BLOCK_SLOT_MAX_H = 76;
 /** Merged groups larger than this cannot go in the pocket (keep big assemblies on the board). */
 const POCKET_MAX_GROUP_PIECES = 5;
 const forceReleaseState = {}; // index → { count, lastTime }
@@ -1593,6 +1596,26 @@ function handIndicesCoPocketed(index) {
   return hand.filter(i => members.has(i));
 }
 
+/** One slot per merged group in the pocket, plus one per loose single (order follows `hand`). */
+function getHandPocketSlots() {
+  const seenG = new Set();
+  /** @type {number[][]} */
+  const slots = [];
+  for (const i of hand) {
+    const gid = pieceGroup[i];
+    if (gid != null && groups[gid]) {
+      if (seenG.has(gid)) continue;
+      seenG.add(gid);
+      const members = [...groups[gid]].filter(idx => hand.includes(idx));
+      if (members.length) slots.push(members);
+      else slots.push([i]);
+    } else {
+      slots.push([i]);
+    }
+  }
+  return slots;
+}
+
 function createHandContainer() {
   const el = document.createElement('div');
   el.id = 'piece-hand';
@@ -1672,19 +1695,19 @@ function pieceDrawOrderZ(index) {
   return z;
 }
 
-function getHandPocketLayoutMeta() {
-  if (!hand.length || !meta) return null;
+function layoutMetaForHandIndices(indices, maxW, maxH) {
+  if (!indices.length || !meta) return null;
   const pad = meta._pad ?? 0;
   const dw = meta.displayW ?? 0;
   const dh = meta.displayH ?? 0;
   const elW = dw + pad * 2;
   const elH = dh + pad * 2;
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const i of hand) {
-    const x = pieceStates[i].x;
-    const y = pieceStates[i].y;
-    const left = x - pad;
-    const top = y - pad;
+  for (const i of indices) {
+    const p = pieceStates[i];
+    if (!p) continue;
+    const left = p.x - pad;
+    const top = p.y - pad;
     minX = Math.min(minX, left);
     minY = Math.min(minY, top);
     maxX = Math.max(maxX, left + elW);
@@ -1693,8 +1716,54 @@ function getHandPocketLayoutMeta() {
   const bw = maxX - minX;
   const bh = maxY - minY;
   if (!(bw > 0) || !(bh > 0)) return null;
-  const k = Math.min(HAND_BLOCK_MAX_W / bw, HAND_BLOCK_MAX_H / bh, 2.5);
+  const k = Math.min(maxW / bw, maxH / bh, 2.5);
   return { minX, minY, bw, bh, k, elW, elH, pad };
+}
+
+/** Union bbox of all pocketed pieces (board coords) — used for rigid drop, not preview pixels. */
+function getHandPocketLayoutMeta() {
+  return layoutMetaForHandIndices(hand, HAND_BLOCK_MAX_W, HAND_BLOCK_MAX_H);
+}
+
+function buildHandSlotPreviewElement(slotIndices, maxW, maxH) {
+  const layout = layoutMetaForHandIndices(slotIndices, maxW, maxH);
+  const preview = document.createElement('div');
+  preview.className = 'hand-block-preview';
+  if (layout) {
+    const { minX, minY, bw, bh, k, elW, elH, pad } = layout;
+    const pw = Math.max(1, Math.round(bw * k));
+    const ph = Math.max(1, Math.round(bh * k));
+    preview.style.width = pw + 'px';
+    preview.style.height = ph + 'px';
+
+    const ordered = [...slotIndices].sort((a, b) => pieceDrawOrderZ(a) - pieceDrawOrderZ(b));
+    for (const index of ordered) {
+      const src = pieceEls[index]?.src;
+      if (!src) continue;
+      const img = document.createElement('img');
+      img.src = src;
+      img.className = 'hand-block-piece-img';
+      img.draggable = false;
+      const p = pieceStates[index];
+      const left = (p.x - pad - minX) * k;
+      const top = (p.y - pad - minY) * k;
+      const w = elW * k;
+      const h = elH * k;
+      img.style.left = `${left}px`;
+      img.style.top = `${top}px`;
+      img.style.width = `${w}px`;
+      img.style.height = `${h}px`;
+      const rot = normalizeRotationDeg(p.rotation);
+      img.style.transformOrigin = 'center center';
+      img.style.transform = rot ? `rotate(${rot}deg)` : '';
+      preview.appendChild(img);
+    }
+  } else {
+    preview.style.width = '64px';
+    preview.style.height = '64px';
+    preview.style.background = 'rgba(255,255,255,0.06)';
+  }
+  return preview;
 }
 
 function addToHand(index) {
@@ -1935,43 +2004,21 @@ function renderHand() {
   wrap.className = 'hand-block-wrap';
   wrap.title = 'Tap to put pieces back on the board';
 
-  const layout = getHandPocketLayoutMeta();
-  const preview = document.createElement('div');
-  preview.className = 'hand-block-preview';
+  const slots = getHandPocketSlots();
+  const multi = slots.length > 1;
+  const slotMaxW = multi ? HAND_BLOCK_SLOT_MAX_W : HAND_BLOCK_MAX_W;
+  const slotMaxH = multi ? HAND_BLOCK_SLOT_MAX_H : HAND_BLOCK_MAX_H;
 
-  if (layout) {
-    const { minX, minY, bw, bh, k, elW, elH, pad } = layout;
-    const pw = Math.max(1, Math.round(bw * k));
-    const ph = Math.max(1, Math.round(bh * k));
-    preview.style.width = pw + 'px';
-    preview.style.height = ph + 'px';
-
-    const ordered = [...hand].sort((a, b) => pieceDrawOrderZ(a) - pieceDrawOrderZ(b));
-    for (const index of ordered) {
-      const src = pieceEls[index]?.src;
-      if (!src) continue;
-      const img = document.createElement('img');
-      img.src = src;
-      img.className = 'hand-block-piece-img';
-      img.draggable = false;
-      const p = pieceStates[index];
-      const left = (p.x - pad - minX) * k;
-      const top = (p.y - pad - minY) * k;
-      const w = elW * k;
-      const h = elH * k;
-      img.style.left = `${left}px`;
-      img.style.top = `${top}px`;
-      img.style.width = `${w}px`;
-      img.style.height = `${h}px`;
-      const rot = normalizeRotationDeg(p.rotation);
-      img.style.transformOrigin = 'center center';
-      img.style.transform = rot ? `rotate(${rot}deg)` : '';
-      preview.appendChild(img);
+  if (multi) {
+    const row = document.createElement('div');
+    row.className = 'hand-pocket-slots-row';
+    for (const slot of slots) {
+      row.appendChild(buildHandSlotPreviewElement(slot, slotMaxW, slotMaxH));
     }
+    wrap.appendChild(row);
   } else {
-    preview.style.width = '64px';
-    preview.style.height = '64px';
-    preview.style.background = 'rgba(255,255,255,0.06)';
+    const only = slots[0] ?? hand;
+    wrap.appendChild(buildHandSlotPreviewElement(only, HAND_BLOCK_MAX_W, HAND_BLOCK_MAX_H));
   }
 
   const now = Date.now();
@@ -1986,7 +2033,6 @@ function renderHand() {
   timer.style.transition = 'none';
   timerTrack.appendChild(timer);
 
-  wrap.appendChild(preview);
   wrap.appendChild(timerTrack);
   requestAnimationFrame(() => {
     timer.style.transition = `width ${remaining}ms linear`;
