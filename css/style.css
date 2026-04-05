@@ -800,6 +800,19 @@ iframe[src*="vercel.live"] {
   gap: 8px;
 }
 
+.hand-pocket-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.hand-pocket-slot .hand-block-timer-track {
+  width: 100%;
+  margin-top: 0;
+}
+
 .hand-block-wrap {
   position: relative;
   cursor: pointer;
@@ -813,11 +826,6 @@ iframe[src*="vercel.live"] {
 
 .hand-block-wrap .hand-pocket-slots-row {
   align-self: center;
-}
-
-.hand-block-wrap .hand-block-timer-track {
-  align-self: stretch;
-  width: 100%;
 }
 
 .hand-block-wrap:hover {
