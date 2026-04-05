@@ -648,12 +648,6 @@ body.puzzle-body {
   }
 }
 
-/* Co-op + VS puzzle play: custom open/closed hand cursors (fallback grab/grabbing) */
-.puzzle-page {
-  --jt-cursor-hand-open: url('/img/cursors/jt-hand-open.svg') 14 20, grab;
-  --jt-cursor-hand-closed: url('/img/cursors/jt-hand-closed.svg') 16 17, grabbing;
-}
-
 /* Board area */
 .puzzle-board-wrap {
   flex: 1;
@@ -677,7 +671,7 @@ body.puzzle-body {
   box-sizing: border-box;
 }
 .puzzle-board-wrap.panning {
-  cursor: var(--jt-cursor-hand-closed, grabbing);
+  cursor: grabbing;
 }
 
 /* Hide Vercel preview toolbar overlays in-app. */
@@ -700,13 +694,13 @@ iframe[src*="vercel.live"] {
   backface-visibility: hidden;
   /* Must match applyScale() math (zoom toward point uses top-left origin). */
   transform-origin: 0 0;
-  cursor: var(--jt-cursor-hand-open, grab);
+  cursor: grab;
 }
 
 /* Individual piece */
 .piece {
   position: absolute;
-  cursor: var(--jt-cursor-hand-open, grab);
+  cursor: grab;
   user-select: none;
   -webkit-user-drag: none;
   touch-action: none;
@@ -714,7 +708,7 @@ iframe[src*="vercel.live"] {
 
 .piece:hover { z-index: 10; }
 .piece.dragging {
-  cursor: var(--jt-cursor-hand-closed, grabbing);
+  cursor: grabbing;
   z-index: 1000;
   will-change: transform;
   filter: drop-shadow(0 8px 16px rgba(0,0,0,0.7));
