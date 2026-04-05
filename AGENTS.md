@@ -49,3 +49,7 @@ The app requires 12 environment variables for full functionality (see `README.md
 4. **UI** — modals, chat, loading overlay, help copy
 
 Extract pure helpers into small modules first so Vitest can cover them without a browser harness.
+
+### Git workflow
+
+After finishing a user-requested change, **commit with a clear message and push to `origin/main`** unless they explicitly ask to wait or skip push.
