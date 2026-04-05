@@ -766,9 +766,11 @@ function movePieceEl(index, x, y, el) {
   const rot = pieceStates[index]?.rotation ?? 0;
   e.style.left = '0';
   e.style.top  = '0';
+  const tx = x - pad;
+  const ty = y - pad;
   e.style.transform = rot
-    ? `translate(${x - pad}px, ${y - pad}px) rotate(${rot}deg)`
-    : `translate(${x - pad}px, ${y - pad}px)`;
+    ? `translate3d(${tx}px,${ty}px,0) rotate(${rot}deg)`
+    : `translate3d(${tx}px,${ty}px,0)`;
   // Move powerup marker with piece
   if (!el && powerupMarkerEls[index]) {
     powerupMarkerEls[index].style.left = x + 'px';
@@ -863,9 +865,11 @@ function moveOppPieceEl(index, x, y, el) {
   const rot = oppPieceStates[index]?.rotation ?? 0;
   e.style.left = '0';
   e.style.top  = '0';
+  const tx = x - pad;
+  const ty = y - pad;
   e.style.transform = rot
-    ? `translate(${x - pad}px, ${y - pad}px) rotate(${rot}deg)`
-    : `translate(${x - pad}px, ${y - pad}px)`;
+    ? `translate3d(${tx}px,${ty}px,0) rotate(${rot}deg)`
+    : `translate3d(${tx}px,${ty}px,0)`;
 }
 
 function applyOppUpdate(allPieces) {

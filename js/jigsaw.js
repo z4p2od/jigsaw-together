@@ -152,9 +152,9 @@ export function cutPiece(img, col, row, pieceW, pieceH, displayW, displayH, edge
 
   const srcPadX = pad * pieceW / displayW;
   const srcPadY = pad * pieceH / displayH;
-  // Small source/destination bleed to avoid anti-aliased transparent seams
-  // at protruding tab tips on mobile Safari.
-  const bleedPx = 1;
+  // Extra bleed on high-DPR displays — 1px was not always enough on 3× iOS after downscale.
+  const dpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
+  const bleedPx = dpr >= 2 ? 2 : 1;
 
   drawJigsawPath(ctx, displayW, displayH, edges, pad);
   ctx.save();

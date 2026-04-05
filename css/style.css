@@ -702,7 +702,6 @@ iframe[src*="vercel.live"] {
   cursor: grab;
   user-select: none;
   -webkit-user-drag: none;
-  will-change: transform;
   touch-action: none;
 }
 
@@ -710,6 +709,7 @@ iframe[src*="vercel.live"] {
 .piece.dragging {
   cursor: grabbing;
   z-index: 1000;
+  will-change: transform;
   filter: drop-shadow(0 8px 16px rgba(0,0,0,0.7));
 }
 

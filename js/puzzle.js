@@ -560,6 +560,9 @@ function renderPiece(index, dataUrl, x, y, solved, elW, elH) {
 }
 
 function getTextureScale(total) {
+  const minSide = Math.min(window.screen?.width || 0, window.screen?.height || 0);
+  const narrowPhone = isMobileLike && minSide > 0 && minSide < 390;
+
   // Desktop: always use denser piece textures (HQ is always on); more RAM than phones.
   if (!isMobileLike) {
     const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
@@ -570,16 +573,18 @@ function getTextureScale(total) {
   }
   if (highQualityMode) {
     // HQ still needs per-puzzle caps to avoid canvas memory pressure on smaller phones.
-    const dpr = Math.min(window.devicePixelRatio || 1, 2.2);
-    if (total <= 40) return Math.max(1.2, Math.min(2.2, dpr));
-    if (total <= 120) return Math.max(1.15, Math.min(1.8, dpr * 0.95));
-    if (total <= 250) return Math.max(1.05, Math.min(1.35, dpr * 0.78));
+    // iPhone mini class: slightly lower ceilings than full-size phones.
+    const dprCap = narrowPhone ? 2.0 : 2.2;
+    const dpr = Math.min(window.devicePixelRatio || 1, dprCap);
+    if (total <= 40) return Math.max(narrowPhone ? 1.12 : 1.2, Math.min(dprCap, dpr));
+    if (total <= 120) return Math.max(narrowPhone ? 1.08 : 1.15, Math.min(narrowPhone ? 1.65 : 1.8, dpr * (narrowPhone ? 0.9 : 0.95)));
+    if (total <= 250) return Math.max(narrowPhone ? 1.0 : 1.05, Math.min(narrowPhone ? 1.22 : 1.35, dpr * (narrowPhone ? 0.72 : 0.78)));
     return 1;
   }
   // Improve sharpness on mobile/high-DPI while avoiding huge memory spikes.
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  if (total <= 40) return Math.max(1, dpr);
-  if (total <= 120) return Math.max(1, Math.min(1.7, dpr * 1.2));
+  if (total <= 40) return Math.max(narrowPhone ? 1.15 : 1, dpr);
+  if (total <= 120) return Math.max(narrowPhone ? 1.08 : 1, Math.min(1.7, dpr * 1.2));
   if (total <= 250) return Math.max(1, Math.min(1.45, dpr));
   return 1;
 }
@@ -606,11 +611,12 @@ function shouldAutoEnableHQ() {
   // Respect accessibility/perf preference first.
   if (reduceMotion) return false;
 
-  // Small phones (e.g. iPhone mini class) struggle more with HQ texture memory.
-  if (minScreenSide > 0 && minScreenSide < 390) return false;
-
   // iOS: prefer conservative gating, since Safari memory pressure is stricter.
   if (isIOS) {
+    // iPhone mini / narrow width: allow HQ by default with tighter texture caps in getTextureScale
+    // (avoids low-res seams); still require a reasonably capable SoC.
+    const narrow = minScreenSide > 0 && minScreenSide < 390;
+    if (narrow) return dpr >= 2 && cores >= 4;
     return dpr >= 3 && minScreenSide >= 390 && cores >= 6;
   }
 
@@ -630,9 +636,11 @@ function movePieceEl(index, x, y, el) {
   const rot = pieceStates[index]?.rotation ?? 0;
   e.style.left = '0';
   e.style.top  = '0';
+  const tx = x - pad;
+  const ty = y - pad;
   e.style.transform = rot
-    ? `translate(${x - pad}px, ${y - pad}px) rotate(${rot}deg)`
-    : `translate(${x - pad}px, ${y - pad}px)`;
+    ? `translate3d(${tx}px,${ty}px,0) rotate(${rot}deg)`
+    : `translate3d(${tx}px,${ty}px,0)`;
   if (!el) updateAvatarPosition(index); // el is only passed during initial render
 }
 
@@ -1102,6 +1110,19 @@ function clampScale(s) {
   return Math.min(SCALE_MAX, Math.max(SCALE_MIN, s));
 }
 
+/** iOS Safari: nudge fit scale so board edge length in device pixels is ~integer — reduces seam gaps. */
+function snapBoardScaleToDevicePixels(s, boundByHeight) {
+  if (!Number.isFinite(s) || s <= 0) return s;
+  const ua = navigator.userAgent || '';
+  if (!/iPhone|iPad|iPod/i.test(ua)) return s;
+  const dpr = Number(window.devicePixelRatio) || 1;
+  if (dpr < 2) return s;
+  const dim = boundByHeight ? BOARD_H : BOARD_W;
+  const deviceLen = dim * s * dpr;
+  const snapped = Math.max(1, Math.round(deviceLen));
+  return clampScale(snapped / (dim * dpr));
+}
+
 function updateBoardTransform() {
   const needsTranslate = Math.abs(boardTx) > 0.5 || Math.abs(boardTy) > 0.5;
   if (scale === 1 && !needsTranslate) {
@@ -1272,10 +1293,13 @@ function framePieceCloudInView() {
   const gutter = Math.max(24, BOARD_SCROLL_PADDING + 8);
   const vw = Math.max(1, boardWrap.clientWidth - gutter * 2);
   const vh = Math.max(1, boardWrap.clientHeight - gutter * 2);
-  const fitCloud = Math.min(vw / bounds.w, vh / bounds.h);
+  const wRatio = vw / bounds.w;
+  const hRatio = vh / bounds.h;
+  const fitCloud = Math.min(wRatio, hRatio);
   if (Number.isFinite(fitCloud) && fitCloud > 0) {
     // Use true fit on mobile so wide scatters remain reachable on smaller screens.
-    const targetScale = clampScale(fitCloud);
+    const boundByHeight = hRatio <= wRatio;
+    const targetScale = snapBoardScaleToDevicePixels(clampScale(fitCloud), boundByHeight);
     if (Math.abs(targetScale - scale) > 0.001) {
       applyScale(targetScale, zoomAnchorViewportCenter());
     }
@@ -1349,12 +1373,12 @@ function getPieceCloudBounds() {
 function fitBoardToViewport() {
   if (!boardWrap || boardWrap.clientWidth < 8 || boardWrap.clientHeight < 8) return;
   const gutter = BOARD_SCROLL_PADDING * 2;
-  const fit = Math.min(
-    1,
-    Math.max(0.01, (boardWrap.clientWidth - gutter) / BOARD_W),
-    Math.max(0.01, (boardWrap.clientHeight - gutter) / BOARD_H)
-  );
-  applyScale(clampScale(fit || 1));
+  const wFit = Math.max(0.01, (boardWrap.clientWidth - gutter) / BOARD_W);
+  const hFit = Math.max(0.01, (boardWrap.clientHeight - gutter) / BOARD_H);
+  const fit = Math.min(1, wFit, hFit);
+  const boundByHeight = hFit <= wFit;
+  const snapped = snapBoardScaleToDevicePixels(fit || 1, boundByHeight);
+  applyScale(clampScale(snapped));
   centerBoardInView();
   // #region agent log
   jtDbgLog({
@@ -1364,6 +1388,7 @@ function fitBoardToViewport() {
     message: 'fitBoardToViewport applied',
     data: {
       fit,
+      snapped,
       scale,
       clientW: boardWrap?.clientWidth || 0,
       clientH: boardWrap?.clientHeight || 0,
