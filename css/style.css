@@ -748,6 +748,18 @@ iframe[src*="vercel.live"] {
   cursor: not-allowed;
 }
 
+/* Scripted grab / release metaphor (puzzle.js toggles .jt-cursor-phase-* on .puzzle-page) */
+.puzzle-page.jt-cursor-phase-grab .puzzle-board-wrap,
+.puzzle-page.jt-cursor-phase-grab #puzzle-board,
+.puzzle-page.jt-cursor-phase-grab .piece:not(.in-hand):not(.locked-by-other) {
+  cursor: grab !important;
+}
+.puzzle-page.jt-cursor-phase-grabbing .puzzle-board-wrap,
+.puzzle-page.jt-cursor-phase-grabbing #puzzle-board,
+.puzzle-page.jt-cursor-phase-grabbing .piece:not(.in-hand):not(.locked-by-other) {
+  cursor: grabbing !important;
+}
+
 /* ── Hand container (multi-select) ── */
 
 .piece-hand {

@@ -140,6 +140,8 @@ let handTimers = {};     // index → setTimeout id for auto-release
 let handAddedAt = {};    // index → Date.now() when piece entered hand
 let lastAddToHandAt = 0;
 let handContainer = null;
+/** Timeouts for native grab/grabbing cursor phases (pocket + drag release). */
+let handCursorSeqTimerIds = [];
 const HAND_RELEASE_MS = 15000;
 const forceReleaseState = {}; // index → { count, lastTime }
 let lastEmptyTap = { time: 0, x: 0, y: 0 };
@@ -621,6 +623,43 @@ function resolvePiecePick(target, clientX, clientY) {
   return el;
 }
 
+function puzzlePlayRoot() {
+  return boardWrap?.closest('.puzzle-page') ?? null;
+}
+
+function clearHandCursorSequence() {
+  handCursorSeqTimerIds.forEach(id => clearTimeout(id));
+  handCursorSeqTimerIds = [];
+  puzzlePlayRoot()?.classList.remove('jt-cursor-phase-grab', 'jt-cursor-phase-grabbing');
+}
+
+function setHandCursorPhase(phase) {
+  const root = puzzlePlayRoot();
+  if (!root) return;
+  root.classList.remove('jt-cursor-phase-grab', 'jt-cursor-phase-grabbing');
+  if (phase === 'grab') root.classList.add('jt-cursor-phase-grab');
+  else if (phase === 'grabbing') root.classList.add('jt-cursor-phase-grabbing');
+}
+
+/** Click-to-pocket: open → closed → open (reach, grasp, release into pocket). */
+function runPocketHandCursorSequence() {
+  clearHandCursorSequence();
+  if (!puzzlePlayRoot()) return;
+  setHandCursorPhase('grab');
+  handCursorSeqTimerIds.push(window.setTimeout(() => setHandCursorPhase('grabbing'), 95));
+  handCursorSeqTimerIds.push(window.setTimeout(() => setHandCursorPhase('grab'), 230));
+  handCursorSeqTimerIds.push(window.setTimeout(() => clearHandCursorSequence(), 400));
+}
+
+/** After moving a piece: brief closed then open (let go). */
+function runReleaseHandCursorSequence() {
+  clearHandCursorSequence();
+  if (!puzzlePlayRoot()) return;
+  setHandCursorPhase('grabbing');
+  handCursorSeqTimerIds.push(window.setTimeout(() => setHandCursorPhase('grab'), 100));
+  handCursorSeqTimerIds.push(window.setTimeout(() => clearHandCursorSequence(), 300));
+}
+
 function attachDragListeners() {
   board.addEventListener('mousedown',   onMouseDown);
   // Touch/pen: pointerdown runs before touchstart — pickup here only, then touchstart skips duplicate onMouseDown.
@@ -796,6 +835,8 @@ async function onMouseUp(e) {
     if (!pieceGroup[anchorIndex]) addToHand(anchorIndex);
     return;
   }
+
+  runReleaseHandCursorSequence();
 
   const boardRect = board.getBoundingClientRect();
   const anchorX   = (e.clientX - boardRect.left) / scale - offsetX;
@@ -1467,6 +1508,7 @@ function addToHand(index) {
   }, HAND_RELEASE_MS);
 
   renderHand();
+  runPocketHandCursorSequence();
 
   if (!startedAt) {
     setStartedAt(puzzleId).then(t => { startedAt = t; startTimer(); });
