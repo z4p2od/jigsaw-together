@@ -335,6 +335,8 @@ body.puzzle-body {
   width: 100%;
   max-width: 100vw;
   overflow-x: clip;
+  /* Stay above the board if any piece paint bleeds past the scrollport (tabs, filters). */
+  z-index: 2;
 }
 
 .puzzle-header h2 {
@@ -653,6 +655,7 @@ body.puzzle-body {
   flex: 1;
   overflow: auto;
   position: relative;
+  z-index: 0;
   background: var(--bg);
   touch-action: pan-x pan-y;
   overscroll-behavior: contain;
@@ -665,10 +668,17 @@ body.puzzle-body {
   display: flex;
   flex-direction: column;
   align-items: center;
+  /* safe: when centering would clip the top at scrollTop 0, align from the top instead */
   justify-content: center;
   min-height: 100%;
   padding: 20px;
   box-sizing: border-box;
+}
+
+@supports (justify-content: safe center) {
+  .puzzle-board-scroll-content {
+    justify-content: safe center;
+  }
 }
 .puzzle-board-wrap.panning {
   cursor: grabbing;

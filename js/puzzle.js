@@ -34,8 +34,10 @@ import {
 
 const BOARD_W   = 900;
 const BOARD_H   = 650;
-/** Must match .puzzle-board-scroll-content padding in style.css */
+/** Horizontal and bottom padding for scroll content (px). Top adds SCROLL_TOP_GUTTER in sync. */
 const BOARD_SCROLL_PADDING = 20;
+/** Extra scroll-area padding above the board so piece tabs / zoomed tops stay scrollable below the header edge. */
+const SCROLL_TOP_GUTTER = 48;
 /** Extra slack (board coords) around the piece AABB when sizing the scroll region — shadows / AA. */
 const BOARD_CLOUD_SLACK = 14;
 /**
@@ -1157,10 +1159,14 @@ function syncBoardScrollContentSize() {
 
   const visualW = contentW * scale;
   const visualH = contentH * scale;
-  const innerW = BOARD_SCROLL_PADDING * 2 + visualW;
-  const innerH = BOARD_SCROLL_PADDING * 2 + visualH;
-  const minLayoutW = BOARD_SCROLL_PADDING * 2 + BOARD_W;
-  const minLayoutH = BOARD_SCROLL_PADDING * 2 + BOARD_H;
+  const padX = BOARD_SCROLL_PADDING;
+  const padTop = BOARD_SCROLL_PADDING + SCROLL_TOP_GUTTER;
+  const padBottom = BOARD_SCROLL_PADDING;
+  boardScrollContent.style.padding = `${padTop}px ${padX}px ${padBottom}px`;
+  const innerW = padX * 2 + visualW;
+  const innerH = padTop + padBottom + visualH;
+  const minLayoutW = padX * 2 + BOARD_W;
+  const minLayoutH = padTop + padBottom + BOARD_H;
   boardScrollContent.style.width = Math.max(innerW, cw, minLayoutW) + 'px';
   boardScrollContent.style.height = Math.max(innerH, ch, minLayoutH) + 'px';
   // transform-origin: 0 0 makes the board grow only right/down, but flex centering
