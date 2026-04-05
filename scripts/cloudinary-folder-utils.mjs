@@ -41,4 +41,3 @@ export function filterResourcesByFolder(resources, folder) {
   const arr = Array.isArray(resources) ? resources : [];
   return arr.filter(r => isResourceInFolder(r, folder));
 }
-

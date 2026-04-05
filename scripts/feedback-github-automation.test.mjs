@@ -8,7 +8,7 @@ async function run() {
   process.env.GITHUB_REPO = 'owner/repo';
   delete process.env.CURSOR_API_KEY; // avoid Cursor agent calls in tests
 
-  const { default: handler } = await import('./feedback.js');
+  const { default: handler } = await import('../api/feedback.js');
 
   const calls = [];
   const patchBodies = [];
@@ -107,4 +107,3 @@ run().catch(err => {
   console.error(err);
   process.exit(1);
 });
-

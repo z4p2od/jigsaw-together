@@ -1,4 +1,4 @@
-import { logApiEvent } from './structured-log.js';
+import { logApiEvent } from '../lib/structured-log.js';
 
 function readBody(req) {
   const b = req.body;

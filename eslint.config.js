@@ -48,4 +48,13 @@ export default [
       'n/no-unsupported-features/node-builtins': 'off',
     },
   },
+  {
+    files: ['lib/**/*.js'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'module',
+      globals: { ...globals.node },
+    },
+    rules: { ...commonRules, 'no-console': 'off' },
+  },
 ];

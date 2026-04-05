@@ -52,9 +52,10 @@ A real-time multiplayer jigsaw puzzle app. Upload a photo, share a link, and sol
 
 ```
 ├── package.json        Dev-only: ESLint, Vitest, TypeScript (no app bundle)
-├── eslint.config.js    Flat ESLint config for js/ + api/
+├── eslint.config.js    Flat ESLint config for js/ + api/ + lib/
 ├── vitest.config.js    Unit tests (pure modules under test/)
 ├── tsconfig.json       typecheck entry (types/ for now)
+├── scripts/            Node-only helpers (not deployed as `/api/*` — keeps Vercel Hobby within function limits)
 │
 ├── index.html          Landing page (upload, POTD cards, VS entry)
 ├── puzzle.html         Co-op puzzle page
@@ -74,11 +75,13 @@ A real-time multiplayer jigsaw puzzle app. Upload a photo, share a link, and sol
 ├── css/
 │   └── style.css       All styles (dark theme, puzzle board, VS UI, chat)
 │
+├── lib/
+│   └── structured-log.js     Shared JSON-per-line logger (kept outside api/ for Vercel Hobby function limits)
+│
 ├── api/
 │   ├── config.js       Returns Firebase config from env vars (called by client)
 │   ├── cloudinary-config.js  Returns Cloudinary upload preset (called by client)
 │   ├── client-error.js Optional: receives truncated client error payloads (logs JSON line)
-│   ├── structured-log.js     JSON-per-line helper for function logs
 │   ├── potd.js         Cron: generates daily POTD puzzles, writes to Firebase
 │   ├── potd-play.js    Creates a private puzzle clone for each POTD player
 │   ├── vs-create.js    Creates a VS room (picks image, generates grid/edges/seed)

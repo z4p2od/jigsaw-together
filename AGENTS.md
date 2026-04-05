@@ -33,7 +33,7 @@ The app requires 12 environment variables for full functionality (see `README.md
 
 - `vercel.json` — URL rewrites (`/puzzle` → `/puzzle.html`, etc.) and cron schedules
 - `api/*.js` — Vercel serverless functions (ESM `export default function handler`)
-- `api/structured-log.js` — JSON-per-line `console.error` helper for function logs
+- `lib/structured-log.js` — JSON-per-line `console.error` helper for function logs (outside `api/` so Hobby plan function count stays low)
 - `api/client-error.js` — optional POST target for `js/client-observe.js` (truncated payloads, no PII)
 - `js/firebase.js` — all Firebase read/write helpers; fetches config from `/api/config` at import time
 - `js/jigsaw.js` — pure functions for edge generation and canvas-based piece cutting

@@ -3,8 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "lint": "eslint js api",
-    "lint:fix": "eslint js api --fix",
+    "lint": "eslint js api lib",
+    "lint:fix": "eslint js api lib --fix",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"

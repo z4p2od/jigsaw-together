@@ -52,4 +52,3 @@ assert.deepEqual(
 );
 
 console.log('room-images-sanity: OK');
-
