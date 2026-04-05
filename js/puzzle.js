@@ -559,11 +559,19 @@ function renderPiece(index, dataUrl, x, y, solved, elW, elH) {
   updatePieceZIndex(index);
 }
 
-function getTextureScale(total) {
-  const minSide = Math.min(window.screen?.width || 0, window.screen?.height || 0);
-  const narrowPhone = isMobileLike && minSide > 0 && minSide < 390;
+/** Tighter texture caps when the device reports low RAM/CPU (not screen size / model). */
+function mobileTextureConstrained() {
+  const mem = Number(navigator.deviceMemory || 0);
+  const cores = Number(navigator.hardwareConcurrency || 0);
+  if (mem > 0 && mem < 4) return true;
+  if (cores >= 1 && cores < 4) return true;
+  return false;
+}
 
-  // Desktop: always use denser piece textures (HQ is always on); more RAM than phones.
+function getTextureScale(total) {
+  const constrained = isMobileLike && mobileTextureConstrained();
+
+  // Desktop / laptop: always max practical quality (no HQ toggle).
   if (!isMobileLike) {
     const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
     if (total <= 40) return Math.max(1.35, Math.min(2.5, dpr));
@@ -572,19 +580,22 @@ function getTextureScale(total) {
     return Math.max(1.06, Math.min(1.38, dpr * 0.72));
   }
   if (highQualityMode) {
-    // HQ still needs per-puzzle caps to avoid canvas memory pressure on smaller phones.
-    // iPhone mini class: slightly lower ceilings than full-size phones.
-    const dprCap = narrowPhone ? 2.0 : 2.2;
+    // HQ on mobile: caps scale with piece count; low reported RAM/CPU tightens ceilings only.
+    const dprCap = constrained ? 2.0 : 2.2;
     const dpr = Math.min(window.devicePixelRatio || 1, dprCap);
-    if (total <= 40) return Math.max(narrowPhone ? 1.12 : 1.2, Math.min(dprCap, dpr));
-    if (total <= 120) return Math.max(narrowPhone ? 1.08 : 1.15, Math.min(narrowPhone ? 1.65 : 1.8, dpr * (narrowPhone ? 0.9 : 0.95)));
-    if (total <= 250) return Math.max(narrowPhone ? 1.0 : 1.05, Math.min(narrowPhone ? 1.22 : 1.35, dpr * (narrowPhone ? 0.72 : 0.78)));
+    if (total <= 40) return Math.max(constrained ? 1.12 : 1.2, Math.min(dprCap, dpr));
+    if (total <= 120) {
+      return Math.max(constrained ? 1.08 : 1.15, Math.min(constrained ? 1.65 : 1.8, dpr * (constrained ? 0.9 : 0.95)));
+    }
+    if (total <= 250) {
+      return Math.max(constrained ? 1.0 : 1.05, Math.min(constrained ? 1.22 : 1.35, dpr * (constrained ? 0.72 : 0.78)));
+    }
     return 1;
   }
-  // Improve sharpness on mobile/high-DPI while avoiding huge memory spikes.
+  // Non-HQ mobile: safe floor so seams stay tolerable on any phone; still respect huge puzzles.
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  if (total <= 40) return Math.max(narrowPhone ? 1.15 : 1, dpr);
-  if (total <= 120) return Math.max(narrowPhone ? 1.08 : 1, Math.min(1.7, dpr * 1.2));
+  if (total <= 40) return Math.max(constrained ? 1.1 : 1.12, dpr);
+  if (total <= 120) return Math.max(constrained ? 1.05 : 1.08, Math.min(1.7, dpr * 1.2));
   if (total <= 250) return Math.max(1, Math.min(1.45, dpr));
   return 1;
 }
@@ -595,33 +606,27 @@ function initHighQualityPreference() {
   const saved = safeLocalGet('jt-high-quality');
   if (saved === '1') return true;
   if (saved === '0') return false;
-  // Mobile: new devices on by default, older / constrained devices off.
+  // Mobile: HQ by default when device signals are OK; user can override via toggle.
   return shouldAutoEnableHQ();
 }
 
+/**
+ * Default HQ on mobile when the device is plausibly capable — no screen dimensions or
+ * model lists. Unknown deviceMemory (0) means "don't assume low RAM" so mid/high phones
+ * keep quality; only *reported* low RAM/CPU opts out. User can still override via HQ toggle.
+ */
 function shouldAutoEnableHQ() {
-  const ua = navigator.userAgent || '';
-  const isIOS = /iPhone|iPad|iPod/i.test(ua);
   const dpr = Number(window.devicePixelRatio || 1);
   const mem = Number(navigator.deviceMemory || 0);
   const cores = Number(navigator.hardwareConcurrency || 0);
-  const minScreenSide = Math.min(window.screen?.width || 0, window.screen?.height || 0);
   const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false;
 
-  // Respect accessibility/perf preference first.
   if (reduceMotion) return false;
-
-  // iOS: prefer conservative gating, since Safari memory pressure is stricter.
-  if (isIOS) {
-    // iPhone mini / narrow width: allow HQ by default with tighter texture caps in getTextureScale
-    // (avoids low-res seams); still require a reasonably capable SoC.
-    const narrow = minScreenSide > 0 && minScreenSide < 390;
-    if (narrow) return dpr >= 2 && cores >= 4;
-    return dpr >= 3 && minScreenSide >= 390 && cores >= 6;
-  }
-
-  // Android/other mobile: require strong enough memory+CPU profile.
-  return dpr >= 2.5 && minScreenSide >= 390 && (mem >= 6 || cores >= 8);
+  // 1× displays: HQ textures rarely help; skip extra canvas work.
+  if (dpr < 2) return false;
+  if (cores >= 1 && cores < 4) return false;
+  if (mem > 0 && mem < 4) return false;
+  return true;
 }
 
 // Position and rotate a piece using a single CSS transform.
@@ -1110,11 +1115,10 @@ function clampScale(s) {
   return Math.min(SCALE_MAX, Math.max(SCALE_MIN, s));
 }
 
-/** iOS Safari: nudge fit scale so board edge length in device pixels is ~integer — reduces seam gaps. */
+/** High-DPR mobile: nudge fit scale so board edge maps to ~integer device pixels — reduces compositor seams (WebKit/Blink). */
 function snapBoardScaleToDevicePixels(s, boundByHeight) {
   if (!Number.isFinite(s) || s <= 0) return s;
-  const ua = navigator.userAgent || '';
-  if (!/iPhone|iPad|iPod/i.test(ua)) return s;
+  if (!isMobileLike) return s;
   const dpr = Number(window.devicePixelRatio) || 1;
   if (dpr < 2) return s;
   const dim = boundByHeight ? BOARD_H : BOARD_W;
