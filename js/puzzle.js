@@ -151,13 +151,17 @@ let suppressMouseDownPickUntil = 0;
 /** Avoid duplicate resize / visualViewport listeners from setupViewportControls. */
 let boardViewportListenersAttached = false;
 let hand = [];           // indices of pieces currently in the player's hand
-let handTimers = {};     // index → setTimeout id for auto-release
-let handAddedAt = {};    // index → Date.now() when piece entered hand
 let lastAddToHandAt = 0;
 let handContainer = null;
+/** Single auto-release timer for the whole pocket (treated as one block). */
+let handExpiryTimer = null;
+let handExpiresAt = 0;
 /** Timeouts for native grab/grabbing cursor phases (pocket + drag release). */
 let handCursorSeqTimerIds = [];
 const HAND_RELEASE_MS = 15000;
+/** Max size (px) of the composite pocket preview. */
+const HAND_BLOCK_MAX_W = 136;
+const HAND_BLOCK_MAX_H = 100;
 /** Merged groups larger than this cannot go in the pocket (keep big assemblies on the board). */
 const POCKET_MAX_GROUP_PIECES = 5;
 const forceReleaseState = {}; // index → { count, lastTime }
@@ -441,7 +445,7 @@ function normalizeLoadedPuzzle(data) {
       x,
       y,
       solved: !!p.solved,
-      rotation: Number.isFinite(p.rotation) ? p.rotation : 0,
+      rotation: Number.isFinite(Number(p.rotation)) ? normalizeRotationDeg(p.rotation) : 0,
       lockedBy: p.lockedBy ?? null,
       groupId: p.groupId ?? null,
     };
@@ -589,6 +593,27 @@ function renderPiece(index, dataUrl, x, y, solved, elW, elH) {
   updatePieceZIndex(index);
 }
 
+function normalizeRotationDeg(r) {
+  const n = Number(r);
+  if (!Number.isFinite(n)) return 0;
+  return ((Math.round(n) % 360) + 360) % 360;
+}
+
+/** After pocket filter/animation, force a clean transform (fixes stuck / wrong rotation in some browsers). */
+function refreshPieceTransformAfterPocket(index) {
+  const e = pieceEls[index];
+  const p = pieceStates[index];
+  if (!e || !Number.isFinite(p.x) || !Number.isFinite(p.y)) return;
+  e.style.willChange = 'auto';
+  e.style.transform = 'none';
+  void e.offsetHeight;
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      movePieceEl(index, p.x, p.y);
+    });
+  });
+}
+
 // Position and rotate a piece using a single CSS transform.
 // x,y are inner-rect coords (top-left of the unpadded cell).
 // We translate by (x-pad, y-pad) then rotate around the element centre.
@@ -598,7 +623,7 @@ function movePieceEl(index, x, y, el) {
   const pad = meta?._pad ?? 0;
   const e   = el ?? pieceEls[index];
   if (!e) return;
-  const rot = pieceStates[index]?.rotation ?? 0;
+  const rot = normalizeRotationDeg(pieceStates[index]?.rotation);
   e.style.left = '0';
   e.style.top  = '0';
   const tx = x - pad;
@@ -1576,6 +1601,102 @@ function createHandContainer() {
   return el;
 }
 
+function clearHandExpiryTimer() {
+  if (handExpiryTimer != null) {
+    clearTimeout(handExpiryTimer);
+    handExpiryTimer = null;
+  }
+}
+
+function scheduleHandExpiry() {
+  clearHandExpiryTimer();
+  handExpiresAt = Date.now() + HAND_RELEASE_MS;
+  handExpiryTimer = setTimeout(() => {
+    handExpiryTimer = null;
+    releaseAllFromPocket();
+  }, HAND_RELEASE_MS);
+}
+
+/** Put pocketed pieces back on the board (one block / whole hand). */
+function releaseAllFromPocket() {
+  clearHandExpiryTimer();
+  const idx = [...hand];
+  if (idx.length === 0) {
+    renderHand();
+    return;
+  }
+  hand = [];
+  for (const i of idx) {
+    pieceEls[i]?.classList.remove('in-hand', 'pocket-pulse');
+    pieceStates[i].lockedBy = null;
+  }
+  unlockGroup(puzzleId, idx);
+  for (const i of idx) {
+    if (Number.isFinite(pieceStates[i].x) && Number.isFinite(pieceStates[i].y)) {
+      refreshPieceTransformAfterPocket(i);
+    }
+    updatePieceZIndex(i);
+  }
+  renderHand();
+}
+
+/** Unlock a subset still in the pocket (e.g. clearing outsiders before pocketing a group). */
+function releasePocketIndicesOnly(indices) {
+  const uniq = [...new Set(indices)].filter(i => hand.includes(i));
+  if (!uniq.length) return;
+  hand = hand.filter(h => !uniq.includes(h));
+  for (const i of uniq) {
+    pieceEls[i]?.classList.remove('in-hand', 'pocket-pulse');
+    pieceStates[i].lockedBy = null;
+  }
+  unlockGroup(puzzleId, uniq);
+  uniq.forEach(i => {
+    if (Number.isFinite(pieceStates[i].x) && Number.isFinite(pieceStates[i].y)) {
+      refreshPieceTransformAfterPocket(i);
+    }
+    updatePieceZIndex(i);
+  });
+  if (hand.length === 0) clearHandExpiryTimer();
+  else scheduleHandExpiry();
+  renderHand();
+}
+
+function pieceDrawOrderZ(index) {
+  const edges = meta?.edges?.[index];
+  if (!edges || !meta?.cols || !meta?.rows) return index;
+  const col = index % meta.cols;
+  const row = Math.floor(index / meta.cols);
+  let z = (meta.cols - col) + (meta.rows - row) * meta.cols;
+  if (edges.right > 0) z += meta.rows;
+  if (edges.bottom > 0) z += meta.cols;
+  return z;
+}
+
+function getHandPocketLayoutMeta() {
+  if (!hand.length || !meta) return null;
+  const pad = meta._pad ?? 0;
+  const dw = meta.displayW ?? 0;
+  const dh = meta.displayH ?? 0;
+  const elW = dw + pad * 2;
+  const elH = dh + pad * 2;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const i of hand) {
+    const x = pieceStates[i].x;
+    const y = pieceStates[i].y;
+    const left = x - pad;
+    const top = y - pad;
+    minX = Math.min(minX, left);
+    minY = Math.min(minY, top);
+    maxX = Math.max(maxX, left + elW);
+    maxY = Math.max(maxY, top + elH);
+  }
+  const bw = maxX - minX;
+  const bh = maxY - minY;
+  if (!(bw > 0) || !(bh > 0)) return null;
+  const k = Math.min(HAND_BLOCK_MAX_W / bw, HAND_BLOCK_MAX_H / bh, 2.5);
+  return { minX, minY, bw, bh, k, elW, elH, pad };
+}
+
 function addToHand(index) {
   const gid = pieceGroup[index];
   if (gid && groups[gid].size > POCKET_MAX_GROUP_PIECES) {
@@ -1588,15 +1709,25 @@ function addToHand(index) {
 
   if (indices.some(i => pieceStates[i].lockedBy && pieceStates[i].lockedBy !== playerId)) return;
 
-  if (indices.every(i => hand.includes(i))) {
-    removeFromHand(index);
+  const pocketExactMatch =
+    hand.length > 0 &&
+    hand.length === indices.length &&
+    hand.every(h => indices.includes(h)) &&
+    indices.every(i => hand.includes(i));
+  if (pocketExactMatch) {
+    releaseAllFromPocket();
+    return;
+  }
+
+  if (indices.length === 1 && hand.includes(indices[0]) && hand.length > 1) {
+    releasePocketIndicesOnly([indices[0]]);
     return;
   }
 
   // Pocketing a merged group replaces the whole hand; singles can still stack one-by-one.
   if (indices.length > 1) {
     const outsiders = hand.filter(hIdx => !indices.includes(hIdx));
-    if (outsiders.length) outsiders.forEach(i => removeFromHand(i));
+    if (outsiders.length) releasePocketIndicesOnly(outsiders);
   }
 
   lockGroup(puzzleId, indices, playerId);
@@ -1610,13 +1741,9 @@ function addToHand(index) {
     const el = pieceEls[i];
     el?.classList.add('in-hand', 'pocket-pulse');
     window.setTimeout(() => el?.classList.remove('pocket-pulse'), 500);
-    clearTimeout(handTimers[i]);
-    handAddedAt[i] = now;
-    handTimers[i] = setTimeout(() => {
-      if (hand.includes(i)) removeFromHand(i);
-    }, HAND_RELEASE_MS);
   }
 
+  scheduleHandExpiry();
   renderHand();
   runPocketHandCursorSequence();
 
@@ -1625,81 +1752,140 @@ function addToHand(index) {
   }
 }
 
-function removeFromHand(index) {
-  const toRemove = handIndicesCoPocketed(index);
-  for (const i of toRemove) {
-    hand = hand.filter(h => h !== i);
-    clearTimeout(handTimers[i]);
-    delete handTimers[i];
-    delete handAddedAt[i];
-    pieceEls[i]?.classList.remove('in-hand', 'pocket-pulse');
-    pieceStates[i].lockedBy = null;
-  }
-  if (toRemove.length) unlockGroup(puzzleId, toRemove);
-  for (const i of toRemove) {
-    const p = pieceStates[i];
-    if (Number.isFinite(p.x) && Number.isFinite(p.y)) movePieceEl(i, p.x, p.y);
-    updatePieceZIndex(i);
-  }
-  renderHand();
+function removeFromHand(_index) {
+  releaseAllFromPocket();
 }
 
 function removeFromHandSilent(index) {
   const toRemove = handIndicesCoPocketed(index);
   for (const i of toRemove) {
     hand = hand.filter(h => h !== i);
-    clearTimeout(handTimers[i]);
-    delete handTimers[i];
-    delete handAddedAt[i];
     pieceEls[i]?.classList.remove('in-hand', 'pocket-pulse');
   }
   for (const i of toRemove) {
-    const p = pieceStates[i];
-    if (Number.isFinite(p.x) && Number.isFinite(p.y)) movePieceEl(i, p.x, p.y);
+    if (Number.isFinite(pieceStates[i].x) && Number.isFinite(pieceStates[i].y)) {
+      refreshPieceTransformAfterPocket(i);
+    }
     updatePieceZIndex(i);
   }
+  if (hand.length === 0) clearHandExpiryTimer();
+  else scheduleHandExpiry();
   renderHand();
 }
 
 function dropHandAt(clientX, clientY) {
   if (hand.length === 0) return;
+  clearHandExpiryTimer();
   const r = board.getBoundingClientRect();
   const centerX = (clientX - r.left) / scale;
   const centerY = (clientY - r.top) / scale;
 
-  const dW = meta._displayW;
-  const dH = meta._displayH;
-  const { cols: gridCols } = meta;
+  const pocketLayout = getHandPocketLayoutMeta();
+  const pad = meta?._pad ?? 0;
+  const elW = (meta?._displayW ?? 0) + pad * 2;
+  const elH = (meta?._displayH ?? 0) + pad * 2;
 
-  const shuffled = shuffleNonAdjacent([...hand], gridCols);
+  const handIndices = [...hand];
 
-  const layoutCols = Math.ceil(Math.sqrt(shuffled.length));
-  const layoutRows = Math.ceil(shuffled.length / layoutCols);
-  const spreadW = dW * 1.3;
-  const spreadH = dH * 1.3;
+  const bboxAfterDelta = (dx, dy) => {
+    let nMinX = Infinity;
+    let nMinY = Infinity;
+    let nMaxX = -Infinity;
+    let nMaxY = -Infinity;
+    for (const idx of handIndices) {
+      const p = pieceStates[idx];
+      const x = p.x + dx;
+      const y = p.y + dy;
+      const left = x - pad;
+      const top = y - pad;
+      nMinX = Math.min(nMinX, left);
+      nMinY = Math.min(nMinY, top);
+      nMaxX = Math.max(nMaxX, left + elW);
+      nMaxY = Math.max(nMaxY, top + elH);
+    }
+    return { nMinX, nMinY, nMaxX, nMaxY };
+  };
+
+  let dx = 0;
+  let dy = 0;
+  if (pocketLayout && elW > 0 && elH > 0) {
+    const cx = pocketLayout.minX + pocketLayout.bw / 2;
+    const cy = pocketLayout.minY + pocketLayout.bh / 2;
+    dx = centerX - cx;
+    dy = centerY - cy;
+    for (let iter = 0; iter < 8; iter++) {
+      let b = bboxAfterDelta(dx, dy);
+      let changed = false;
+      if (b.nMinX < 0) {
+        dx += -b.nMinX;
+        changed = true;
+      }
+      b = bboxAfterDelta(dx, dy);
+      if (b.nMaxX > BOARD_W) {
+        dx -= b.nMaxX - BOARD_W;
+        changed = true;
+      }
+      b = bboxAfterDelta(dx, dy);
+      if (b.nMinY < 0) {
+        dy += -b.nMinY;
+        changed = true;
+      }
+      b = bboxAfterDelta(dx, dy);
+      if (b.nMaxY > BOARD_H) {
+        dy -= b.nMaxY - BOARD_H;
+        changed = true;
+      }
+      if (!changed) break;
+    }
+  } else {
+    const dW = meta._displayW;
+    const dH = meta._displayH;
+    const gridCols = meta.cols;
+    const shuffled = shuffleNonAdjacent([...handIndices], gridCols);
+    const layoutCols = Math.ceil(Math.sqrt(shuffled.length));
+    const layoutRows = Math.ceil(shuffled.length / layoutCols);
+    const spreadW = dW * 1.3;
+    const spreadH = dH * 1.3;
+    const positions = [];
+    shuffled.forEach((idx, i) => {
+      const c = i % layoutCols;
+      const rw = Math.floor(i / layoutCols);
+      const jitterX = (Math.random() - 0.5) * dW * 0.6;
+      const jitterY = (Math.random() - 0.5) * dH * 0.6;
+      const x = centerX - (layoutCols * spreadW / 2) + c * spreadW + jitterX;
+      const y = centerY - (layoutRows * spreadH / 2) + rw * spreadH + jitterY;
+      pieceStates[idx].x = x;
+      pieceStates[idx].y = y;
+      movePieceEl(idx, x, y);
+      positions.push({ index: idx, x, y });
+      pieceEls[idx]?.classList.remove('in-hand', 'pocket-pulse');
+    });
+    updateGroupPosition(puzzleId, positions);
+    unlockGroup(puzzleId, shuffled);
+    shuffled.forEach(i => { pieceStates[i].lockedBy = null; });
+    shuffled.forEach(i => updatePieceZIndex(i));
+    hand = [];
+    renderHand();
+    syncBoardScrollContentSize();
+    return;
+  }
 
   const positions = [];
-  shuffled.forEach((idx, i) => {
-    const c = i % layoutCols;
-    const rw = Math.floor(i / layoutCols);
-    const jitterX = (Math.random() - 0.5) * dW * 0.6;
-    const jitterY = (Math.random() - 0.5) * dH * 0.6;
-    const x = centerX - (layoutCols * spreadW / 2) + c * spreadW + jitterX;
-    const y = centerY - (layoutRows * spreadH / 2) + rw * spreadH + jitterY;
-    pieceStates[idx].x = x;
-    pieceStates[idx].y = y;
+  for (const idx of handIndices) {
+    const p = pieceStates[idx];
+    const x = p.x + dx;
+    const y = p.y + dy;
+    p.x = x;
+    p.y = y;
     movePieceEl(idx, x, y);
     positions.push({ index: idx, x, y });
     pieceEls[idx]?.classList.remove('in-hand', 'pocket-pulse');
-    clearTimeout(handTimers[idx]);
-    delete handTimers[idx];
-    delete handAddedAt[idx];
-  });
+  }
 
   updateGroupPosition(puzzleId, positions);
-  unlockGroup(puzzleId, shuffled);
-  shuffled.forEach(i => { pieceStates[i].lockedBy = null; });
-  shuffled.forEach(i => updatePieceZIndex(i));
+  unlockGroup(puzzleId, handIndices);
+  handIndices.forEach(i => { pieceStates[i].lockedBy = null; });
+  handIndices.forEach(i => updatePieceZIndex(i));
   hand = [];
   renderHand();
   syncBoardScrollContentSize();
@@ -1736,7 +1922,7 @@ function shuffleNonAdjacent(indices, gridCols) {
 }
 
 function clearHand() {
-  [...hand].forEach(i => removeFromHand(i));
+  releaseAllFromPocket();
 }
 
 function renderHand() {
@@ -1745,36 +1931,70 @@ function renderHand() {
   if (hand.length === 0) { handContainer.style.display = 'none'; return; }
   handContainer.style.display = 'flex';
 
-  const now = Date.now();
-  hand.forEach(index => {
-    const wrap = document.createElement('div');
-    wrap.className = 'hand-thumb-wrap';
-    const src = pieceEls[index]?.src;
-    if (src) {
-      const thumb = document.createElement('img');
-      thumb.src = src;
-      thumb.className = 'hand-thumb';
-      thumb.draggable = false;
-      const rot = pieceStates[index]?.rotation ?? 0;
-      if (rot) thumb.style.transform = `rotate(${rot}deg)`;
-      wrap.appendChild(thumb);
-    }
-    const elapsed = now - (handAddedAt[index] || now);
-    const remaining = Math.max(0, HAND_RELEASE_MS - elapsed);
-    const pct = (remaining / HAND_RELEASE_MS) * 100;
+  const wrap = document.createElement('div');
+  wrap.className = 'hand-block-wrap';
+  wrap.title = 'Tap to put pieces back on the board';
 
-    const timer = document.createElement('div');
-    timer.className = 'hand-thumb-timer';
-    timer.style.width = pct + '%';
-    timer.style.transition = 'none';
-    wrap.appendChild(timer);
-    requestAnimationFrame(() => {
-      timer.style.transition = `width ${remaining}ms linear`;
-      timer.style.width = '0%';
-    });
-    wrap.addEventListener('click', () => removeFromHand(index));
-    handContainer.appendChild(wrap);
+  const layout = getHandPocketLayoutMeta();
+  const preview = document.createElement('div');
+  preview.className = 'hand-block-preview';
+
+  if (layout) {
+    const { minX, minY, bw, bh, k, elW, elH, pad } = layout;
+    const pw = Math.max(1, Math.round(bw * k));
+    const ph = Math.max(1, Math.round(bh * k));
+    preview.style.width = pw + 'px';
+    preview.style.height = ph + 'px';
+
+    const ordered = [...hand].sort((a, b) => pieceDrawOrderZ(a) - pieceDrawOrderZ(b));
+    for (const index of ordered) {
+      const src = pieceEls[index]?.src;
+      if (!src) continue;
+      const img = document.createElement('img');
+      img.src = src;
+      img.className = 'hand-block-piece-img';
+      img.draggable = false;
+      const p = pieceStates[index];
+      const left = (p.x - pad - minX) * k;
+      const top = (p.y - pad - minY) * k;
+      const w = elW * k;
+      const h = elH * k;
+      img.style.left = `${left}px`;
+      img.style.top = `${top}px`;
+      img.style.width = `${w}px`;
+      img.style.height = `${h}px`;
+      const rot = normalizeRotationDeg(p.rotation);
+      img.style.transformOrigin = 'center center';
+      img.style.transform = rot ? `rotate(${rot}deg)` : '';
+      preview.appendChild(img);
+    }
+  } else {
+    preview.style.width = '64px';
+    preview.style.height = '64px';
+    preview.style.background = 'rgba(255,255,255,0.06)';
+  }
+
+  const now = Date.now();
+  const remaining = Math.max(0, handExpiresAt - now);
+  const pct = handExpiresAt ? Math.min(100, (remaining / HAND_RELEASE_MS) * 100) : 100;
+
+  const timerTrack = document.createElement('div');
+  timerTrack.className = 'hand-block-timer-track';
+  const timer = document.createElement('div');
+  timer.className = 'hand-block-timer';
+  timer.style.width = pct + '%';
+  timer.style.transition = 'none';
+  timerTrack.appendChild(timer);
+
+  wrap.appendChild(preview);
+  wrap.appendChild(timerTrack);
+  requestAnimationFrame(() => {
+    timer.style.transition = `width ${remaining}ms linear`;
+    timer.style.width = '0%';
   });
+
+  wrap.addEventListener('click', () => releaseAllFromPocket());
+  handContainer.appendChild(wrap);
 }
 
 function checkEmptyDoubleTap(cx, cy) {
@@ -2037,6 +2257,9 @@ function applyRemoteUpdate(index, data) {
     delete incoming.lockedBy;
   }
   pieceStates[index] = { ...pieceStates[index], ...incoming };
+  if (Object.prototype.hasOwnProperty.call(pieceStates[index], 'rotation')) {
+    pieceStates[index].rotation = normalizeRotationDeg(pieceStates[index].rotation);
+  }
 
   // If a piece in our hand got force-released remotely, remove from hand
   if (hand.includes(index) && pieceStates[index].lockedBy !== playerId) {
@@ -2142,8 +2365,9 @@ function setupHelp() {
     { key: 'Drag',            desc: 'Move a piece or a connected group' },
     { key: 'Drop near edge',  desc: 'Pieces snap together automatically' },
     { key: 'Scroll / drag bg',desc: 'Pan the board' },
-    { key: 'Click piece',     desc: `Pick up into pocket — singles or merged groups up to ${POCKET_MAX_GROUP_PIECES} pieces (tap again to deselect)` },
-    { key: 'Dbl-click board', desc: 'Drop all hand pieces at that spot' },
+    { key: 'Click piece',     desc: `Pick up into pocket — singles or merged groups up to ${POCKET_MAX_GROUP_PIECES} pieces` },
+    { key: 'Tap pocket',      desc: 'Put everything in the pocket back on the board' },
+    { key: 'Dbl-click board', desc: 'Drop pocket pieces at that spot' },
   ];
   if (!isMobileLike) {
     controls.push({
@@ -2414,8 +2638,6 @@ function updateAvatarPosition(index) {
   const avatar = avatarEls[index];
   const el     = pieceEls[index];
   if (!avatar || !el) return;
-  // Read the translate values from the element's transform
-  const pad = meta?._pad ?? 0;
   const p   = pieceStates[index];
   if (!p) return;
   const x = p.x + meta._displayW - 12;

@@ -731,23 +731,20 @@ iframe[src*="vercel.live"] {
   pointer-events: none;
 }
 
-/* Click-to-pocket: brief open → gather → settle (no transform — pieces use inline transforms) */
+/* Pocket pulse: opacity only. Animating filter on the same layer as transform causes wrong/stuck
+   rotation in some browsers after the pocket animation ends. */
 @keyframes jt-piece-pocket {
   0% {
     opacity: 1;
-    filter: brightness(1.06) drop-shadow(0 0 0 transparent);
   }
   28% {
     opacity: 0.52;
-    filter: brightness(0.88) grayscale(0.12) drop-shadow(0 2px 10px rgba(255, 200, 120, 0.5));
   }
   55% {
     opacity: 0.38;
-    filter: brightness(1.04) grayscale(0.28) drop-shadow(0 0 16px rgba(255, 215, 140, 0.4));
   }
   100% {
     opacity: 0.25;
-    filter: grayscale(0.5);
   }
 }
 
@@ -779,45 +776,63 @@ iframe[src*="vercel.live"] {
   left: 50%;
   transform: translateX(-50%);
   display: none;
-  gap: 6px;
-  align-items: flex-end;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
   z-index: 9200;
-  padding: 8px 14px;
-  background: rgba(15, 23, 42, 0.88);
+  padding: 10px 14px 12px;
+  background: rgba(15, 23, 42, 0.92);
   border-radius: 14px;
   border: 1px solid rgba(255, 222, 120, 0.35);
   box-shadow: 0 0 10px rgba(255, 222, 120, 0.18);
-  max-width: 90vw;
-  overflow-x: auto;
+  max-width: min(92vw, 280px);
+  overflow: visible;
 }
 
-.hand-thumb-wrap {
+.hand-block-wrap {
   position: relative;
   cursor: pointer;
   flex-shrink: 0;
   transition: transform 0.12s;
 }
 
-.hand-thumb-wrap:hover {
-  transform: scale(1.08);
+.hand-block-wrap:hover {
+  transform: scale(1.02);
 }
 
-.hand-thumb {
-  width: 52px;
-  height: 52px;
-  object-fit: contain;
-  border-radius: 6px;
-  pointer-events: none;
+.hand-block-preview {
+  position: relative;
+  flex-shrink: 0;
+  border-radius: 10px;
+  overflow: visible;
+  background: rgba(0, 0, 0, 0.25);
+  box-shadow: inset 0 0 0 1px rgba(255, 222, 120, 0.2);
 }
 
-.hand-thumb-timer {
+.hand-block-piece-img {
   position: absolute;
-  bottom: 0;
-  left: 0;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+  border-radius: 2px;
+  object-fit: fill;
+}
+
+.hand-block-timer-track {
+  position: relative;
   width: 100%;
-  height: 3px;
-  background: rgba(255, 222, 120, 0.7);
-  border-radius: 0 0 6px 6px;
+  height: 4px;
+  margin-top: 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+.hand-block-timer {
+  height: 100%;
+  width: 100%;
+  background: rgba(255, 222, 120, 0.85);
+  border-radius: 4px;
 }
 
 /* Player avatar shown on pieces being moved by another player */
