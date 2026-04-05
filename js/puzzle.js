@@ -1193,10 +1193,13 @@ function applyScale(s, opts = {}) {
     const st = Math.max(0, Math.min(maxSt, Math.round(ky)));
     boardTx = sl - kx;
     boardTy = st - ky;
-    // When the board fits in the viewport there is no scroll room and any residual
-    // translate would push pieces off-screen. Snap to 0 so flex centering takes over.
-    if (maxSl <= 0) { boardTx = 0; }
-    if (maxSt <= 0) { boardTy = 0; }
+    // When there is no scroll slack, scroll cannot absorb the pivot correction; keep
+    // boardTx/boardTy (sl - kx) so zoom-to-cursor still works. Only snap translate to
+    // zero when not anchoring (e.g. fitBoardToViewport) to avoid drift from old tx/ty.
+    if (!hasAnchor) {
+      if (maxSl <= 0) boardTx = 0;
+      if (maxSt <= 0) boardTy = 0;
+    }
     boardWrap.scrollLeft = sl;
     boardWrap.scrollTop = st;
   }
@@ -1429,28 +1432,25 @@ function onWheelZoom(e) {
   const wantsZoom = e.ctrlKey || e.metaKey;
   if (!wantsZoom) return;
   e.preventDefault();
-  // First Cmd/trackpad zoom before pointermove: wheel clientX/Y is often usable;
-  // seed tracking so we don't fall back to bad default coords.
-  if (boardWrap && !hasLastBoardWrapPointer) {
-    const wr = boardWrap.getBoundingClientRect();
-    const inBounds = e.clientX >= wr.left && e.clientX <= wr.right
-      && e.clientY >= wr.top && e.clientY <= wr.bottom;
-    if (inBounds && Number.isFinite(e.clientX) && Number.isFinite(e.clientY)) {
-      lastBoardWrapPointerClient.x = e.clientX;
-      lastBoardWrapPointerClient.y = e.clientY;
-      hasLastBoardWrapPointer = true;
-    }
+  const wr = boardWrap?.getBoundingClientRect();
+  const wheelInside = wr && e.clientX >= wr.left && e.clientX <= wr.right
+    && e.clientY >= wr.top && e.clientY <= wr.bottom;
+  // Prefer wheel event coords when inside the wrap (correct for mouse + many trackpads).
+  // Fall back to last pointer only when wheel clientX/Y are missing or outside (Chromium ctrl+wheel pinch quirk).
+  let ax = e.clientX;
+  let ay = e.clientY;
+  if (wheelInside && Number.isFinite(e.clientX) && Number.isFinite(e.clientY)) {
+    lastBoardWrapPointerClient.x = e.clientX;
+    lastBoardWrapPointerClient.y = e.clientY;
+    hasLastBoardWrapPointer = true;
+  } else if (hasLastBoardWrapPointer && Number.isFinite(lastBoardWrapPointerClient.x)) {
+    ax = lastBoardWrapPointerClient.x;
+    ay = lastBoardWrapPointerClient.y;
   }
   let delta = e.deltaY;
   if (e.deltaMode === 1) delta *= 16;
   if (e.deltaMode === 2) delta *= boardWrap.clientHeight;
   wheelDeltaFrame += delta;
-  let ax = e.clientX;
-  let ay = e.clientY;
-  if (hasLastBoardWrapPointer && Number.isFinite(lastBoardWrapPointerClient.x)) {
-    ax = lastBoardWrapPointerClient.x;
-    ay = lastBoardWrapPointerClient.y;
-  }
   wheelZoomAnchor = { anchorClientX: ax, anchorClientY: ay };
   if (!wheelZoomRaf) wheelZoomRaf = requestAnimationFrame(flushWheelZoom);
 }
