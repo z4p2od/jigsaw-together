@@ -40,13 +40,12 @@ const BOARD_SCROLL_PADDING = 20;
 const SCROLL_TOP_GUTTER = 48;
 /** Extra slack (board coords) around the piece AABB when sizing the scroll region — shadows / AA. */
 const BOARD_CLOUD_SLACK = 14;
-/**
- * When scroll-centering on the cloud, bias below geometric viewport center (fraction of wrap height).
- * Leaves more room above the pieces so tops are not tight to the board area edge.
- */
-const BOARD_VIEW_CENTER_BIAS_Y = 0.11;
-/** Same for horizontal (narrow windows / left clipping). */
+/** Horizontal: bias scroll anchor slightly off center (narrow windows / left clipping). */
 const BOARD_VIEW_CENTER_BIAS_X = 0.06;
+/** Pixels from board-wrap top to the cloud’s top edge when framing (tabs / shadow room). */
+const FRAME_CLOUD_TOP_MARGIN_PX = 52;
+/** Extra board-space above the cloud bbox top (knobs, antialias). */
+const FRAME_CLOUD_TOP_PAD_BOARD = 12;
 const SCALE_MIN = 0.3;
 const SCALE_MAX = 3.0;
 
@@ -1275,7 +1274,7 @@ function centerPieceCloudInView() {
     centerBoardInView();
     return;
   }
-  centerBoardPointInView(bounds.cx, bounds.cy);
+  framePieceCloudTopInView(bounds);
 }
 
 /** After loading overlay hides: wait for real wrap dimensions (iOS / in-app WebViews can report 0 briefly). */
@@ -1338,18 +1337,21 @@ function framePieceCloudInView() {
       applyScale(targetScale, zoomAnchorViewportCenter());
     }
   }
-  centerBoardPointInView(bounds.cx, bounds.cy);
+  framePieceCloudTopInView(bounds);
 }
 
-function centerBoardPointInView(cx, cy) {
+/**
+ * Scroll so the piece cloud’s top (plus pad) sits FRAME_CLOUD_TOP_MARGIN_PX below the wrap top;
+ * horizontal anchor stays the cloud center (cx).
+ */
+function framePieceCloudTopInView(bounds) {
   if (!boardWrap || boardWrap.clientWidth < 8 || boardWrap.clientHeight < 8) return;
   boardTx = 0; boardTy = 0;
   updateBoardTransform();
   const cw = boardWrap.clientWidth;
-  const ch = boardWrap.clientHeight;
-  // Bias anchor below/left of viewport center so piece tops and sides clear the wrap edges.
-  const targetLeft = board.offsetLeft + cx * scale - cw * (0.5 + BOARD_VIEW_CENTER_BIAS_X);
-  const targetTop = board.offsetTop + cy * scale - ch * (0.5 + BOARD_VIEW_CENTER_BIAS_Y);
+  const cloudTopBoard = bounds.cy - bounds.h * 0.5 - FRAME_CLOUD_TOP_PAD_BOARD;
+  const targetLeft = board.offsetLeft + bounds.cx * scale - cw * (0.5 + BOARD_VIEW_CENTER_BIAS_X);
+  const targetTop = board.offsetTop + cloudTopBoard * scale - FRAME_CLOUD_TOP_MARGIN_PX;
 
   const maxSl = Math.max(0, boardWrap.scrollWidth - boardWrap.clientWidth);
   const maxSt = Math.max(0, boardWrap.scrollHeight - boardWrap.clientHeight);
