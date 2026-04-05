@@ -694,6 +694,7 @@ iframe[src*="vercel.live"] {
   backface-visibility: hidden;
   /* Must match applyScale() math (zoom toward point uses top-left origin). */
   transform-origin: 0 0;
+  cursor: grab;
 }
 
 /* Individual piece */

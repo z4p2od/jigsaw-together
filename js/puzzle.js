@@ -1388,6 +1388,18 @@ function onWheelZoom(e) {
   const wantsZoom = e.ctrlKey || e.metaKey;
   if (!wantsZoom) return;
   e.preventDefault();
+  // First Cmd/trackpad zoom before pointermove: wheel clientX/Y is often usable;
+  // seed tracking so we don't fall back to bad default coords.
+  if (boardWrap && !hasLastBoardWrapPointer) {
+    const wr = boardWrap.getBoundingClientRect();
+    const inBounds = e.clientX >= wr.left && e.clientX <= wr.right
+      && e.clientY >= wr.top && e.clientY <= wr.bottom;
+    if (inBounds && Number.isFinite(e.clientX) && Number.isFinite(e.clientY)) {
+      lastBoardWrapPointerClient.x = e.clientX;
+      lastBoardWrapPointerClient.y = e.clientY;
+      hasLastBoardWrapPointer = true;
+    }
+  }
   let delta = e.deltaY;
   if (e.deltaMode === 1) delta *= 16;
   if (e.deltaMode === 2) delta *= boardWrap.clientHeight;
@@ -1838,14 +1850,18 @@ function applyRemoteUpdate(index, data) {
     ? data.lockedBy
     : null;  // field was deleted (null-write) → piece is unlocked
   const incoming = { ...data, lockedBy };
-  if (incoming.lockedBy === playerId && !dragging?.indices.includes(index)) {
+  if (
+    incoming.lockedBy === playerId
+    && !dragging?.indices.includes(index)
+    && !hand.includes(index)
+  ) {
     // Stale echo of our own lock write — already released locally, discard.
     delete incoming.lockedBy;
   }
   pieceStates[index] = { ...pieceStates[index], ...incoming };
 
   // If a piece in our hand got force-released remotely, remove from hand
-  if (hand.includes(index) && incoming.lockedBy !== playerId) {
+  if (hand.includes(index) && pieceStates[index].lockedBy !== playerId) {
     removeFromHandSilent(index);
   }
 
