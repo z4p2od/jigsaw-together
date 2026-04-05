@@ -12,6 +12,20 @@ import {
 } from './firebase.js';
 import { getLobbySlotPids } from './vs-lobby-slots.js';
 import { cutPiece, getPad } from './jigsaw.js';
+import {
+  computeIsMobileLike,
+  initHighQualityPreference,
+  getTextureScale,
+  snapBoardScaleToDevicePixels,
+} from './mobile-quality.js';
+
+function safeLocalGet(key) {
+  try {
+    return localStorage.getItem(key);
+  } catch (_) {
+    return null;
+  }
+}
 
 const BOARD_W   = 900;
 const BOARD_H   = 650;
@@ -20,6 +34,8 @@ const SCALE_MAX = 3.0;
 
 const roomId   = new URLSearchParams(location.search).get('room');
 const playerId = getOrCreatePlayerId();
+const isMobileLike = computeIsMobileLike();
+let highQualityMode = initHighQualityPreference(isMobileLike, safeLocalGet);
 
 let playerName  = sessionStorage.getItem('playerName') || null;
 let meta        = null;
@@ -719,7 +735,20 @@ function computeSplitScale() {
   const headerH  = 120; // progress bar + header
   const availW   = (window.innerWidth  / 2) - 12;
   const availH   = window.innerHeight  - headerH;
-  return Math.min(availW / BOARD_W, availH / BOARD_H, 1);
+  const wFit = availW / BOARD_W;
+  const hFit = availH / BOARD_H;
+  const fit = Math.min(wFit, hFit, 1);
+  const boundByHeight = hFit <= wFit;
+  const clamped = Math.min(SCALE_MAX, Math.max(SCALE_MIN, fit));
+  return snapBoardScaleToDevicePixels(
+    clamped,
+    boundByHeight,
+    BOARD_W,
+    BOARD_H,
+    SCALE_MIN,
+    SCALE_MAX,
+    isMobileLike,
+  );
 }
 
 function setupBoard() {
@@ -815,6 +844,9 @@ async function renderAllPieces() {
   meta._displayW = displayW;
   meta._displayH = displayH;
   meta._pad      = pad;
+  const textureScale = getTextureScale(totalPieces, isMobileLike, highQualityMode);
+  const texDisplayW = Math.round(displayW * textureScale);
+  const texDisplayH = Math.round(displayH * textureScale);
 
   const BATCH = 50;
   for (let start = 0; start < totalPieces; start += BATCH) {
@@ -823,7 +855,7 @@ async function renderAllPieces() {
     for (let i = start; i < end; i++) {
       const col     = i % cols;
       const row     = Math.floor(i / cols);
-      const dataUrl = cutPiece(img, col, row, pieceW, pieceH, displayW, displayH, edges[i]);
+      const dataUrl = cutPiece(img, col, row, pieceW, pieceH, texDisplayW, texDisplayH, edges[i]);
       const p       = pieceStates[i];
       renderPiece(i, dataUrl, p.x, p.y, p.solved, displayW + pad * 2, displayH + pad * 2);
     }
@@ -838,12 +870,15 @@ async function renderOppPieces(states) {
   const pad = meta._pad;
   const elW = displayW + pad * 2;
   const elH = displayH + pad * 2;
+  const textureScale = getTextureScale(totalPieces, isMobileLike, highQualityMode);
+  const texDisplayW = Math.round(displayW * textureScale);
+  const texDisplayH = Math.round(displayH * textureScale);
 
   for (let i = 0; i < states.length; i++) {
     oppPieceStates[i] = states[i] ?? { x: 0, y: 0, rotation: 0, solved: false };
     const col     = i % cols;
     const row     = Math.floor(i / cols);
-    const dataUrl = cutPiece(img, col, row, pieceW, pieceH, displayW, displayH, edges[i]);
+    const dataUrl = cutPiece(img, col, row, pieceW, pieceH, texDisplayW, texDisplayH, edges[i]);
     const el      = document.createElement('img');
     el.src        = dataUrl;
     const glowCls = (meta.chaosMode && powerupPieces[i] !== undefined && !oppPieceStates[i].solved)

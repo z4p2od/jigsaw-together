@@ -23,6 +23,12 @@ import {
   updateRoomsIndex,
 } from './firebase.js';
 import { cutPiece, getPad } from './jigsaw.js';
+import {
+  computeIsMobileLike,
+  initHighQualityPreference,
+  getTextureScale,
+  snapBoardScaleToDevicePixels,
+} from './mobile-quality.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -33,16 +39,18 @@ const BOARD_SCROLL_PADDING = 20;
 const SCALE_MIN = 0.3;
 const SCALE_MAX = 3.0;
 
-/** Debug: mirror to window + optional local ingest (ingest only works with `vercel dev` + Cursor debug server). */
-const _isLocalDev = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+/** Set true only for local agent debugging (ingest + in-memory ring). */
+const JT_DEBUG_AGENT = false;
 function jtDbgLog(payload) {
+  if (!JT_DEBUG_AGENT) return;
   const line = { sessionId: 'c7426d', timestamp: Date.now(), ...payload };
   try {
     window.__JT_DEBUG_LOGS = window.__JT_DEBUG_LOGS || [];
     window.__JT_DEBUG_LOGS.push(line);
     if (window.__JT_DEBUG_LOGS.length > 120) window.__JT_DEBUG_LOGS.shift();
   } catch (_) { /* ignore */ }
-  if (!_isLocalDev) return;
+  const isLocalDev = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+  if (!isLocalDev) return;
   fetch('http://127.0.0.1:7319/ingest/be2f6902-b67c-428c-8ee3-1dabde1e3930', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'c7426d' },
@@ -158,9 +166,10 @@ let chatUnread    = 0;
 let chatOpen      = false;
 const lastPlayerPos = {}; // playerId → { x, y } last known board position
 let startedAt     = null;
-const isCoarsePointer = window.matchMedia?.('(pointer: coarse)')?.matches ?? false;
-const isMobileLike = isCoarsePointer || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
-let highQualityMode = initHighQualityPreference();
+// Coarse pointer or common mobile UA: drives touch UX (pan, pinch, HQ button). Texture
+// quality itself uses capability APIs in mobile-quality.js, not UA string matching.
+const isMobileLike = computeIsMobileLike();
+let highQualityMode = initHighQualityPreference(isMobileLike, safeLocalGet);
 let pageTouchStart = null;
 const isLikelySafari = (() => {
   const ua = navigator.userAgent || '';
@@ -448,7 +457,7 @@ async function renderAllPieces() {
   const img = await loadImage(src);
   const { cols, rows, pieceW, pieceH, edges, displayW, displayH } = meta;
   const pad = getPad(displayW, displayH);
-  const textureScale = getTextureScale(totalPieces);
+  const textureScale = getTextureScale(totalPieces, isMobileLike, highQualityMode);
   // #region agent log
   jtDbgLog({
     runId: 'pre-fix-1',
@@ -557,76 +566,6 @@ function renderPiece(index, dataUrl, x, y, solved, elW, elH) {
   board.appendChild(el);
   pieceEls[index] = el;
   updatePieceZIndex(index);
-}
-
-/** Tighter texture caps when the device reports low RAM/CPU (not screen size / model). */
-function mobileTextureConstrained() {
-  const mem = Number(navigator.deviceMemory || 0);
-  const cores = Number(navigator.hardwareConcurrency || 0);
-  if (mem > 0 && mem < 4) return true;
-  if (cores >= 1 && cores < 4) return true;
-  return false;
-}
-
-function getTextureScale(total) {
-  const constrained = isMobileLike && mobileTextureConstrained();
-
-  // Desktop / laptop: always max practical quality (no HQ toggle).
-  if (!isMobileLike) {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
-    if (total <= 40) return Math.max(1.35, Math.min(2.5, dpr));
-    if (total <= 120) return Math.max(1.22, Math.min(2.15, dpr * 0.98));
-    if (total <= 250) return Math.max(1.12, Math.min(1.7, dpr * 0.88));
-    return Math.max(1.06, Math.min(1.38, dpr * 0.72));
-  }
-  if (highQualityMode) {
-    // HQ on mobile: caps scale with piece count; low reported RAM/CPU tightens ceilings only.
-    const dprCap = constrained ? 2.0 : 2.2;
-    const dpr = Math.min(window.devicePixelRatio || 1, dprCap);
-    if (total <= 40) return Math.max(constrained ? 1.12 : 1.2, Math.min(dprCap, dpr));
-    if (total <= 120) {
-      return Math.max(constrained ? 1.08 : 1.15, Math.min(constrained ? 1.65 : 1.8, dpr * (constrained ? 0.9 : 0.95)));
-    }
-    if (total <= 250) {
-      return Math.max(constrained ? 1.0 : 1.05, Math.min(constrained ? 1.22 : 1.35, dpr * (constrained ? 0.72 : 0.78)));
-    }
-    return 1;
-  }
-  // Non-HQ mobile: safe floor so seams stay tolerable on any phone; still respect huge puzzles.
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  if (total <= 40) return Math.max(constrained ? 1.1 : 1.12, dpr);
-  if (total <= 120) return Math.max(constrained ? 1.05 : 1.08, Math.min(1.7, dpr * 1.2));
-  if (total <= 250) return Math.max(1, Math.min(1.45, dpr));
-  return 1;
-}
-
-function initHighQualityPreference() {
-  // Web / laptop / desktop: always high-quality textures (no toggle; zoom stays sharp).
-  if (!isMobileLike) return true;
-  const saved = safeLocalGet('jt-high-quality');
-  if (saved === '1') return true;
-  if (saved === '0') return false;
-  // Mobile: HQ by default when device signals are OK; user can override via toggle.
-  return shouldAutoEnableHQ();
-}
-
-/**
- * Default HQ on mobile when the device is plausibly capable — no screen dimensions or
- * model lists. Unknown deviceMemory (0) means "don't assume low RAM" so mid/high phones
- * keep quality; only *reported* low RAM/CPU opts out. User can still override via HQ toggle.
- */
-function shouldAutoEnableHQ() {
-  const dpr = Number(window.devicePixelRatio || 1);
-  const mem = Number(navigator.deviceMemory || 0);
-  const cores = Number(navigator.hardwareConcurrency || 0);
-  const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false;
-
-  if (reduceMotion) return false;
-  // 1× displays: HQ textures rarely help; skip extra canvas work.
-  if (dpr < 2) return false;
-  if (cores >= 1 && cores < 4) return false;
-  if (mem > 0 && mem < 4) return false;
-  return true;
 }
 
 // Position and rotate a piece using a single CSS transform.
@@ -1115,18 +1054,6 @@ function clampScale(s) {
   return Math.min(SCALE_MAX, Math.max(SCALE_MIN, s));
 }
 
-/** High-DPR mobile: nudge fit scale so board edge maps to ~integer device pixels — reduces compositor seams (WebKit/Blink). */
-function snapBoardScaleToDevicePixels(s, boundByHeight) {
-  if (!Number.isFinite(s) || s <= 0) return s;
-  if (!isMobileLike) return s;
-  const dpr = Number(window.devicePixelRatio) || 1;
-  if (dpr < 2) return s;
-  const dim = boundByHeight ? BOARD_H : BOARD_W;
-  const deviceLen = dim * s * dpr;
-  const snapped = Math.max(1, Math.round(deviceLen));
-  return clampScale(snapped / (dim * dpr));
-}
-
 function updateBoardTransform() {
   const needsTranslate = Math.abs(boardTx) > 0.5 || Math.abs(boardTy) > 0.5;
   if (scale === 1 && !needsTranslate) {
@@ -1303,7 +1230,15 @@ function framePieceCloudInView() {
   if (Number.isFinite(fitCloud) && fitCloud > 0) {
     // Use true fit on mobile so wide scatters remain reachable on smaller screens.
     const boundByHeight = hRatio <= wRatio;
-    const targetScale = snapBoardScaleToDevicePixels(clampScale(fitCloud), boundByHeight);
+    const targetScale = snapBoardScaleToDevicePixels(
+      clampScale(fitCloud),
+      boundByHeight,
+      BOARD_W,
+      BOARD_H,
+      SCALE_MIN,
+      SCALE_MAX,
+      isMobileLike,
+    );
     if (Math.abs(targetScale - scale) > 0.001) {
       applyScale(targetScale, zoomAnchorViewportCenter());
     }
@@ -1381,7 +1316,15 @@ function fitBoardToViewport() {
   const hFit = Math.max(0.01, (boardWrap.clientHeight - gutter) / BOARD_H);
   const fit = Math.min(1, wFit, hFit);
   const boundByHeight = hFit <= wFit;
-  const snapped = snapBoardScaleToDevicePixels(fit || 1, boundByHeight);
+  const snapped = snapBoardScaleToDevicePixels(
+    fit || 1,
+    boundByHeight,
+    BOARD_W,
+    BOARD_H,
+    SCALE_MIN,
+    SCALE_MAX,
+    isMobileLike,
+  );
   applyScale(clampScale(snapped));
   centerBoardInView();
   // #region agent log
@@ -2013,7 +1956,7 @@ function setupHelp() {
     controls.push({ key: 'Pinch (mobile)', desc: 'Zoom in / out' });
     controls.push({
       key: 'HQ',
-      desc: 'Sharper pieces when zoomed — on by default on capable phones (reloads; more memory)',
+      desc: 'Sharper pieces when zoomed — default follows device RAM/CPU/DPR (reloads; more memory)',
     });
   }
   if (meta.hardMode) {
