@@ -687,6 +687,7 @@ iframe[src*="vercel.live"] {
   position: relative;
   margin: 0;
   flex-shrink: 0;
+  overflow: visible;
   background: transparent;
   border: none;
   border-radius: 0;

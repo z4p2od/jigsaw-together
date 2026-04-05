@@ -36,6 +36,8 @@ const BOARD_W   = 900;
 const BOARD_H   = 650;
 /** Must match .puzzle-board-scroll-content padding in style.css */
 const BOARD_SCROLL_PADDING = 20;
+/** Extra slack (board coords) around the piece AABB when sizing the scroll region — shadows / AA. */
+const BOARD_CLOUD_SLACK = 8;
 const SCALE_MIN = 0.3;
 const SCALE_MAX = 3.0;
 
@@ -128,9 +130,14 @@ let wheelZoomAnchor = { anchorClientX: 0, anchorClientY: 0 };
 /** Trackpad pinch often maps to ctrl+wheel with wrong clientX/Y in Chromium; prefer real pointer. */
 let lastBoardWrapPointerClient = { x: NaN, y: NaN };
 let hasLastBoardWrapPointer = false;
-/** Translate offset on #puzzle-board to compensate when scroll can't reach the ideal position. */
+/**
+ * Pan offset when scroll can't reach the ideal zoom pivot. Applied as margin (not transform
+ * translate) so the flex scroll area grows and trackpad scroll can reach the full board.
+ */
 let boardTx = 0;
 let boardTy = 0;
+/** Coalesce scroll-content resizes after rapid piece moves (remote + drag). */
+let boardScrollSyncRaf = null;
 /** After touch + preventDefault, ignore the delayed compatibility mousedown (avoids double-pick). */
 let suppressMouseDownPickUntil = 0;
 /** Avoid duplicate resize / visualViewport listeners from setupViewportControls. */
@@ -441,6 +448,8 @@ function setupBoard() {
   board.style.width          = BOARD_W + 'px';
   board.style.height         = BOARD_H + 'px';
   board.style.transformOrigin = 'top left';
+  board.style.marginLeft = '';
+  board.style.marginTop = '';
   board.style.marginRight = '';
   board.style.marginBottom = '';
   boardTx = 0;
@@ -810,6 +819,7 @@ function onMouseMove(e) {
   updateGroupPosition(puzzleId, positions);
   const ap = pieceStates[dragging?.anchorIndex ?? indices[0]];
   if (ap) lastPlayerPos[playerId] = { x: ap.x, y: ap.y };
+  scheduleSyncBoardScrollContentSize();
 }
 
 async function onMouseUp(e) {
@@ -895,6 +905,7 @@ async function onMouseUp(e) {
     await unlockGroup(puzzleId, indices);
     indices.forEach(i => { pieceStates[i].lockedBy = null; });
   }
+  syncBoardScrollContentSize();
 }
 
 function onTouchStart(e) {
@@ -1051,6 +1062,7 @@ function rotateAtIndex(index) {
     pieceStates[index].rotation = newRot;
     movePieceEl(index, pieceStates[index].x, pieceStates[index].y);
     updatePieceRotation(puzzleId, index, newRot);
+    scheduleSyncBoardScrollContentSize();
     return;
   }
 
@@ -1076,6 +1088,7 @@ function rotateAtIndex(index) {
 
   // Batch write new positions + rotation in one call
   updateGroupRotationAndPositions(puzzleId, positions, newRot);
+  scheduleSyncBoardScrollContentSize();
 }
 
 function touchDist(touches) {
@@ -1096,11 +1109,16 @@ function clampScale(s) {
 }
 
 function updateBoardTransform() {
-  const needsTranslate = Math.abs(boardTx) > 0.5 || Math.abs(boardTy) > 0.5;
-  if (scale === 1 && !needsTranslate) {
+  const hasPan = Math.abs(boardTx) > 0.5 || Math.abs(boardTy) > 0.5;
+  if (hasPan) {
+    board.style.marginLeft = `${boardTx}px`;
+    board.style.marginTop = `${boardTy}px`;
+  } else {
+    board.style.marginLeft = '';
+    board.style.marginTop = '';
+  }
+  if (scale === 1 && !hasPan) {
     board.style.transform = '';
-  } else if (needsTranslate) {
-    board.style.transform = `translate3d(${boardTx}px,${boardTy}px,0) scale(${scale})`;
   } else {
     board.style.transform = `translateZ(0) scale(${scale})`;
   }
@@ -1116,8 +1134,22 @@ function syncBoardScrollContentSize() {
   if (!boardScrollContent || !boardWrap) return;
   const cw = boardWrap.clientWidth || 0;
   const ch = boardWrap.clientHeight || 0;
-  const visualW = BOARD_W * scale;
-  const visualH = BOARD_H * scale;
+
+  let contentW = BOARD_W;
+  let contentH = BOARD_H;
+  const aabb = getPieceCloudAabbBoard();
+  if (aabb) {
+    const s = BOARD_CLOUD_SLACK;
+    const leftBound = Math.min(0, aabb.minX - s);
+    const topBound = Math.min(0, aabb.minY - s);
+    const rightBound = Math.max(BOARD_W, aabb.maxX + s);
+    const bottomBound = Math.max(BOARD_H, aabb.maxY + s);
+    contentW = Math.max(BOARD_W, rightBound - leftBound);
+    contentH = Math.max(BOARD_H, bottomBound - topBound);
+  }
+
+  const visualW = contentW * scale;
+  const visualH = contentH * scale;
   const innerW = BOARD_SCROLL_PADDING * 2 + visualW;
   const innerH = BOARD_SCROLL_PADDING * 2 + visualH;
   const minLayoutW = BOARD_SCROLL_PADDING * 2 + BOARD_W;
@@ -1129,6 +1161,14 @@ function syncBoardScrollContentSize() {
   // VISUAL extent, keeping scroll symmetric and zoom anchors accurate.
   board.style.marginRight  = (BOARD_W * (scale - 1)) + 'px';
   board.style.marginBottom = (BOARD_H * (scale - 1)) + 'px';
+}
+
+function scheduleSyncBoardScrollContentSize() {
+  if (boardScrollSyncRaf != null) return;
+  boardScrollSyncRaf = requestAnimationFrame(() => {
+    boardScrollSyncRaf = null;
+    syncBoardScrollContentSize();
+  });
 }
 
 /** Center of the visible scroll viewport (stable zoom pivot for toolbar +/-). */
@@ -1183,8 +1223,8 @@ function applyScale(s, opts = {}) {
   if (hasAnchor) {
     const ox2 = board.offsetLeft;
     const oy2 = board.offsetTop;
-    // Invariant: screenX = wrapLeft - scrollLeft + offsetLeft + tx + bx*scale
-    // scroll subtracts, tx adds → the conserved quantity is (scrollLeft - tx).
+    // Invariant: screenX ≈ wrapLeft - scrollLeft + offsetLeft + pan + bx*scale
+    // (pan is margin-left/top when scroll hits limits.) Conserved: scrollLeft - boardTx in the pre-margin model.
     const kx = scrollLeft0 - boardTx + (ox2 - ox) + bx * (next - prev);
     const ky = scrollTop0 - boardTy + (oy2 - oy) + by * (next - prev);
     const maxSl = Math.max(0, boardWrap.scrollWidth - boardWrap.clientWidth);
@@ -1193,15 +1233,13 @@ function applyScale(s, opts = {}) {
     const st = Math.max(0, Math.min(maxSt, Math.round(ky)));
     boardTx = sl - kx;
     boardTy = st - ky;
-    // When there is no scroll slack, scroll cannot absorb the pivot correction; keep
-    // boardTx/boardTy (sl - kx) so zoom-to-cursor still works. Only snap translate to
-    // zero when not anchoring (e.g. fitBoardToViewport) to avoid drift from old tx/ty.
-    if (!hasAnchor) {
-      if (maxSl <= 0) boardTx = 0;
-      if (maxSt <= 0) boardTy = 0;
-    }
     boardWrap.scrollLeft = sl;
     boardWrap.scrollTop = st;
+  } else {
+    const maxSl = Math.max(0, boardWrap.scrollWidth - boardWrap.clientWidth);
+    const maxSt = Math.max(0, boardWrap.scrollHeight - boardWrap.clientHeight);
+    if (maxSl <= 0) boardTx = 0;
+    if (maxSt <= 0) boardTy = 0;
   }
 
   updateBoardTransform();
@@ -1303,18 +1341,22 @@ function centerBoardPointInView(cx, cy) {
   boardWrap.scrollTop = Math.max(0, Math.min(maxSt, Math.round(targetTop)));
 }
 
-function getPieceCloudBounds() {
-  if (!pieceStates?.length || !boardWrap || !board) return null;
+/**
+ * Axis-aligned bounds of all on-board pieces in board-local coordinates (same space as piece x/y).
+ * Used for scroll-area sizing so scattered / negative positions stay reachable when zoomed.
+ */
+function getPieceCloudAabbBoard() {
+  if (!pieceStates?.length || !board) return null;
 
   const pad = meta?._pad ?? 0;
   const drawW = (meta?.displayW ?? 0) + pad * 2;
   const drawH = (meta?.displayH ?? 0) + pad * 2;
   if (drawW <= 0 || drawH <= 0) return null;
 
-  // Prefer DOM-based bounds so rotations are measured exactly.
   const br = board.getBoundingClientRect();
   if (pieceEls?.length && br.width > 0 && br.height > 0 && scale > 0) {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    let any = false;
     for (const el of pieceEls) {
       if (!el) continue;
       const r = el.getBoundingClientRect();
@@ -1326,18 +1368,13 @@ function getPieceCloudBounds() {
       if (top < minY) minY = top;
       if (right > maxX) maxX = right;
       if (bottom > maxY) maxY = bottom;
+      any = true;
     }
-    if (Number.isFinite(minX) && Number.isFinite(minY)) {
-      return {
-        cx: (minX + maxX) / 2,
-        cy: (minY + maxY) / 2,
-        w: Math.max(1, maxX - minX),
-        h: Math.max(1, maxY - minY),
-      };
+    if (any && Number.isFinite(minX) && Number.isFinite(minY)) {
+      return { minX, minY, maxX, maxY };
     }
   }
 
-  // Fallback to state-based bounds if DOM boxes are unavailable.
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const p of pieceStates) {
     const left = p.x - pad;
@@ -1350,7 +1387,19 @@ function getPieceCloudBounds() {
     if (bottom > maxY) maxY = bottom;
   }
   if (!Number.isFinite(minX) || !Number.isFinite(minY)) return null;
-  return { cx: (minX + maxX) / 2, cy: (minY + maxY) / 2, w: Math.max(1, maxX - minX), h: Math.max(1, maxY - minY) };
+  return { minX, minY, maxX, maxY };
+}
+
+function getPieceCloudBounds() {
+  if (!boardWrap) return null;
+  const a = getPieceCloudAabbBoard();
+  if (!a) return null;
+  return {
+    cx: (a.minX + a.maxX) / 2,
+    cy: (a.minY + a.maxY) / 2,
+    w: Math.max(1, a.maxX - a.minX),
+    h: Math.max(1, a.maxY - a.minY),
+  };
 }
 
 function fitBoardToViewport() {
@@ -1404,10 +1453,11 @@ function flushWheelZoom() {
   if (sum === 0) return;
   const capped = Math.max(-280, Math.min(280, sum));
   const factor = Math.exp(-capped * 0.00135);
-  applyScale(
-    scale * factor,
-    zoomAnchorFromClient(wheelZoomAnchor.anchorClientX, wheelZoomAnchor.anchorClientY)
-  );
+  const zoomingOut = factor < 1;
+  const anchorOpts = zoomingOut
+    ? zoomAnchorViewportCenter()
+    : zoomAnchorFromClient(wheelZoomAnchor.anchorClientX, wheelZoomAnchor.anchorClientY);
+  applyScale(scale * factor, anchorOpts);
 }
 
 function onBoardWrapPointerOver(e) {
@@ -1578,6 +1628,7 @@ async function dropHandAt(clientX, clientY) {
   hand = [];
   renderHand();
   await Promise.allSettled(rotationWrites);
+  syncBoardScrollContentSize();
 }
 
 function shuffleNonAdjacent(indices, gridCols) {
@@ -1944,6 +1995,8 @@ function applyRemoteUpdate(index, data) {
     pieceEls[index]?.classList.remove('locked-by-other');
     setPieceAvatar(index, null);
   }
+
+  scheduleSyncBoardScrollContentSize();
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
