@@ -37,7 +37,14 @@ const BOARD_H   = 650;
 /** Must match .puzzle-board-scroll-content padding in style.css */
 const BOARD_SCROLL_PADDING = 20;
 /** Extra slack (board coords) around the piece AABB when sizing the scroll region — shadows / AA. */
-const BOARD_CLOUD_SLACK = 8;
+const BOARD_CLOUD_SLACK = 14;
+/**
+ * When scroll-centering on the cloud, bias below geometric viewport center (fraction of wrap height).
+ * Leaves more room above the pieces so tops are not tight to the board area edge.
+ */
+const BOARD_VIEW_CENTER_BIAS_Y = 0.11;
+/** Same for horizontal (narrow windows / left clipping). */
+const BOARD_VIEW_CENTER_BIAS_X = 0.06;
 const SCALE_MIN = 0.3;
 const SCALE_MAX = 3.0;
 
@@ -1332,8 +1339,11 @@ function centerBoardPointInView(cx, cy) {
   if (!boardWrap || boardWrap.clientWidth < 8 || boardWrap.clientHeight < 8) return;
   boardTx = 0; boardTy = 0;
   updateBoardTransform();
-  const targetLeft = board.offsetLeft + cx * scale - boardWrap.clientWidth / 2;
-  const targetTop = board.offsetTop + cy * scale - boardWrap.clientHeight / 2;
+  const cw = boardWrap.clientWidth;
+  const ch = boardWrap.clientHeight;
+  // Bias anchor below/left of viewport center so piece tops and sides clear the wrap edges.
+  const targetLeft = board.offsetLeft + cx * scale - cw * (0.5 + BOARD_VIEW_CENTER_BIAS_X);
+  const targetTop = board.offsetTop + cy * scale - ch * (0.5 + BOARD_VIEW_CENTER_BIAS_Y);
 
   const maxSl = Math.max(0, boardWrap.scrollWidth - boardWrap.clientWidth);
   const maxSt = Math.max(0, boardWrap.scrollHeight - boardWrap.clientHeight);
