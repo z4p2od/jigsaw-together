@@ -1632,10 +1632,15 @@ function removeFromHand(index) {
     clearTimeout(handTimers[i]);
     delete handTimers[i];
     delete handAddedAt[i];
-    pieceEls[i]?.classList.remove('in-hand');
+    pieceEls[i]?.classList.remove('in-hand', 'pocket-pulse');
     pieceStates[i].lockedBy = null;
   }
   if (toRemove.length) unlockGroup(puzzleId, toRemove);
+  for (const i of toRemove) {
+    const p = pieceStates[i];
+    if (Number.isFinite(p.x) && Number.isFinite(p.y)) movePieceEl(i, p.x, p.y);
+    updatePieceZIndex(i);
+  }
   renderHand();
 }
 
@@ -1646,12 +1651,17 @@ function removeFromHandSilent(index) {
     clearTimeout(handTimers[i]);
     delete handTimers[i];
     delete handAddedAt[i];
-    pieceEls[i]?.classList.remove('in-hand');
+    pieceEls[i]?.classList.remove('in-hand', 'pocket-pulse');
+  }
+  for (const i of toRemove) {
+    const p = pieceStates[i];
+    if (Number.isFinite(p.x) && Number.isFinite(p.y)) movePieceEl(i, p.x, p.y);
+    updatePieceZIndex(i);
   }
   renderHand();
 }
 
-async function dropHandAt(clientX, clientY) {
+function dropHandAt(clientX, clientY) {
   if (hand.length === 0) return;
   const r = board.getBoundingClientRect();
   const centerX = (clientX - r.left) / scale;
@@ -1669,7 +1679,6 @@ async function dropHandAt(clientX, clientY) {
   const spreadH = dH * 1.3;
 
   const positions = [];
-  const rotationWrites = [];
   shuffled.forEach((idx, i) => {
     const c = i % layoutCols;
     const rw = Math.floor(i / layoutCols);
@@ -1681,8 +1690,7 @@ async function dropHandAt(clientX, clientY) {
     pieceStates[idx].y = y;
     movePieceEl(idx, x, y);
     positions.push({ index: idx, x, y });
-    rotationWrites.push(updatePieceRotation(puzzleId, idx, pieceStates[idx].rotation ?? 0));
-    pieceEls[idx]?.classList.remove('in-hand');
+    pieceEls[idx]?.classList.remove('in-hand', 'pocket-pulse');
     clearTimeout(handTimers[idx]);
     delete handTimers[idx];
     delete handAddedAt[idx];
@@ -1691,9 +1699,9 @@ async function dropHandAt(clientX, clientY) {
   updateGroupPosition(puzzleId, positions);
   unlockGroup(puzzleId, shuffled);
   shuffled.forEach(i => { pieceStates[i].lockedBy = null; });
+  shuffled.forEach(i => updatePieceZIndex(i));
   hand = [];
   renderHand();
-  await Promise.allSettled(rotationWrites);
   syncBoardScrollContentSize();
 }
 
@@ -2037,6 +2045,9 @@ function applyRemoteUpdate(index, data) {
 
   if (Number.isFinite(data.x) && Number.isFinite(data.y)) {
     movePieceEl(index, data.x, data.y);
+  } else if (Object.prototype.hasOwnProperty.call(data, 'rotation')) {
+    const p = pieceStates[index];
+    if (Number.isFinite(p.x) && Number.isFinite(p.y)) movePieceEl(index, p.x, p.y);
   }
 
   // If this piece just joined a group (from another player's snap), merge locally
