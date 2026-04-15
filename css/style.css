@@ -10,6 +10,8 @@
   --text-muted: #b9a6cf;
   --radius: 12px;
   --shadow: 0 10px 40px rgba(5, 0, 16, 0.65);
+  --vv-keyboard-offset: 0px;
+  --toast-top: 60px;
 }
 
 body {
@@ -135,6 +137,7 @@ body::before {
 .piece-options {
   display: flex;
   gap: 6px;
+  flex-wrap: wrap;
 }
 
 .piece-options label {
@@ -362,8 +365,10 @@ body.puzzle-body {
   border: none;
   color: var(--text);
   border-radius: 8px;
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
   font-size: 0.95rem;
   font-weight: 700;
   cursor: pointer;
@@ -599,8 +604,10 @@ body.puzzle-body {
     font-size: 0.76rem;
   }
   .icon-btn {
-    width: 30px;
-    height: 30px;
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
     font-size: 0.86rem;
   }
 }
@@ -618,8 +625,10 @@ body.puzzle-body {
     font-size: 0.88rem;
   }
   .icon-btn {
-    width: 28px;
-    height: 28px;
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
     font-size: 0.8rem;
   }
   .player-dot {
@@ -656,7 +665,8 @@ body.puzzle-body {
   overflow: auto;
   position: relative;
   z-index: 0;
-  background: var(--bg);
+  /* Gutter around the scrollable frame — distinct from the playable board surface */
+  background: rgba(6, 2, 14, 0.92);
   touch-action: pan-x pan-y;
   overscroll-behavior: contain;
   scroll-behavior: auto;
@@ -673,6 +683,7 @@ body.puzzle-body {
   min-height: 100%;
   padding: 20px;
   box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.02);
 }
 
 @supports (justify-content: safe center) {
@@ -698,16 +709,50 @@ iframe[src*="vercel.live"] {
   margin: 0;
   flex-shrink: 0;
   overflow: visible;
-  background: transparent;
-  border: none;
-  border-radius: 0;
+  background: linear-gradient(
+    165deg,
+    rgba(52, 28, 88, 0.42) 0%,
+    rgba(24, 12, 48, 0.72) 55%,
+    rgba(14, 8, 32, 0.85) 100%
+  );
+  border: 2px solid rgba(90, 242, 255, 0.22);
+  border-radius: 4px;
   /* width/height set by JS */
   backface-visibility: hidden;
   /* Must match applyScale() math (zoom toward point uses top-left origin). */
   transform-origin: 0 0;
   cursor: grab;
-  /* Subtle edge: pocket drop / clamp uses BOARD_W×H — matches what you see. */
-  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.28);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.07),
+    0 4px 24px rgba(0, 0, 0, 0.45);
+}
+
+/*
+ * Touch + portrait: heavy gradient frame and thick gutter read cramped on narrow viewports.
+ * Flatten chrome and pull padding in so the board uses width efficiently.
+ */
+@media (max-aspect-ratio: 1/1) and (max-width: 767px) and (pointer: coarse) {
+  .puzzle-board-wrap {
+    background: var(--bg);
+  }
+
+  .puzzle-board-scroll-content {
+    padding:
+      max(8px, env(safe-area-inset-top, 0px))
+      max(6px, env(safe-area-inset-right, 0px))
+      max(10px, env(safe-area-inset-bottom, 0px))
+      max(6px, env(safe-area-inset-left, 0px));
+    background: transparent;
+    justify-content: flex-start;
+  }
+
+  #puzzle-board,
+  #puzzle-board-opp {
+    background: rgba(22, 10, 42, 0.75);
+    border: 1px solid rgba(148, 163, 184, 0.32);
+    border-radius: 2px;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  }
 }
 
 /* Individual piece */
@@ -983,6 +1028,40 @@ iframe[src*="vercel.live"] {
   padding-left: 20px;
 }
 
+@media (max-width: 860px) and (pointer: coarse) {
+  #celebration {
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 10px;
+    padding: 12px;
+    padding-top: max(12px, env(safe-area-inset-top, 0px));
+    padding-left: max(12px, env(safe-area-inset-left, 0px));
+    padding-right: max(12px, env(safe-area-inset-right, 0px));
+  }
+
+  #celebration h2 {
+    font-size: 1.1rem;
+  }
+
+  #celebration p {
+    font-size: 0.84rem;
+  }
+
+  #celebration .btn {
+    width: 100%;
+    text-align: center;
+  }
+
+  #celebration-lb {
+    min-width: 0;
+    border-left: 0;
+    border-top: 1px solid var(--surface2);
+    padding-left: 0;
+    padding-top: 10px;
+  }
+}
+
 /* ── Puzzle of the Day ── */
 
 #potd-section {
@@ -1133,7 +1212,6 @@ iframe[src*="vercel.live"] {
 @media (max-width: 960px) {
   .puzzle-board-wrap {
     overflow: auto;
-    -webkit-overflow-scrolling: touch;
   }
 }
 
@@ -1168,7 +1246,7 @@ iframe[src*="vercel.live"] {
 /* Chat popup — expands upward from bottom-left */
 .chat-panel {
   position: fixed;
-  bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(88px + env(safe-area-inset-bottom, 0px) + var(--vv-keyboard-offset));
   left: calc(24px + env(safe-area-inset-left, 0px));
   width: 300px;
   height: 400px;
@@ -1277,7 +1355,8 @@ iframe[src*="vercel.live"] {
   border: none;
   font-size: 1.3rem;
   cursor: pointer;
-  padding: 3px 5px;
+  padding: 8px 5px;
+  min-height: 44px;
   border-radius: 6px;
   transition: background 0.1s;
   line-height: 1;
@@ -1371,7 +1450,7 @@ iframe[src*="vercel.live"] {
 
 .feedback-panel {
   position: fixed;
-  bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(88px + env(safe-area-inset-bottom, 0px) + var(--vv-keyboard-offset));
   right: calc(24px + env(safe-area-inset-right, 0px));
   width: 320px;
   max-width: 90vw;
@@ -1395,6 +1474,33 @@ iframe[src*="vercel.live"] {
   pointer-events: all;
 }
 
+@media (max-width: 860px) and (pointer: coarse) {
+  .chat-panel,
+  .feedback-panel {
+    left: max(8px, env(safe-area-inset-left, 0px));
+    right: max(8px, env(safe-area-inset-right, 0px));
+    width: auto;
+    max-width: none;
+    border-radius: 14px;
+    transform-origin: bottom center;
+  }
+
+  .chat-panel {
+    bottom: calc(76px + env(safe-area-inset-bottom, 0px) + var(--vv-keyboard-offset));
+    height: clamp(220px, 50dvh, 400px);
+  }
+
+  .feedback-panel {
+    bottom: calc(76px + env(safe-area-inset-bottom, 0px) + var(--vv-keyboard-offset));
+    max-height: clamp(240px, 56dvh, 430px);
+    overflow: hidden;
+  }
+
+  .chat-messages {
+    min-height: 0;
+  }
+}
+
 .feedback-header {
   display: flex;
   align-items: center;
@@ -1408,8 +1514,12 @@ iframe[src*="vercel.live"] {
 .feedback-form {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-height: 0;
   gap: 10px;
   padding: 10px 14px 14px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .feedback-type-row {
@@ -1428,7 +1538,8 @@ iframe[src*="vercel.live"] {
 
 .feedback-type-row span {
   display: block;
-  padding: 8px 4px;
+  padding: 10px 4px;
+  min-height: 40px;
   border-radius: 999px;
   border: 2px solid var(--surface2);
   cursor: pointer;
@@ -2232,7 +2343,7 @@ iframe[src*="vercel.live"] {
 
 .powerup-toast {
   position: fixed;
-  top: 60px;
+  top: var(--toast-top);
   left: 50%;
   transform: translateX(-50%);
   color: #fff;
@@ -2246,8 +2357,8 @@ iframe[src*="vercel.live"] {
 }
 
 @keyframes toast-slide {
-  from { opacity: 0; top: 50px; }
-  to   { opacity: 1; top: 60px; }
+  from { opacity: 0; top: calc(var(--toast-top) - 10px); }
+  to   { opacity: 1; top: var(--toast-top); }
 }
 
 /* ── VS score board ── */

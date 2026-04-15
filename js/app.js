@@ -323,8 +323,8 @@ function calculateGrid(pieceCount, imgWidth, imgHeight) {
 // ── Scatter pieces ────────────────────────────────────────────────────────────
 
 function scatterPieces(count, dispW, dispH, hardMode) {
-  const boardW = 900;
-  const boardH = 650;
+  const boardW = 1080;
+  const boardH = 780;
   const ROTS   = [0, 90, 180, 270];
   return Array.from({ length: count }, () => ({
     x:        Math.random() * (boardW - dispW),
@@ -385,7 +385,7 @@ async function handleCreatePuzzle() {
     const pieceW = Math.floor(selectedDims.width  / cols);
     const pieceH = Math.floor(selectedDims.height / rows);
 
-    const boardW = 900, boardH = 650;
+    const boardW = 1080, boardH = 780;
     const scale    = Math.min((boardW * 0.55) / selectedDims.width, (boardH * 0.55) / selectedDims.height, 1);
     const displayW = Math.floor(pieceW * scale);
     const displayH = Math.floor(pieceH * scale);

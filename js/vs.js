@@ -27,8 +27,8 @@ function safeLocalGet(key) {
   }
 }
 
-const BOARD_W   = 900;
-const BOARD_H   = 650;
+const BOARD_W   = 1080;
+const BOARD_H   = 780;
 const SCALE_MIN = 0.3;
 const SCALE_MAX = 3.0;
 

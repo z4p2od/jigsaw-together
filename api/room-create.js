@@ -8,8 +8,8 @@
  */
 import crypto from 'crypto';
 
-const BOARD_W = 900;
-const BOARD_H = 650;
+const BOARD_W = 1080;
+const BOARD_H = 780;
 const ALLOWED_PIECES = [24, 100, 250, 500, 1000];
 
 function calculateGrid(pieceCount, imgWidth, imgHeight) {

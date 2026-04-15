@@ -31,7 +31,7 @@
   <div id="name-modal" class="modal-overlay">
     <div class="modal">
       <h3>What's your name?</h3>
-      <input id="name-input" type="text" class="name-input" placeholder="Your name" maxlength="20" />
+      <input id="name-input" type="text" class="name-input" placeholder="Your name" maxlength="20" autocomplete="off" autocapitalize="words" />
       <button id="name-submit" class="btn">Join Puzzle</button>
     </div>
   </div>
@@ -48,7 +48,7 @@
   <!-- Box cover overlay -->
   <div id="box-cover">
     <img id="box-cover-img" alt="Puzzle image" />
-    <p class="box-cover-hint">Click anywhere to close</p>
+    <p class="box-cover-hint">Tap or click anywhere to close</p>
   </div>
 
   <div id="celebration">
@@ -108,7 +108,7 @@
         <button class="emoji-btn" data-emoji="❤️">❤️</button>
       </div>
       <div class="chat-compose">
-        <input type="text" id="chat-input" class="chat-input-field" placeholder="Say something…" maxlength="200" />
+        <input type="text" id="chat-input" class="chat-input-field" placeholder="Say something…" maxlength="200" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" />
         <button id="chat-send" class="icon-btn">↑</button>
       </div>
     </div>

@@ -9,8 +9,8 @@
  */
 import crypto from 'crypto';
 
-const BOARD_W = 900;
-const BOARD_H = 650;
+const BOARD_W = 1080;
+const BOARD_H = 780;
 
 function scatterPieces(count, dispW, dispH, hardMode) {
   const ROTS = [0, 90, 180, 270];

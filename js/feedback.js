@@ -106,6 +106,7 @@ function setStatus(msg, isError = false) {
 }
 
 function openPanel() {
+  window.dispatchEvent(new CustomEvent('jt:feedback-open'));
   const panel = document.getElementById('feedback-panel');
   if (!panel) return;
   panel.classList.add('open');
@@ -202,6 +203,7 @@ function initFeedbackWidget() {
   });
 
   if (closeBtn) closeBtn.addEventListener('click', closePanel);
+  window.addEventListener('jt:chat-open', closePanel);
 
   if (form) {
     // Swap textarea label/placeholder based on the selected radio type.

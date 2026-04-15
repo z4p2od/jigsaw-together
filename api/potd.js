@@ -13,8 +13,8 @@
  */
 import crypto from 'crypto';
 
-const BOARD_W = 900;
-const BOARD_H = 650;
+const BOARD_W = 1080;
+const BOARD_H = 780;
 
 const DIFFICULTIES = [
   { key: 'easy',   pieceCount: 25,  hardMode: false },

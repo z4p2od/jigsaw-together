@@ -33,8 +33,8 @@ import {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const BOARD_W   = 900;
-const BOARD_H   = 650;
+const BOARD_W   = 1080;
+const BOARD_H   = 780;
 /** Horizontal and bottom padding for scroll content (px). Top adds SCROLL_TOP_GUTTER in sync. */
 const BOARD_SCROLL_PADDING = 20;
 /** Extra scroll-area padding above the board so piece tabs / zoomed tops stay scrollable below the header edge. */
@@ -122,6 +122,10 @@ let pieceEls    = [];
 let pieceStates = [];
 let solvedCount = 0;
 let totalPieces = 0;
+let placedCount = 0;
+let activeGroupCount = 0;
+let groupedPieceCount = 0;
+let placedFlags = [];
 
 // Groups — local only, never synced to Firebase
 const groups    = {};   // groupId -> Set<number>
@@ -136,6 +140,8 @@ let viewportPan = null; // { startX, startY, scrollLeft, scrollTop }
 let wheelZoomRaf = null;
 let wheelDeltaFrame = 0;
 let wheelZoomAnchor = { anchorClientX: 0, anchorClientY: 0 };
+let pinchZoomRaf = null;
+let pinchZoomQueued = null;
 /** Trackpad pinch often maps to ctrl+wheel with wrong clientX/Y in Chromium; prefer real pointer. */
 let lastBoardWrapPointerClient = { x: NaN, y: NaN };
 let hasLastBoardWrapPointer = false;
@@ -335,6 +341,8 @@ async function initPuzzle() {
     if (meta.hardMode) document.getElementById('hard-badge').style.display = '';
 
     setupBoard();
+    syncHeaderToastOffset();
+    syncKeyboardViewportOffset();
     // #region agent log
     jtDbgLog({
       runId: 'pre-fix-1',
@@ -354,6 +362,7 @@ async function initPuzzle() {
     // #endregion
     await renderAllPieces();
     reconstructGroups();
+    rebuildPlacedFlags();
     setupShareLink();
     attachDragListeners();
 
@@ -465,6 +474,36 @@ function normalizeLoadedPuzzle(data) {
   }
 
   return { meta, pieceStates };
+}
+
+function refreshGroupStats() {
+  activeGroupCount = 0;
+  groupedPieceCount = 0;
+  for (const members of Object.values(groups)) {
+    const size = members?.size || 0;
+    if (size <= 0) continue;
+    activeGroupCount++;
+    groupedPieceCount += size;
+  }
+}
+
+function updatePlacedFlag(index) {
+  if (!Number.isInteger(index) || index < 0 || index >= totalPieces) return;
+  const next = Boolean(pieceGroup[index] || pieceStates[index]?.solved);
+  const prev = Boolean(placedFlags[index]);
+  if (next === prev) return;
+  placedFlags[index] = next;
+  placedCount += next ? 1 : -1;
+}
+
+function rebuildPlacedFlags() {
+  placedFlags = new Array(totalPieces).fill(false);
+  placedCount = 0;
+  for (let i = 0; i < totalPieces; i++) {
+    const placed = Boolean(pieceGroup[i] || pieceStates[i]?.solved);
+    placedFlags[i] = placed;
+    if (placed) placedCount++;
+  }
 }
 
 function setupBoard() {
@@ -832,7 +871,8 @@ function onMouseMove(e) {
 
   if (!dragging.locked) {
     dragging.locked = true;
-    lockGroup(puzzleId, indices, playerId);
+    const needsLock = indices.filter(i => pieceStates[i].lockedBy !== playerId);
+    if (needsLock.length) lockGroup(puzzleId, needsLock, playerId);
     indices.forEach(i => { pieceStates[i].lockedBy = playerId; });
     indices.forEach(i => {
       pieceEls[i]?.classList.add('dragging');
@@ -1002,7 +1042,19 @@ function onTouchMove(e) {
     const newDist = touchDist(e.touches);
     const raw     = pinch.scale0 * (newDist / pinch.dist0);
     const mid = touchMidpoint(e.touches);
-    applyScale(Math.min(SCALE_MAX, Math.max(SCALE_MIN, raw)), zoomAnchorFromClient(mid.x, mid.y));
+    pinchZoomQueued = {
+      scale: Math.min(SCALE_MAX, Math.max(SCALE_MIN, raw)),
+      anchor: zoomAnchorFromClient(mid.x, mid.y),
+    };
+    if (!pinchZoomRaf) {
+      pinchZoomRaf = requestAnimationFrame(() => {
+        pinchZoomRaf = null;
+        const queued = pinchZoomQueued;
+        pinchZoomQueued = null;
+        if (!queued) return;
+        applyScale(queued.scale, queued.anchor);
+      });
+    }
     return;
   }
 
@@ -1024,6 +1076,11 @@ function onTouchEnd(e) {
 
   if (pinch && e.touches.length < 2) {
     pinch = null;
+    pinchZoomQueued = null;
+    if (pinchZoomRaf) {
+      cancelAnimationFrame(pinchZoomRaf);
+      pinchZoomRaf = null;
+    }
     return;
   }
 
@@ -1418,28 +1475,7 @@ function getPieceCloudAabbBoard() {
   const drawH = (meta?.displayH ?? 0) + pad * 2;
   if (drawW <= 0 || drawH <= 0) return null;
 
-  const br = board.getBoundingClientRect();
-  if (pieceEls?.length && br.width > 0 && br.height > 0 && scale > 0) {
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    let any = false;
-    for (const el of pieceEls) {
-      if (!el) continue;
-      const r = el.getBoundingClientRect();
-      const left = (r.left - br.left) / scale;
-      const top = (r.top - br.top) / scale;
-      const right = (r.right - br.left) / scale;
-      const bottom = (r.bottom - br.top) / scale;
-      if (left < minX) minX = left;
-      if (top < minY) minY = top;
-      if (right > maxX) maxX = right;
-      if (bottom > maxY) maxY = bottom;
-      any = true;
-    }
-    if (any && Number.isFinite(minX) && Number.isFinite(minY)) {
-      return { minX, minY, maxX, maxY };
-    }
-  }
-
+  // State-first path: avoids expensive per-piece layout reads during drag/zoom.
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const p of pieceStates) {
     const left = p.x - pad;
@@ -1823,11 +1859,6 @@ function layoutMetaForHandIndices(indices, maxW, maxH) {
   return { minX, minY, bw, bh, k, elW, elH, pad };
 }
 
-/** Union bbox of all pocketed pieces (board coords) — used for rigid drop, not preview pixels. */
-function getHandPocketLayoutMeta() {
-  return layoutMetaForHandIndices(hand, HAND_BLOCK_MAX_W, HAND_BLOCK_MAX_H);
-}
-
 function buildHandSlotPreviewElement(slotIndices, maxW, maxH) {
   const layout = layoutMetaForHandIndices(slotIndices, maxW, maxH);
   const preview = document.createElement('div');
@@ -1947,68 +1978,103 @@ function removeFromHandSilent(index) {
   renderHand();
 }
 
-function currentHandBoardBBox(pad, elW, elH) {
-  let nMinX = Infinity, nMinY = Infinity, nMaxX = -Infinity, nMaxY = -Infinity;
-  for (const idx of hand) {
-    const p = pieceStates[idx];
-    const left = p.x - pad;
-    const top = p.y - pad;
-    nMinX = Math.min(nMinX, left);
-    nMinY = Math.min(nMinY, top);
-    nMaxX = Math.max(nMaxX, left + elW);
-    nMaxY = Math.max(nMaxY, top + elH);
-  }
-  return { nMinX, nMinY, nMaxX, nMaxY };
+/** Outer AABBs (in board space) separated by at least `gap` px between edges. */
+function pocketPieceOuterAABBsSeparated(ix, iy, jx, jy, pad, elW, elH, gap) {
+  const l1 = ix - pad;
+  const r1 = l1 + elW;
+  const t1 = iy - pad;
+  const b1 = t1 + elH;
+  const l2 = jx - pad;
+  const r2 = l2 + elW;
+  const t2 = jy - pad;
+  const b2 = t2 + elH;
+  return r1 + gap <= l2 || l1 >= r2 + gap || b1 + gap <= t2 || t1 >= b2 + gap;
 }
 
-function shiftAllHandPieces(dx, dy) {
-  for (const idx of hand) {
-    const p = pieceStates[idx];
-    p.x += dx;
-    p.y += dy;
-    movePieceEl(idx, p.x, p.y);
-  }
-}
-
-function clampHandFormationToBoard(pad, elW, elH) {
-  for (let iter = 0; iter < 8; iter++) {
-    let changed = false;
-    let b = currentHandBoardBBox(pad, elW, elH);
-    if (b.nMinX < 0) {
-      shiftAllHandPieces(-b.nMinX, 0);
-      changed = true;
+function clampPieceIndicesFormationToBoard(indices, pad, elW, elH) {
+  for (let iter = 0; iter < 12; iter++) {
+    let nMinX = Infinity;
+    let nMinY = Infinity;
+    let nMaxX = -Infinity;
+    let nMaxY = -Infinity;
+    for (const idx of indices) {
+      const p = pieceStates[idx];
+      const left = p.x - pad;
+      const top = p.y - pad;
+      nMinX = Math.min(nMinX, left);
+      nMinY = Math.min(nMinY, top);
+      nMaxX = Math.max(nMaxX, left + elW);
+      nMaxY = Math.max(nMaxY, top + elH);
     }
-    b = currentHandBoardBBox(pad, elW, elH);
-    if (b.nMaxX > BOARD_W) {
-      shiftAllHandPieces(BOARD_W - b.nMaxX, 0);
-      changed = true;
+    let dx = 0;
+    let dy = 0;
+    if (nMinX < 0) dx = -nMinX;
+    if (nMaxX + dx > BOARD_W) dx += BOARD_W - (nMaxX + dx);
+    if (nMinY + dy < 0) dy = -(nMinY + dy);
+    if (nMaxY + dy > BOARD_H) dy += BOARD_H - (nMaxY + dy);
+    if (dx === 0 && dy === 0) break;
+    for (const idx of indices) {
+      const p = pieceStates[idx];
+      p.x += dx;
+      p.y += dy;
+      movePieceEl(idx, p.x, p.y);
     }
-    b = currentHandBoardBBox(pad, elW, elH);
-    if (b.nMinY < 0) {
-      shiftAllHandPieces(0, -b.nMinY);
-      changed = true;
-    }
-    b = currentHandBoardBBox(pad, elW, elH);
-    if (b.nMaxY > BOARD_H) {
-      shiftAllHandPieces(0, BOARD_H - b.nMaxY);
-      changed = true;
-    }
-    if (!changed) break;
   }
 }
 
-/** Nudge so the outer bbox centroid sits on the drop point (re-applies clamp — fixes drift from edge fitting). */
-function snapHandFormationCentroidTo(targetX, targetY, pad, elW, elH) {
-  for (let pass = 0; pass < 5; pass++) {
-    const b = currentHandBoardBBox(pad, elW, elH);
-    const cx = (b.nMinX + b.nMaxX) / 2;
-    const cy = (b.nMinY + b.nMaxY) / 2;
-    const rdx = targetX - cx;
-    const rdy = targetY - cy;
-    if (Math.abs(rdx) < 0.4 && Math.abs(rdy) < 0.4) break;
-    shiftAllHandPieces(rdx, rdy);
-    clampHandFormationToBoard(pad, elW, elH);
+/**
+ * Place pocket release in a tight cluster around the tap: first piece on the point,
+ * others on a Vogel spiral with axis-aligned gaps between piece outers (no overlap).
+ */
+function placeHandIndicesCompactAroundTap(indices, centerX, centerY) {
+  const pad = meta?._pad ?? 0;
+  const dW = meta?._displayW ?? 0;
+  const dH = meta?._displayH ?? 0;
+  const elW = dW + pad * 2;
+  const elH = dH + pad * 2;
+  const gridCols = meta?.cols ?? 1;
+  const ordered = indices.length > 1 ? shuffleNonAdjacent([...indices], gridCols) : [...indices];
+  const gap = Math.max(2, Math.round(Math.min(dW, dH) * 0.06));
+  const golden = Math.PI * (3 - Math.sqrt(5));
+  const placed = [];
+
+  for (let i = 0; i < ordered.length; i++) {
+    if (i === 0) {
+      const x = centerX - dW / 2;
+      const y = centerY - dH / 2;
+      placed.push({ idx: ordered[i], x, y });
+      continue;
+    }
+    let found = false;
+    for (let j = 1; j < 600 && !found; j++) {
+      const r = Math.min(elW, elH) * (0.42 + 0.11 * Math.sqrt(j));
+      const a = (i + j * 0.09) * golden;
+      const ix = centerX + r * Math.cos(a) - dW / 2;
+      const iy = centerY + r * Math.sin(a) - dH / 2;
+      if (placed.every(({ x: px, y: py }) =>
+        pocketPieceOuterAABBsSeparated(ix, iy, px, py, pad, elW, elH, gap)
+      )) {
+        placed.push({ idx: ordered[i], x: ix, y: iy });
+        found = true;
+      }
+    }
+    if (!found) {
+      const fb = (i * 0.6180339887) % 1;
+      const r = Math.min(elW, elH) * (0.95 + i * 0.42);
+      placed.push({
+        idx: ordered[i],
+        x: centerX + r * Math.cos(fb * Math.PI * 2) - dW / 2,
+        y: centerY + r * Math.sin(fb * Math.PI * 2) - dH / 2,
+      });
+    }
   }
+
+  for (const { idx, x, y } of placed) {
+    pieceStates[idx].x = x;
+    pieceStates[idx].y = y;
+    movePieceEl(idx, x, y);
+  }
+  clampPieceIndicesFormationToBoard(ordered, pad, elW, elH);
 }
 
 function dropHandAt(clientX, clientY) {
@@ -2021,7 +2087,7 @@ function dropHandAt(clientX, clientY) {
   const elH = (meta?._displayH ?? 0) + pad * 2;
   const handIndices = [...hand];
 
-  const finalizeRigidDrop = () => {
+  const finalizeHandDrop = () => {
     handIndices.forEach(idx => pocketHomeByIndex.delete(idx));
     const positions = handIndices.map(idx => ({
       index: idx,
@@ -2040,101 +2106,10 @@ function dropHandAt(clientX, clientY) {
     syncBoardScrollContentSize();
   };
 
-  const pocketLayout = getHandPocketLayoutMeta();
-  const bboxAfterDelta = (dx, dy) => {
-    let nMinX = Infinity;
-    let nMinY = Infinity;
-    let nMaxX = -Infinity;
-    let nMaxY = -Infinity;
-    for (const idx of handIndices) {
-      const p = pieceStates[idx];
-      const x = p.x + dx;
-      const y = p.y + dy;
-      const left = x - pad;
-      const top = y - pad;
-      nMinX = Math.min(nMinX, left);
-      nMinY = Math.min(nMinY, top);
-      nMaxX = Math.max(nMaxX, left + elW);
-      nMaxY = Math.max(nMaxY, top + elH);
-    }
-    return { nMinX, nMinY, nMaxX, nMaxY };
-  };
-
-  let dx = 0;
-  let dy = 0;
-  if (pocketLayout && elW > 0 && elH > 0) {
-    const cx = pocketLayout.minX + pocketLayout.bw / 2;
-    const cy = pocketLayout.minY + pocketLayout.bh / 2;
-    dx = centerX - cx;
-    dy = centerY - cy;
-    for (let iter = 0; iter < 8; iter++) {
-      let b = bboxAfterDelta(dx, dy);
-      let changed = false;
-      if (b.nMinX < 0) {
-        dx += -b.nMinX;
-        changed = true;
-      }
-      b = bboxAfterDelta(dx, dy);
-      if (b.nMaxX > BOARD_W) {
-        dx -= b.nMaxX - BOARD_W;
-        changed = true;
-      }
-      b = bboxAfterDelta(dx, dy);
-      if (b.nMinY < 0) {
-        dy += -b.nMinY;
-        changed = true;
-      }
-      b = bboxAfterDelta(dx, dy);
-      if (b.nMaxY > BOARD_H) {
-        dy -= b.nMaxY - BOARD_H;
-        changed = true;
-      }
-      if (!changed) break;
-    }
-    for (const idx of handIndices) {
-      const p = pieceStates[idx];
-      p.x += dx;
-      p.y += dy;
-      movePieceEl(idx, p.x, p.y);
-    }
-    snapHandFormationCentroidTo(centerX, centerY, pad, elW, elH);
-    finalizeRigidDrop();
-    return;
+  if (elW > 0 && elH > 0) {
+    placeHandIndicesCompactAroundTap(handIndices, centerX, centerY);
   }
-
-  const dW = meta._displayW;
-  const dH = meta._displayH;
-  const gridCols = meta.cols;
-  const shuffled = shuffleNonAdjacent([...handIndices], gridCols);
-  const layoutCols = Math.ceil(Math.sqrt(shuffled.length));
-  const layoutRows = Math.ceil(shuffled.length / layoutCols);
-  const spreadW = dW * 1.06;
-  const spreadH = dH * 1.06;
-  const positions = [];
-  shuffled.forEach((idx, i) => {
-    const c = i % layoutCols;
-    const rw = Math.floor(i / layoutCols);
-    const jitterX = (Math.random() - 0.5) * dW * 0.18;
-    const jitterY = (Math.random() - 0.5) * dH * 0.18;
-    const x = centerX - (layoutCols * spreadW / 2) + c * spreadW + jitterX;
-    const y = centerY - (layoutRows * spreadH / 2) + rw * spreadH + jitterY;
-    pieceStates[idx].x = x;
-    pieceStates[idx].y = y;
-    movePieceEl(idx, x, y);
-    pieceEls[idx]?.classList.remove('in-hand', 'pocket-pulse');
-  });
-  if (elW > 0 && elH > 0) snapHandFormationCentroidTo(centerX, centerY, pad, elW, elH);
-  shuffled.forEach(idx => pocketHomeByIndex.delete(idx));
-  for (const idx of shuffled) {
-    positions.push({ index: idx, x: pieceStates[idx].x, y: pieceStates[idx].y });
-  }
-  updateGroupPosition(puzzleId, positions);
-  unlockGroup(puzzleId, shuffled);
-  shuffled.forEach(i => { pieceStates[i].lockedBy = null; });
-  shuffled.forEach(i => updatePieceZIndex(i));
-  hand = [];
-  renderHand();
-  syncBoardScrollContentSize();
+  finalizeHandDrop();
 }
 
 function shuffleNonAdjacent(indices, gridCols) {
@@ -2266,11 +2241,30 @@ function showPocketGroupTooBigToast() {
   setTimeout(() => t.remove(), 3200);
 }
 
+function syncHeaderToastOffset() {
+  const header = document.querySelector('.puzzle-header');
+  const headerBottom = header?.getBoundingClientRect?.().bottom ?? 0;
+  const top = Math.max(60, Math.ceil(headerBottom + 8));
+  document.documentElement.style.setProperty('--toast-top', `${top}px`);
+}
+
+function syncKeyboardViewportOffset() {
+  const vv = window.visualViewport;
+  if (!vv) {
+    document.documentElement.style.setProperty('--vv-keyboard-offset', '0px');
+    return;
+  }
+  const delta = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+  document.documentElement.style.setProperty('--vv-keyboard-offset', `${Math.round(delta)}px`);
+}
+
 function setupViewportControls() {
   if (boardViewportListenersAttached) return;
   boardViewportListenersAttached = true;
 
   window.addEventListener('resize', () => {
+    syncHeaderToastOffset();
+    syncKeyboardViewportOffset();
     syncBoardScrollContentSize();
     if (scale <= 1.05) fitBoardToViewport();
   });
@@ -2281,6 +2275,8 @@ function setupViewportControls() {
     vv.addEventListener('resize', () => {
       if (vvTimer) clearTimeout(vvTimer);
       vvTimer = setTimeout(() => {
+        syncHeaderToastOffset();
+        syncKeyboardViewportOffset();
         syncBoardScrollContentSize();
         if (pieceEls?.length) centerPieceCloudInView();
       }, 120);
@@ -2289,6 +2285,8 @@ function setupViewportControls() {
 
   window.addEventListener('orientationchange', () => {
     window.setTimeout(() => {
+      syncHeaderToastOffset();
+      syncKeyboardViewportOffset();
       syncBoardScrollContentSize();
       if (pieceEls?.length) framePieceCloudInView();
     }, 380);
@@ -2391,6 +2389,7 @@ function checkSolvedState() {
       groups[gid].forEach(j => {
         pieceStates[j] = { ...pieceStates[j], solved: true, lockedBy: null };
         pieceEls[j]?.classList.add('solved');
+        updatePlacedFlag(j);
         updates[j] = { x: pieceStates[j].x, y: pieceStates[j].y };
       });
       solvedCount = totalPieces;
@@ -2422,10 +2421,10 @@ function checkAndMerge(index) {
   mergeGroups(toMerge);
 }
 
-function mergeGroups(indices) {
+function mergeGroups(indices, preferredGroupId = null) {
   // Collect all existing groupIds among these indices
   const existingIds = [...new Set(indices.map(i => pieceGroup[i]).filter(Boolean))];
-  const keepId = existingIds[0] ?? generateUUID();
+  const keepId = preferredGroupId || existingIds[0] || generateUUID();
 
   if (!groups[keepId]) groups[keepId] = new Set();
 
@@ -2442,7 +2441,9 @@ function mergeGroups(indices) {
       groups[keepId].add(i);
       pieceGroup[i] = keepId;
     }
+    updatePlacedFlag(i);
   });
+  refreshGroupStats();
 }
 
 function reconstructGroups() {
@@ -2454,6 +2455,7 @@ function reconstructGroups() {
       pieceGroup[i] = p.groupId;
     }
   });
+  refreshGroupStats();
 }
 
 // ── Remote updates ────────────────────────────────────────────────────────────
@@ -2505,11 +2507,9 @@ function applyRemoteUpdate(index, data) {
 
   // If this piece just joined a group (from another player's snap), merge locally
   if (data.groupId && data.groupId !== wasGroupId) {
-    // Find all pieces with this groupId and merge them
-    const groupMembers = pieceStates
-      .map((p, i) => p.groupId === data.groupId ? i : -1)
-      .filter(i => i >= 0);
-    if (groupMembers.length > 1) mergeGroups(groupMembers);
+    const knownMembers = groups[data.groupId] ? [...groups[data.groupId]] : [];
+    const toMerge = knownMembers.includes(index) ? knownMembers : [...knownMembers, index];
+    mergeGroups(toMerge, data.groupId);
     updateProgress();
   }
 
@@ -2518,6 +2518,7 @@ function applyRemoteUpdate(index, data) {
     pieceEls[index]?.classList.remove('locked-by-other');
     setPieceAvatar(index, null);
     solvedCount++;
+    updatePlacedFlag(index);
     updateProgress();
     syncRoomsSolvedCount();
     checkCompletion();
@@ -2541,9 +2542,7 @@ function applyRemoteUpdate(index, data) {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function updateProgress() {
-  // Count pieces that are in a group (merged) as "placed"
-  const placed = pieceStates.filter((p, i) => pieceGroup[i] || p.solved).length;
-  progressEl.textContent = `${placed} / ${totalPieces} pieces`;
+  progressEl.textContent = `${placedCount} / ${totalPieces} pieces`;
 }
 
 function syncRoomsSolvedCount() {
@@ -2556,7 +2555,7 @@ function syncRoomsSolvedCount() {
 
 function checkCompletion() {
   const done = solvedCount >= totalPieces ||
-    (() => { const gids = new Set(pieceGroup.filter(Boolean)); return gids.size === 1 && groups[[...gids][0]]?.size === totalPieces; })();
+    (groupedPieceCount === totalPieces && activeGroupCount === 1);
   if (!done) return;
 
   if (meta?.isPublic) updateRoomsIndex(puzzleId, { status: 'done', solvedCount });
@@ -2699,12 +2698,20 @@ function setupPeek() {
 
 function setupChat() {
   // Open / close panel
-  const open  = () => { chatPanel.classList.add('open'); chatOpen = true; setChatBadge(0); };
+  const open  = () => {
+    chatPanel.classList.add('open');
+    chatOpen = true;
+    setChatBadge(0);
+    window.dispatchEvent(new CustomEvent('jt:chat-open'));
+  };
   const close = () => { chatPanel.classList.remove('open'); chatOpen = false; };
 
   chatBtn.addEventListener('click', () => chatOpen ? close() : open());
   chatClose.addEventListener('click', close);
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && chatOpen) close(); });
+  window.addEventListener('jt:feedback-open', () => {
+    if (chatOpen) close();
+  });
 
   // Send on Enter or send button
   const send = () => {
