@@ -180,5 +180,6 @@ export function cutPiece(img, col, row, pieceW, pieceH, displayW, displayH, edge
 
   const webpUrl = canvas.toDataURL('image/webp', 0.88);
   if (typeof webpUrl === 'string' && webpUrl.startsWith('data:image/webp')) return webpUrl;
-  return canvas.toDataURL('image/jpeg', 0.9);
+  // JPEG has no alpha channel — transparent pad areas become black. PNG is the correct fallback.
+  return canvas.toDataURL('image/png');
 }
