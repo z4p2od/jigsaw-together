@@ -2032,6 +2032,24 @@ function placeHandIndicesCompactAroundTap(indices, centerX, centerY) {
   const dH = meta?._displayH ?? 0;
   const elW = dW + pad * 2;
   const elH = dH + pad * 2;
+
+  // If all indices belong to the same merged group, preserve their relative formation
+  // by translating the group centroid to the tap point instead of scattering.
+  if (indices.length > 1) {
+    const gid = pieceGroup[indices[0]];
+    if (gid != null && indices.every(i => pieceGroup[i] === gid)) {
+      const cx = indices.reduce((s, i) => s + pieceStates[i].x + dW / 2, 0) / indices.length;
+      const cy = indices.reduce((s, i) => s + pieceStates[i].y + dH / 2, 0) / indices.length;
+      for (const i of indices) {
+        pieceStates[i].x = centerX + (pieceStates[i].x - cx);
+        pieceStates[i].y = centerY + (pieceStates[i].y - cy);
+        movePieceEl(i, pieceStates[i].x, pieceStates[i].y);
+      }
+      clampPieceIndicesFormationToBoard(indices, pad, elW, elH);
+      return;
+    }
+  }
+
   const gridCols = meta?.cols ?? 1;
   const ordered = indices.length > 1 ? shuffleNonAdjacent([...indices], gridCols) : [...indices];
   const gap = Math.max(2, Math.round(Math.min(dW, dH) * 0.06));
@@ -2080,6 +2098,9 @@ function placeHandIndicesCompactAroundTap(indices, centerX, centerY) {
 function dropHandAt(clientX, clientY) {
   if (hand.length === 0) return;
   clearAllHandSlotTimers();
+  // Suppress the synthetic mousedown iOS fires ~300ms after touchend at the same
+  // coordinates — without this the dropped piece would be immediately re-picked up.
+  suppressMouseDownPickUntil = Date.now() + 700;
   const { x: centerX, y: centerY } = clientToBoardPoint(clientX, clientY);
 
   const pad = meta?._pad ?? 0;
