@@ -15,7 +15,6 @@ import {
   getPlayerColor,
   setStartedAt,
   updatePieceRotation,
-  updateGroupRotation,
   updateGroupRotationAndPositions,
   recordPOTDScore,
   onPOTDLeaderboard,
@@ -30,6 +29,10 @@ import {
   getTextureScale,
   snapBoardScaleToDevicePixels,
 } from './mobile-quality.js';
+import {
+  normalizeRotationDeg,
+  rotateGroupQuarterTurnCW,
+} from './puzzle-rotation.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -641,12 +644,6 @@ function renderPiece(index, dataUrl, x, y, solved, elW, elH) {
   updatePieceZIndex(index);
 }
 
-function normalizeRotationDeg(r) {
-  const n = Number(r);
-  if (!Number.isFinite(n)) return 0;
-  return ((Math.round(n) % 360) + 360) % 360;
-}
-
 /** After pocket filter/animation, force a clean transform (fixes stuck / wrong rotation in some browsers). */
 function refreshPieceTransformAfterPocket(index) {
   const e = pieceEls[index];
@@ -1155,11 +1152,11 @@ function onDoubleTap(e) {
 function rotateAtIndex(index) {
   const gid     = pieceGroup[index];
   const indices = gid ? [...groups[gid]] : [index];
-  const newRot  = ((pieceStates[index].rotation ?? 0) + 90) % 360;
   const { _displayW: dW, _displayH: dH } = meta;
 
   if (indices.length === 1) {
     // Single piece — update rotation only, position unchanged
+    const newRot = normalizeRotationDeg((pieceStates[index].rotation ?? 0) + 90);
     pieceStates[index].rotation = newRot;
     movePieceEl(index, pieceStates[index].x, pieceStates[index].y);
     updatePieceRotation(puzzleId, index, newRot);
@@ -1167,28 +1164,16 @@ function rotateAtIndex(index) {
     return;
   }
 
-  // Group — rotate all piece positions 90° CW around the group's bounding-box centre.
-  // Each piece's logical position is its top-left inner-rect corner (x, y).
-  // The piece centre is at (x + dW/2, y + dH/2).
-  const cx = indices.reduce((s, i) => s + pieceStates[i].x + dW / 2, 0) / indices.length;
-  const cy = indices.reduce((s, i) => s + pieceStates[i].y + dH / 2, 0) / indices.length;
-
-  const positions = [];
-  indices.forEach(i => {
-    // Rotate piece centre 90° CW in screen coords (y-down): newPx = cx-(py-cy), newPy = cy+(px-cx)
-    const px   = pieceStates[i].x + dW / 2;
-    const py   = pieceStates[i].y + dH / 2;
-    const newX = cx - (py - cy) - dW / 2;
-    const newY = cy + (px - cx) - dH / 2;
-    pieceStates[i].x        = newX;
-    pieceStates[i].y        = newY;
-    pieceStates[i].rotation = newRot;
-    movePieceEl(i, newX, newY);
-    positions.push({ index: i, x: newX, y: newY });
+  const positions = rotateGroupQuarterTurnCW(pieceStates, indices, dW, dH);
+  positions.forEach(({ index: i, x, y, rotation }) => {
+    pieceStates[i].x = x;
+    pieceStates[i].y = y;
+    pieceStates[i].rotation = rotation;
+    movePieceEl(i, x, y);
   });
 
   // Batch write new positions + rotation in one call
-  updateGroupRotationAndPositions(puzzleId, positions, newRot);
+  updateGroupRotationAndPositions(puzzleId, positions);
   scheduleSyncBoardScrollContentSize();
 }
 
