@@ -18,6 +18,10 @@ import {
   getTextureScale,
   snapBoardScaleToDevicePixels,
 } from './mobile-quality.js';
+import {
+  normalizeRotationDeg,
+  rotateGroupQuarterTurnCW,
+} from './puzzle-rotation.js';
 
 function safeLocalGet(key) {
   try {
@@ -1044,8 +1048,33 @@ function onContextMenu(e) {
   const el = e.target.closest('.piece');
   if (!el) return;
   const index = Number(el.dataset.index);
+  if (dragging?.locked && !dragging.indices.includes(index)) return;
   if (pieceStates[index]?.lockedBy && pieceStates[index].lockedBy !== playerId) return;
+
+  const syncDragAfterRotate = dragging?.locked && dragging.indices.includes(index);
+  const dragAnchor = syncDragAfterRotate ? dragging.anchorIndex : null;
+  const dragIndices = syncDragAfterRotate ? [...dragging.indices] : null;
+
   rotateAtIndex(index);
+
+  if (syncDragAfterRotate && dragAnchor != null && dragIndices) {
+    const boardRect = board.getBoundingClientRect();
+    const { clientX: cx0, clientY: cy0 } = mirrorCoords(e.clientX, e.clientY);
+    const rawX = (cx0 - boardRect.left) / scale;
+    const rawY = (cy0 - boardRect.top) / scale;
+    const ax = pieceStates[dragAnchor].x;
+    const ay = pieceStates[dragAnchor].y;
+    dragging.invertAnchorX = ax;
+    dragging.invertAnchorY = ay;
+    dragging.invertLastX = rawX;
+    dragging.invertLastY = rawY;
+    const rel = {};
+    dragIndices.forEach(i => {
+      rel[i] = { dx: pieceStates[i].x - ax, dy: pieceStates[i].y - ay };
+    });
+    dragging.relOffsets = rel;
+    dragging.anchorIndex = dragAnchor;
+  }
 }
 
 function onDoubleTap(e) {
@@ -1065,31 +1094,24 @@ function onDoubleTap(e) {
 function rotateAtIndex(index) {
   const gid     = pieceGroup[index];
   const indices = gid ? [...groups[gid]] : [index];
-  const newRot  = ((pieceStates[index].rotation ?? 0) + 90) % 360;
   const { _displayW: dW, _displayH: dH } = meta;
 
   if (indices.length === 1) {
+    const newRot = normalizeRotationDeg((pieceStates[index].rotation ?? 0) + 90);
     pieceStates[index].rotation = newRot;
     movePieceEl(index, pieceStates[index].x, pieceStates[index].y);
     updateVSPieceRotation(roomId, myBoardKey, index, newRot);
     return;
   }
 
-  const cx = indices.reduce((s, i) => s + pieceStates[i].x + dW / 2, 0) / indices.length;
-  const cy = indices.reduce((s, i) => s + pieceStates[i].y + dH / 2, 0) / indices.length;
-  const positions = [];
-  indices.forEach(i => {
-    const px   = pieceStates[i].x + dW / 2;
-    const py   = pieceStates[i].y + dH / 2;
-    const newX = cx - (py - cy) - dW / 2;
-    const newY = cy + (px - cx) - dH / 2;
-    pieceStates[i].x        = newX;
-    pieceStates[i].y        = newY;
-    pieceStates[i].rotation = newRot;
-    movePieceEl(i, newX, newY);
-    positions.push({ index: i, x: newX, y: newY });
+  const positions = rotateGroupQuarterTurnCW(pieceStates, indices, dW, dH);
+  positions.forEach(({ index: i, x, y, rotation }) => {
+    pieceStates[i].x = x;
+    pieceStates[i].y = y;
+    pieceStates[i].rotation = rotation;
+    movePieceEl(i, x, y);
   });
-  updateVSGroupRotationAndPositions(roomId, myBoardKey, positions, newRot);
+  updateVSGroupRotationAndPositions(roomId, myBoardKey, positions);
 }
 
 function onMouseDown(e) {

@@ -438,14 +438,24 @@ export default async function handler(req, res) {
       });
       const urlBase = process.env.FIREBASE_DB_URL;
       const resFb = await fetch(`${urlBase}/feedback.json?${params.toString()}`);
-      if (!resFb.ok) {
-        const text = await resFb.text().catch(() => '');
+      if (resFb.ok) {
+        const obj = await resFb.json();
+        const list = Object.entries(obj || {}).map(([id, v]) => ({ id, ...(v || {}) }));
+        list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        return res.json({ items: list });
+      }
+
+      // Some Firebase projects do not index `createdAt`, so orderBy queries fail.
+      // Fall back to reading full feedback and sorting server-side.
+      const text = await resFb.text().catch(() => '');
+      if (!String(text).includes('Index not defined')) {
         throw new Error(`Firebase error: ${resFb.status} ${text}`);
       }
-      const obj = await resFb.json();
-      const list = Object.entries(obj || {}).map(([id, v]) => ({ id, ...(v || {}) }));
+
+      const raw = await fbGetJson('feedback');
+      const list = Object.entries(raw || {}).map(([id, v]) => ({ id, ...(v || {}) }));
       list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-      return res.json({ items: list });
+      return res.json({ items: list.slice(0, limit) });
     } catch (err) {
       console.error('Failed to list feedback', err);
       return res.status(500).json({ error: 'Failed to load feedback' });

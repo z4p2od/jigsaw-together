@@ -218,9 +218,9 @@ export function updateGroupRotation(puzzleId, indices, rotation) {
 }
 
 /** Batch-update rotation + positions for a group rotate (single write). */
-export function updateGroupRotationAndPositions(puzzleId, positions, rotation) {
+export function updateGroupRotationAndPositions(puzzleId, positions) {
   const flat = {};
-  positions.forEach(({ index, x, y }) => {
+  positions.forEach(({ index, x, y, rotation }) => {
     flat[`${index}/x`]        = x;
     flat[`${index}/y`]        = y;
     flat[`${index}/rotation`] = rotation;
@@ -460,9 +460,9 @@ export function updateVSPieceRotation(roomId, boardKey, index, rotation) {
   return update(ref(_db, `vs/${roomId}/pieces/${boardKey}/${index}`), { rotation });
 }
 
-export function updateVSGroupRotationAndPositions(roomId, boardKey, positions, rotation) {
+export function updateVSGroupRotationAndPositions(roomId, boardKey, positions) {
   const flat = {};
-  positions.forEach(({ index, x, y }) => {
+  positions.forEach(({ index, x, y, rotation }) => {
     flat[`${index}/x`] = x; flat[`${index}/y`] = y; flat[`${index}/rotation`] = rotation;
   });
   return update(ref(_db, `vs/${roomId}/pieces/${boardKey}`), flat);
