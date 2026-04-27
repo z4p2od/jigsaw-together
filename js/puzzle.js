@@ -2026,33 +2026,75 @@ function clampPieceIndicesFormationToBoard(indices, pad, elW, elH) {
   }
 }
 
+/** Rough radius (board units) for spacing pocket slots so clusters do not overlap. */
+function estimateSlotDropRadius(slotIndices, pad, dW, dH) {
+  const elW = dW + pad * 2;
+  const elH = dH + pad * 2;
+  if (!slotIndices.length) return 0;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const idx of slotIndices) {
+    const p = pieceStates[idx];
+    if (!p) continue;
+    const left = p.x - pad;
+    const top = p.y - pad;
+    minX = Math.min(minX, left);
+    minY = Math.min(minY, top);
+    maxX = Math.max(maxX, left + elW);
+    maxY = Math.max(maxY, top + elH);
+  }
+  if (!Number.isFinite(minX)) return Math.hypot(elW, elH) * 0.35;
+  const bw = maxX - minX;
+  const bh = maxY - minY;
+  return Math.hypot(bw, bh) / 2 + Math.min(elW, elH) * 0.06;
+}
+
 /**
- * Place pocket release in a tight cluster around the tap: first piece on the point,
- * others on a Vogel spiral with axis-aligned gaps between piece outers (no overlap).
+ * One pocket "slot": a single piece or a merged group. Preserves group geometry when possible.
  */
-function placeHandIndicesCompactAroundTap(indices, centerX, centerY) {
+function placeCoherentPocketSlotAt(slotIndices, centerX, centerY) {
   const pad = meta?._pad ?? 0;
   const dW = meta?._displayW ?? 0;
   const dH = meta?._displayH ?? 0;
   const elW = dW + pad * 2;
   const elH = dH + pad * 2;
 
-  // If all indices belong to the same merged group, preserve their relative formation
-  // by translating the group centroid to the tap point instead of scattering.
-  if (indices.length > 1) {
-    const gid = pieceGroup[indices[0]];
-    if (gid != null && indices.every(i => pieceGroup[i] === gid)) {
-      const cx = indices.reduce((s, i) => s + pieceStates[i].x + dW / 2, 0) / indices.length;
-      const cy = indices.reduce((s, i) => s + pieceStates[i].y + dH / 2, 0) / indices.length;
-      for (const i of indices) {
-        pieceStates[i].x = centerX + (pieceStates[i].x - cx);
-        pieceStates[i].y = centerY + (pieceStates[i].y - cy);
-        movePieceEl(i, pieceStates[i].x, pieceStates[i].y);
-      }
-      clampPieceIndicesFormationToBoard(indices, pad, elW, elH);
-      return;
-    }
+  if (slotIndices.length === 1) {
+    const i = slotIndices[0];
+    pieceStates[i].x = centerX - dW / 2;
+    pieceStates[i].y = centerY - dH / 2;
+    movePieceEl(i, pieceStates[i].x, pieceStates[i].y);
+    clampPieceIndicesFormationToBoard(slotIndices, pad, elW, elH);
+    return;
   }
+
+  const gid = pieceGroup[slotIndices[0]];
+  if (gid != null && slotIndices.every(i => pieceGroup[i] === gid)) {
+    const cx = slotIndices.reduce((s, i) => s + pieceStates[i].x + dW / 2, 0) / slotIndices.length;
+    const cy = slotIndices.reduce((s, i) => s + pieceStates[i].y + dH / 2, 0) / slotIndices.length;
+    for (const i of slotIndices) {
+      pieceStates[i].x = centerX + (pieceStates[i].x - cx);
+      pieceStates[i].y = centerY + (pieceStates[i].y - cy);
+      movePieceEl(i, pieceStates[i].x, pieceStates[i].y);
+    }
+    clampPieceIndicesFormationToBoard(slotIndices, pad, elW, elH);
+    return;
+  }
+
+  scatterIndicesAroundTap(slotIndices, centerX, centerY);
+}
+
+/**
+ * Scatter loose pieces around a point (Vogel spiral, no rigid group assumption).
+ */
+function scatterIndicesAroundTap(indices, centerX, centerY) {
+  const pad = meta?._pad ?? 0;
+  const dW = meta?._displayW ?? 0;
+  const dH = meta?._displayH ?? 0;
+  const elW = dW + pad * 2;
+  const elH = dH + pad * 2;
 
   const gridCols = meta?.cols ?? 1;
   const ordered = indices.length > 1 ? shuffleNonAdjacent([...indices], gridCols) : [...indices];
@@ -2099,6 +2141,63 @@ function placeHandIndicesCompactAroundTap(indices, centerX, centerY) {
   clampPieceIndicesFormationToBoard(ordered, pad, elW, elH);
 }
 
+/**
+ * Drop everything in the hand: each pocket slot (merged group or single) keeps internal
+ * formation; multiple slots are spaced around the tap so a group + singles are not torn apart.
+ */
+function placePocketSlotsAroundTap(slots, centerX, centerY) {
+  const pad = meta?._pad ?? 0;
+  const dW = meta?._displayW ?? 0;
+  const dH = meta?._displayH ?? 0;
+  const elW = dW + pad * 2;
+  const elH = dH + pad * 2;
+  if (!(elW > 0) || !(elH > 0) || !slots.length) return;
+
+  if (slots.length === 1) {
+    placeCoherentPocketSlotAt(slots[0], centerX, centerY);
+    return;
+  }
+
+  const gap = Math.max(2, Math.round(Math.min(dW, dH) * 0.06));
+  const golden = Math.PI * (3 - Math.sqrt(5));
+  const radii = slots.map(s => estimateSlotDropRadius(s, pad, dW, dH));
+  /** @type {{ x: number, y: number, rad: number }[]} */
+  const placedCenters = [];
+
+  for (let i = 0; i < slots.length; i++) {
+    let cx;
+    let cy;
+    if (i === 0) {
+      cx = centerX;
+      cy = centerY;
+    } else {
+      const needR = radii[i];
+      let found = false;
+      for (let j = 1; j < 600 && !found; j++) {
+        const r = Math.min(elW, elH) * (0.42 + 0.11 * Math.sqrt(j));
+        const a = (i + j * 0.09) * golden;
+        const tx = centerX + r * Math.cos(a);
+        const ty = centerY + r * Math.sin(a);
+        if (placedCenters.every(({ x: px, y: py, rad: pr }) =>
+          Math.hypot(tx - px, ty - py) >= pr + needR + gap
+        )) {
+          cx = tx;
+          cy = ty;
+          found = true;
+        }
+      }
+      if (!found) {
+        const fb = (i * 0.6180339887) % 1;
+        const r = Math.min(elW, elH) * (0.95 + i * 0.42);
+        cx = centerX + r * Math.cos(fb * Math.PI * 2);
+        cy = centerY + r * Math.sin(fb * Math.PI * 2);
+      }
+    }
+    placeCoherentPocketSlotAt(slots[i], cx, cy);
+    placedCenters.push({ x: cx, y: cy, rad: radii[i] });
+  }
+}
+
 function dropHandAt(clientX, clientY) {
   if (hand.length === 0) return;
   clearAllHandSlotTimers();
@@ -2132,7 +2231,7 @@ function dropHandAt(clientX, clientY) {
   };
 
   if (elW > 0 && elH > 0) {
-    placeHandIndicesCompactAroundTap(handIndices, centerX, centerY);
+    placePocketSlotsAroundTap(getHandPocketSlots(), centerX, centerY);
   }
   finalizeHandDrop();
 }
