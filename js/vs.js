@@ -21,9 +21,10 @@ import {
 import {
   normalizeRotationDeg,
   rotateGroupQuarterTurnCW,
-  snapRotationToQuarterTurn,
+  randomQuarterRotation,
 } from './puzzle-rotation.js';
 import { scatterFromSeed, seededRandom } from './scatter-pieces.js';
+import { applyPieceBackMask } from './piece-dom.js';
 
 function safeLocalGet(key) {
   try {
@@ -783,7 +784,7 @@ function buildVsPieceElement(index, dataUrl, solved, elW, elH, faceDown) {
   front.draggable = false;
 
   const backEl = document.createElement('div');
-  backEl.className = 'piece-back';
+  applyPieceBackMask(backEl, dataUrl);
 
   innerEl.appendChild(front);
   innerEl.appendChild(backEl);
@@ -1073,7 +1074,7 @@ function revealPiece(index, { correctRotation = false } = {}) {
 
   let rotation = state.rotation ?? 0;
   if (correctRotation) {
-    rotation = meta?.hardMode ? snapRotationToQuarterTurn(rotation) : 0;
+    rotation = meta?.hardMode ? randomQuarterRotation() : 0;
   }
 
   state.faceDown = false;

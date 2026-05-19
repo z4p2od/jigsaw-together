@@ -4,15 +4,21 @@ export function normalizeRotationDeg(r) {
   return ((Math.round(n) % 360) + 360) % 360;
 }
 
+const QUARTER_ROTS = [0, 90, 180, 270];
+
+/** Random quarter-turn for hard-mode “correct” orientation. */
+export function randomQuarterRotation(rng = Math.random) {
+  return QUARTER_ROTS[Math.floor(rng() * 4)];
+}
+
 /** Snap any angle to the nearest quarter-turn (0, 90, 180, 270). */
 export function snapRotationToQuarterTurn(deg) {
   const n = Number(deg);
   if (!Number.isFinite(n)) return 0;
   const normalized = ((n % 360) + 360) % 360;
-  const quarters = [0, 90, 180, 270];
   let best = 0;
   let bestDist = Infinity;
-  for (const q of quarters) {
+  for (const q of QUARTER_ROTS) {
     const d = Math.min(Math.abs(normalized - q), 360 - Math.abs(normalized - q));
     if (d < bestDist) {
       bestDist = d;

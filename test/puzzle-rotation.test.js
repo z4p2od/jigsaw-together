@@ -3,6 +3,7 @@ import {
   normalizeRotationDeg,
   rotateGroupQuarterTurnCW,
   snapRotationToQuarterTurn,
+  randomQuarterRotation,
 } from '../js/puzzle-rotation.js';
 
 describe('rotateGroupQuarterTurnCW', () => {
@@ -39,5 +40,13 @@ describe('snapRotationToQuarterTurn', () => {
     expect(snapRotationToQuarterTurn(50)).toBe(90);
     expect(snapRotationToQuarterTurn(315)).toBe(0);
     expect(snapRotationToQuarterTurn(140)).toBe(180);
+  });
+});
+
+describe('randomQuarterRotation', () => {
+  it('returns a quarter-turn angle', () => {
+    const rng = () => 0.99;
+    expect(randomQuarterRotation(rng)).toBe(270);
+    expect([0, 90, 180, 270]).toContain(randomQuarterRotation(() => 0.1));
   });
 });

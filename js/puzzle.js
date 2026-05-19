@@ -33,8 +33,9 @@ import {
 import {
   normalizeRotationDeg,
   rotateGroupQuarterTurnCW,
-  snapRotationToQuarterTurn,
+  randomQuarterRotation,
 } from './puzzle-rotation.js';
+import { applyPieceBackMask, getPieceFrontSrc } from './piece-dom.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -649,11 +650,11 @@ function renderPiece(index, dataUrl, x, y, solved, elW, elH) {
   front.src = dataUrl;
   front.draggable = false;
 
-  const back = document.createElement('div');
-  back.className = 'piece-back';
+  const backEl = document.createElement('div');
+  applyPieceBackMask(backEl, dataUrl);
 
   innerEl.appendChild(front);
-  innerEl.appendChild(back);
+  innerEl.appendChild(backEl);
   pieceEl.appendChild(innerEl);
 
   if (pieceStates[index]?.faceDown) pieceEl.classList.add('face-down');
@@ -1152,7 +1153,7 @@ function revealPiece(index, { correctRotation = false } = {}) {
 
   let rotation = state.rotation ?? 0;
   if (correctRotation) {
-    rotation = meta?.hardMode ? snapRotationToQuarterTurn(rotation) : 0;
+    rotation = meta?.hardMode ? randomQuarterRotation() : 0;
   }
 
   state.faceDown = false;
@@ -1993,22 +1994,25 @@ function buildHandSlotPreviewElement(slotIndices, maxW, maxH) {
 
     const ordered = [...slotIndices].sort((a, b) => pieceDrawOrderZ(a) - pieceDrawOrderZ(b));
     for (const index of ordered) {
-      const src = pieceEls[index]?.src;
+      const src = getPieceFrontSrc(pieceEls[index]);
       if (!src) continue;
-      const img = document.createElement('img');
-      img.src = src;
-      img.className = 'hand-block-piece-img';
-      img.draggable = false;
       const p = pieceStates[index];
+      const home = pocketHomeByIndex.get(index);
+      const rot = p.faceDown && home?.placementRotation != null
+        ? home.placementRotation
+        : (Number(p.rotation) || 0);
       const left = (p.x - pad - minX) * k;
       const top = (p.y - pad - minY) * k;
       const w = elW * k;
       const h = elH * k;
+      const img = document.createElement('img');
+      img.src = src;
+      img.className = 'hand-block-piece-img';
+      img.draggable = false;
       img.style.left = `${left}px`;
       img.style.top = `${top}px`;
       img.style.width = `${w}px`;
       img.style.height = `${h}px`;
-      const rot = normalizeRotationDeg(p.rotation);
       img.style.transformOrigin = 'center center';
       img.style.transform = rot ? `rotate(${rot}deg)` : '';
       preview.appendChild(img);
@@ -2055,11 +2059,15 @@ function addToHand(index) {
 
   for (const i of indices) {
     if (!hand.includes(i)) {
+      const wasFaceDown = !!pieceStates[i].faceDown;
       pocketHomeByIndex.set(i, {
         x: pieceStates[i].x,
         y: pieceStates[i].y,
         rotation: pieceStates[i].rotation ?? 0,
-        faceDown: !!pieceStates[i].faceDown,
+        faceDown: wasFaceDown,
+        placementRotation: wasFaceDown
+          ? (meta?.hardMode ? randomQuarterRotation() : 0)
+          : undefined,
       });
       hand.push(i);
     }

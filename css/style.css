@@ -834,8 +834,8 @@ iframe[src*="vercel.live"] {
 }
 
 .piece-back {
-  background: #86cece;
   transform: rotateY(180deg);
+  /* background + mask-image set inline from cut-piece data URL */
 }
 
 .piece:hover { z-index: 10; }
