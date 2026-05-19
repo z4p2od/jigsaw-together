@@ -42,6 +42,11 @@ describe('applyCharge', () => {
     expect(applyCharge(0, 250)).toEqual({ charge: 50, awards: 2 });
     expect(applyCharge(99, 0)).toEqual({ charge: 99, awards: 0 });
   });
+
+  it('does not award below 100 total charge', () => {
+    expect(applyCharge(99, 0.9)).toEqual({ charge: 99.9, awards: 0 });
+    expect(applyCharge(99.5, 0.4)).toEqual({ charge: 99.9, awards: 0 });
+  });
 });
 
 describe('isPuzzleComplete', () => {

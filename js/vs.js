@@ -1340,13 +1340,24 @@ function isBoardComplete() {
   });
 }
 
+function powerupMeterDisplayPct() {
+  if (powerupSlotBusy) return 100;
+  if (powerupCharge >= 100) return 100;
+  return Math.min(99, Math.floor(powerupCharge));
+}
+
 function updatePowerupMeterUI() {
-  const pct = Math.min(100, Math.round(powerupCharge));
+  const pct = powerupMeterDisplayPct();
   if (vsPowerupFillEl) vsPowerupFillEl.style.width = `${pct}%`;
   if (vsPowerupPctEl) vsPowerupPctEl.textContent = `${pct}%`;
   if (vsPowerupIconEl && !powerupSlotBusy) vsPowerupIconEl.textContent = '?';
   if (!vsPowerupMeterEl) return;
-  vsPowerupMeterEl.classList.toggle('vs-powerup-high', pct >= 85 && pct < 100);
+  vsPowerupMeterEl.classList.toggle('vs-powerup-high', powerupCharge >= 85 && powerupCharge < 100 && !powerupSlotBusy);
+}
+
+function flashPowerupMeterFull() {
+  if (vsPowerupFillEl) vsPowerupFillEl.style.width = '100%';
+  if (vsPowerupPctEl) vsPowerupPctEl.textContent = '100%';
 }
 
 function pulsePowerupCharged() {
@@ -1408,18 +1419,23 @@ function addPowerupChargeFromMerge(draggedCount) {
 
   const { charge, awards } = applyCharge(powerupCharge, fill);
   powerupCharge = charge;
-  updatePowerupMeterUI();
-  if (awards > 0) pulsePowerupCharged();
 
-  for (let i = 0; i < awards; i++) {
-    enqueuePowerupAward();
+  if (awards > 0) {
+    flashPowerupMeterFull();
+    pulsePowerupCharged();
+    for (let i = 0; i < awards; i++) {
+      pendingPowerupAwards.push(pickRandomPowerup());
+    }
+    void drainPowerupAwardQueue();
+  } else {
+    updatePowerupMeterUI();
   }
 }
 
 function enqueuePowerupAward() {
   if (winnerDeclared || isBoardComplete()) return;
   pendingPowerupAwards.push(pickRandomPowerup());
-  drainPowerupAwardQueue();
+  void drainPowerupAwardQueue();
 }
 
 async function drainPowerupAwardQueue() {
