@@ -1345,16 +1345,21 @@ function powerupMeterDisplayPct() {
   return Math.min(99, Math.floor(powerupCharge));
 }
 
+function setPowerupFillScale(pct) {
+  if (!vsPowerupFillEl) return;
+  vsPowerupFillEl.style.setProperty('--charge-scale', String(Math.min(1, Math.max(0, pct / 100))));
+}
+
 function updatePowerupMeterUI() {
   const pct = powerupMeterDisplayPct();
-  if (vsPowerupFillEl) vsPowerupFillEl.style.width = `${pct}%`;
+  setPowerupFillScale(pct);
   if (vsPowerupIconEl && !powerupSlotBusy) vsPowerupIconEl.textContent = '?';
   if (!vsPowerupMeterEl) return;
   vsPowerupMeterEl.classList.toggle('vs-powerup-high', powerupCharge >= 85 && powerupCharge < 100 && !powerupSlotBusy);
 }
 
 function flashPowerupMeterFull() {
-  if (vsPowerupFillEl) vsPowerupFillEl.style.width = '100%';
+  setPowerupFillScale(100);
 }
 
 function pulsePowerupCharged() {

@@ -2002,14 +2002,38 @@ iframe[src*="vercel.live"] {
 }
 
 .vs-powerup-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
   height: 100%;
-  width: 0%;
-  background: linear-gradient(90deg, #6d28d9 0%, #a78bfa 55%, #f0abfc 100%);
+  width: 100%;
+  transform-origin: left center;
+  transform: scaleX(var(--charge-scale, 0));
+  transition: transform 0.35s ease, box-shadow 0.35s ease;
   border-radius: 7px;
-  transition: width 0.35s ease;
-  box-shadow: 0 0 12px rgba(167, 139, 250, 0.6);
-  position: relative;
+  /* Gradient spans full track: pale when low, rich when full */
+  background: linear-gradient(
+    90deg,
+    #ede9fe 0%,
+    #ddd6fe 14%,
+    #c4b5fd 30%,
+    #a78bfa 52%,
+    #8b5cf6 68%,
+    #7c3aed 82%,
+    #c026d3 92%,
+    #f0abfc 100%
+  );
+  box-shadow: 0 0 10px rgba(167, 139, 250, 0.35);
   z-index: 1;
+}
+
+.vs-powerup-meter.vs-powerup-high .vs-powerup-fill {
+  box-shadow: 0 0 14px rgba(196, 181, 253, 0.55);
+}
+
+.vs-powerup-meter.vs-powerup-charged .vs-powerup-fill,
+.vs-powerup-meter.vs-powerup-slotting .vs-powerup-fill {
+  box-shadow: 0 0 22px rgba(240, 171, 252, 0.75);
 }
 
 .vs-powerup-shine {
