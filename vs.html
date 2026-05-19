@@ -161,17 +161,6 @@
       </div>
     </div>
 
-    <!-- Chaos powerup charge meter -->
-    <div id="vs-powerup-meter" class="vs-powerup-meter" hidden>
-      <div class="vs-powerup-slot">
-        <span id="vs-powerup-icon" class="vs-powerup-icon" aria-hidden="true">?</span>
-      </div>
-      <div class="vs-powerup-track">
-        <div id="vs-powerup-fill" class="vs-powerup-fill"></div>
-      </div>
-      <span id="vs-powerup-combo" class="vs-powerup-combo" hidden></span>
-    </div>
-
     <header class="puzzle-header">
       <a href="/" class="icon-btn home-btn" title="Back to home">&#8592;</a>
       <h2>⚡ VS Mode</h2>
@@ -205,6 +194,25 @@
         <div class="puzzle-board-wrap opp-wrap">
           <div id="puzzle-board-opp"></div>
         </div>
+      </div>
+    </div>
+
+    <!-- Chaos powerup charge meter (bottom dock) -->
+    <div id="vs-powerup-meter" class="vs-powerup-meter" hidden>
+      <div class="vs-powerup-dock">
+        <span class="vs-powerup-label">Powerup</span>
+        <div class="vs-powerup-slot" id="vs-powerup-slot">
+          <span id="vs-powerup-icon" class="vs-powerup-icon" aria-hidden="true">?</span>
+        </div>
+        <div class="vs-powerup-main">
+          <div class="vs-powerup-track">
+            <div id="vs-powerup-fill" class="vs-powerup-fill"></div>
+            <div class="vs-powerup-shine" aria-hidden="true"></div>
+          </div>
+          <span id="vs-powerup-pct" class="vs-powerup-pct">0%</span>
+        </div>
+        <span id="vs-powerup-combo" class="vs-powerup-combo" hidden></span>
+        <div id="vs-powerup-burst" class="vs-powerup-burst" aria-hidden="true"></div>
       </div>
     </div>
   </div>

@@ -181,8 +181,11 @@ const vspOppPct      = document.getElementById('vsp-opp-pct');
 const vsPowerupMeterEl = document.getElementById('vs-powerup-meter');
 const vsPowerupIconEl  = document.getElementById('vs-powerup-icon');
 const vsPowerupFillEl  = document.getElementById('vs-powerup-fill');
+const vsPowerupPctEl   = document.getElementById('vs-powerup-pct');
 const vsPowerupComboEl = document.getElementById('vs-powerup-combo');
+const vsPowerupBurstEl = document.getElementById('vs-powerup-burst');
 let comboHideTimer = null;
+let powerupAnimTimer = null;
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
@@ -1338,11 +1341,46 @@ function isBoardComplete() {
 }
 
 function updatePowerupMeterUI() {
-  if (vsPowerupFillEl) {
-    vsPowerupFillEl.style.width = `${Math.min(100, powerupCharge)}%`;
+  const pct = Math.min(100, Math.round(powerupCharge));
+  if (vsPowerupFillEl) vsPowerupFillEl.style.width = `${pct}%`;
+  if (vsPowerupPctEl) vsPowerupPctEl.textContent = `${pct}%`;
+  if (vsPowerupIconEl && !powerupSlotBusy) vsPowerupIconEl.textContent = '?';
+  if (!vsPowerupMeterEl) return;
+  vsPowerupMeterEl.classList.toggle('vs-powerup-high', pct >= 85 && pct < 100);
+}
+
+function pulsePowerupCharged() {
+  if (!vsPowerupMeterEl) return;
+  vsPowerupMeterEl.classList.remove('vs-powerup-charged');
+  void vsPowerupMeterEl.offsetWidth;
+  vsPowerupMeterEl.classList.add('vs-powerup-charged');
+  clearTimeout(powerupAnimTimer);
+  powerupAnimTimer = setTimeout(() => {
+    vsPowerupMeterEl?.classList.remove('vs-powerup-charged');
+  }, 600);
+}
+
+function playPowerupLaunchAnimation(type) {
+  if (!vsPowerupMeterEl) return;
+  vsPowerupMeterEl.classList.remove('vs-powerup-launched');
+  void vsPowerupMeterEl.offsetWidth;
+  vsPowerupMeterEl.classList.add('vs-powerup-launched');
+  if (vsPowerupBurstEl) {
+    vsPowerupBurstEl.style.background = `radial-gradient(circle, rgba(250,204,21,0.95) 0%, rgba(124,58,237,0) 70%)`;
   }
-  if (vsPowerupIconEl && !powerupSlotBusy) {
-    vsPowerupIconEl.textContent = '?';
+  const oppPanel = oppBoard?.closest('.vs-board-panel');
+  if (oppPanel) {
+    oppPanel.classList.remove('vs-powerup-target-flash');
+    void oppPanel.offsetWidth;
+    oppPanel.classList.add('vs-powerup-target-flash');
+    setTimeout(() => oppPanel.classList.remove('vs-powerup-target-flash'), 750);
+  }
+  clearTimeout(powerupAnimTimer);
+  powerupAnimTimer = setTimeout(() => {
+    vsPowerupMeterEl?.classList.remove('vs-powerup-launched');
+  }, 700);
+  if (vsPowerupIconEl && POWERUP_EMOJI[type]) {
+    vsPowerupIconEl.textContent = POWERUP_EMOJI[type];
   }
 }
 
@@ -1371,6 +1409,7 @@ function addPowerupChargeFromMerge(draggedCount) {
   const { charge, awards } = applyCharge(powerupCharge, fill);
   powerupCharge = charge;
   updatePowerupMeterUI();
+  if (awards > 0) pulsePowerupCharged();
 
   for (let i = 0; i < awards; i++) {
     enqueuePowerupAward();
@@ -1396,6 +1435,7 @@ async function drainPowerupAwardQueue() {
   powerupComboLevel = 1;
 
   if (!winnerDeclared && !isBoardComplete()) {
+    playPowerupLaunchAnimation(type);
     await firePowerup(type);
   }
 
@@ -1414,7 +1454,7 @@ function runPowerupSlotAnimation(finalType) {
     vsPowerupMeterEl.classList.add('vs-powerup-slotting');
     const emojis = POWERUP_TYPES.map(t => POWERUP_EMOJI[t]);
     let step = 0;
-    const totalSteps = 12;
+    const totalSteps = 18;
     const interval = setInterval(() => {
       vsPowerupIconEl.textContent = emojis[step % emojis.length];
       step += 1;
@@ -1422,9 +1462,9 @@ function runPowerupSlotAnimation(finalType) {
         clearInterval(interval);
         vsPowerupIconEl.textContent = POWERUP_EMOJI[finalType] ?? '?';
         vsPowerupMeterEl.classList.remove('vs-powerup-slotting');
-        setTimeout(resolve, 200);
+        setTimeout(resolve, 350);
       }
-    }, 55);
+    }, 50);
   });
 }
 
@@ -1481,7 +1521,7 @@ async function firePowerup(type) {
 
   const SENT_NAMES = { bw: 'Grayscale', invert: 'Invert', scramble: 'Scramble', flip: 'Flip', shake: 'Shake', shuffle: 'Shuffle' };
   const emoji = POWERUP_EMOJI[type] ?? '⚡';
-  showPowerupToast(`🎉 ${emoji} ${SENT_NAMES[type] ?? type} sent!`, false);
+  showPowerupToast(`🚀 ${emoji} ${SENT_NAMES[type] ?? type} launched!`, false, true);
 
   // Sender sees the effect on opponent's board for visual feedback
   if (oppBoard) {
@@ -1635,13 +1675,17 @@ setInterval(() => {
   });
 }, 200);
 
-function showPowerupToast(msg, isReceived) {
+function showPowerupToast(msg, isReceived, launched = false) {
   if (!powerupToastEl) return;
   powerupToastEl.textContent = msg;
   powerupToastEl.style.display = '';
   powerupToastEl.style.background = isReceived ? 'rgba(185,28,28,0.9)' : 'rgba(5,150,105,0.9)';
+  powerupToastEl.classList.toggle('powerup-toast-launched', launched);
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { powerupToastEl.style.display = 'none'; }, 2500);
+  toastTimer = setTimeout(() => {
+    powerupToastEl.style.display = 'none';
+    powerupToastEl.classList.remove('powerup-toast-launched');
+  }, launched ? 3200 : 2500);
 }
 
 // ── Snap / merge ──────────────────────────────────────────────────────────────

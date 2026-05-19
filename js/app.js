@@ -343,6 +343,19 @@ async function loadVSImagePicker() {
   }
 }
 
+function syncVsChaosHint() {
+  const hint = document.getElementById('vs-chaos-hint');
+  if (!hint) return;
+  const chaos = document.querySelector('input[name="vs-mode"]:checked')?.value === 'chaos';
+  if (chaos) hint.removeAttribute('hidden');
+  else hint.setAttribute('hidden', '');
+}
+
+document.querySelectorAll('input[name="vs-mode"]').forEach(el => {
+  el.addEventListener('change', syncVsChaosHint);
+});
+syncVsChaosHint();
+
 document.getElementById('vs-create-btn').addEventListener('click', () => {
   const pieces    = document.querySelector('input[name="vs-pieces"]:checked').value;
   const mode      = document.querySelector('input[name="vs-mode"]:checked').value;
