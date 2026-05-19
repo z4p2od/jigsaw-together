@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Jigsaw Together">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#100018"/>
+      <stop offset="50%" stop-color="#1b0a34"/>
+      <stop offset="100%" stop-color="#0d0830"/>
+    </linearGradient>
+    <linearGradient id="piece" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff4fd8"/>
+      <stop offset="100%" stop-color="#5af2ff"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+  <path fill="url(#piece)" d="M256 96c-28 0-48 20-48 48 0 14-10 24-24 24s-24-10-24-24c0-28-20-48-48-48s-48 20-48 48c0 14-10 24-24 24v48c14 0 24 10 24 24 0 28 20 48 48 48s48-20 48-48c0-14 10-24 24-24h48c14 0 24 10 24 24 0 28 20 48 48 48s48-20 48-48c0-14 10-24 24-24v-48c-14 0-24-10-24-24 0-28-20-48-48-48s-48 20-48 48c0 14-10 24-24 24h-48c-14 0-24-10-24-24 0-28-20-48-48-48z"/>
+</svg>
