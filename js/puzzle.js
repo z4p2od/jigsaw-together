@@ -1250,7 +1250,10 @@ function syncBoardScrollContentSize() {
   const visualW = contentW * scale;
   const visualH = contentH * scale;
   const padX = BOARD_SCROLL_PADDING;
-  const padTop = BOARD_SCROLL_PADDING + SCROLL_TOP_GUTTER;
+  const boardFitsViewport = isMobileLike && scale <= 1.05;
+  const padTop = boardFitsViewport
+    ? BOARD_SCROLL_PADDING
+    : BOARD_SCROLL_PADDING + SCROLL_TOP_GUTTER;
   const padBottom = BOARD_SCROLL_PADDING;
   boardScrollContent.style.padding = `${padTop}px ${padX}px ${padBottom}px`;
   const innerW = padX * 2 + visualW;
@@ -1415,11 +1418,9 @@ function scheduleMobilePieceFraming() {
         const w = boardWrap.clientWidth;
         const h = boardWrap.clientHeight;
         if (w >= MIN && h >= MIN) {
-          framePieceCloudInView();
-          requestAnimationFrame(() => {
-            if (pieceEls?.length) centerPieceCloudInView();
-            else centerBoardInView();
-          });
+          syncBoardScrollContentSize();
+          fitBoardToViewport();
+          requestAnimationFrame(() => centerBoardInView());
           return;
         }
         tries += 1;
@@ -2405,7 +2406,10 @@ function setupViewportControls() {
         syncHeaderToastOffset();
         syncKeyboardViewportOffset();
         syncBoardScrollContentSize();
-        if (pieceEls?.length) centerPieceCloudInView();
+        if (pieceEls?.length) {
+          if (scale <= 1.05) centerBoardInView();
+          else centerPieceCloudInView();
+        }
       }, 120);
     });
   }
@@ -2415,7 +2419,9 @@ function setupViewportControls() {
       syncHeaderToastOffset();
       syncKeyboardViewportOffset();
       syncBoardScrollContentSize();
-      if (pieceEls?.length) framePieceCloudInView();
+      if (scale <= 1.05) fitBoardToViewport();
+      else if (pieceEls?.length) framePieceCloudInView();
+      centerBoardInView();
     }, 380);
   });
 }
