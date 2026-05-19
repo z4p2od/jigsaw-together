@@ -835,37 +835,37 @@ iframe[src*="vercel.live"] {
 
 .piece-back {
   transform: rotateY(180deg);
-  /* Matte puzzle-board cardboard (mask-image set inline from cut-piece data URL) */
-  --piece-back-base: #c4a574;
-  --piece-back-highlight: #e6d9bc;
-  --piece-back-shadow: #8f7048;
+  /* Matte puzzle-board back — teal-grey cardboard (mask set inline from cut-piece) */
+  --piece-back-base: #86aeae;
+  --piece-back-highlight: #b8d6d6;
+  --piece-back-shadow: #4f6666;
   background-color: var(--piece-back-base);
   background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='128' height='128'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.72' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.42'/%3E%3C/svg%3E"),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.35' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23f)' opacity='0.18'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='128' height='128'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.72' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.38'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.35' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23f)' opacity='0.16'/%3E%3C/svg%3E"),
     repeating-linear-gradient(
       92deg,
       transparent 0,
       transparent 3px,
-      rgba(80, 55, 28, 0.045) 3px,
-      rgba(80, 55, 28, 0.045) 4px
+      rgba(38, 58, 58, 0.06) 3px,
+      rgba(38, 58, 58, 0.06) 4px
     ),
     repeating-linear-gradient(
       8deg,
       transparent 0,
       transparent 5px,
-      rgba(255, 248, 235, 0.05) 5px,
-      rgba(255, 248, 235, 0.05) 6px
+      rgba(230, 248, 248, 0.07) 5px,
+      rgba(230, 248, 248, 0.07) 6px
     ),
     radial-gradient(ellipse 85% 70% at 28% 22%, var(--piece-back-highlight) 0%, transparent 58%),
     radial-gradient(ellipse 75% 65% at 78% 88%, var(--piece-back-shadow) 0%, transparent 52%),
     linear-gradient(
       152deg,
-      #e0d2b4 0%,
-      #d2c19e 22%,
-      #b89562 48%,
-      #a68452 68%,
-      #cdb891 100%
+      #a8c8c8 0%,
+      #94b8b8 22%,
+      #6f9494 48%,
+      #5a7d7d 68%,
+      #9eb8b8 100%
     );
   background-size:
     128px 128px,
@@ -876,9 +876,9 @@ iframe[src*="vercel.live"] {
     cover,
     cover;
   box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.12),
-    inset 0 1px 3px rgba(255, 255, 255, 0.08),
-    inset 0 -2px 5px rgba(50, 32, 14, 0.22);
+    inset 0 0 0 1px rgba(220, 245, 245, 0.14),
+    inset 0 1px 3px rgba(255, 255, 255, 0.1),
+    inset 0 -2px 5px rgba(28, 48, 48, 0.28);
 }
 
 .piece:hover { z-index: 10; }
