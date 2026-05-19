@@ -839,16 +839,12 @@ function onMouseDown(e) {
 
   if (hand.includes(index)) return;
 
-  if (state.faceDown) {
-    revealPiece(index);
-    return;
-  }
-
   const gid     = pieceGroup[index];
   const indices = gid ? [...groups[gid]] : [index];
 
-  if (indices.some(i => pieceStates[i].faceDown)) return;
   if (indices.some(i => pieceStates[i].lockedBy && pieceStates[i].lockedBy !== playerId)) return;
+
+  revealFaceDownInIndices(indices);
 
   const boardRect = board.getBoundingClientRect();
   const anchorX   = pieceStates[index].x;
@@ -1172,6 +1168,13 @@ function revealPiece(index, { correctRotation = false } = {}) {
   if (applyCorrect) patch.rotation = rotation;
   updatePieceReveal(puzzleId, index, patch);
   scheduleSyncBoardScrollContentSize();
+}
+
+/** Flip face-down pieces in a drag group to the correct angle, then allow dragging. */
+function revealFaceDownInIndices(indices) {
+  for (const i of indices) {
+    if (pieceStates[i]?.faceDown) revealPiece(i);
+  }
 }
 
 function onPieceDblClick(e) {

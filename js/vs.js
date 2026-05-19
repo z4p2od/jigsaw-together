@@ -1090,6 +1090,12 @@ function revealPiece(index, { correctRotation = false } = {}) {
   updateVSPieceReveal(roomId, myBoardKey, index, patch);
 }
 
+function revealFaceDownInIndices(indices) {
+  for (const i of indices) {
+    if (pieceStates[i]?.faceDown) revealPiece(i);
+  }
+}
+
 function onPieceDblClick(e) {
   const el = e.target.closest('.piece');
   if (!el) return;
@@ -1186,15 +1192,12 @@ function onMouseDown(e) {
   const index = Number(el.dataset.index);
 
   const state = pieceStates[index];
-  if (state.faceDown) {
-    revealPiece(index);
-    return;
-  }
   if (state.lockedBy && state.lockedBy !== playerId) return;
   const gid     = pieceGroup[index];
   const indices = gid ? [...groups[gid]] : [index];
-  if (indices.some(i => pieceStates[i].faceDown)) return;
   if (indices.some(i => pieceStates[i].lockedBy && pieceStates[i].lockedBy !== playerId)) return;
+
+  revealFaceDownInIndices(indices);
   const boardRect = board.getBoundingClientRect();
   const anchorX   = pieceStates[index].x;
   const anchorY   = pieceStates[index].y;
