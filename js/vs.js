@@ -181,7 +181,6 @@ const vspOppPct      = document.getElementById('vsp-opp-pct');
 const vsPowerupMeterEl = document.getElementById('vs-powerup-meter');
 const vsPowerupIconEl  = document.getElementById('vs-powerup-icon');
 const vsPowerupFillEl  = document.getElementById('vs-powerup-fill');
-const vsPowerupPctEl   = document.getElementById('vs-powerup-pct');
 const vsPowerupComboEl = document.getElementById('vs-powerup-combo');
 const vsPowerupBurstEl = document.getElementById('vs-powerup-burst');
 let comboHideTimer = null;
@@ -1349,7 +1348,6 @@ function powerupMeterDisplayPct() {
 function updatePowerupMeterUI() {
   const pct = powerupMeterDisplayPct();
   if (vsPowerupFillEl) vsPowerupFillEl.style.width = `${pct}%`;
-  if (vsPowerupPctEl) vsPowerupPctEl.textContent = `${pct}%`;
   if (vsPowerupIconEl && !powerupSlotBusy) vsPowerupIconEl.textContent = '?';
   if (!vsPowerupMeterEl) return;
   vsPowerupMeterEl.classList.toggle('vs-powerup-high', powerupCharge >= 85 && powerupCharge < 100 && !powerupSlotBusy);
@@ -1357,7 +1355,6 @@ function updatePowerupMeterUI() {
 
 function flashPowerupMeterFull() {
   if (vsPowerupFillEl) vsPowerupFillEl.style.width = '100%';
-  if (vsPowerupPctEl) vsPowerupPctEl.textContent = '100%';
 }
 
 function pulsePowerupCharged() {

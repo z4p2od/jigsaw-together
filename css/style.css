@@ -1987,9 +1987,6 @@ iframe[src*="vercel.live"] {
 
 .vs-powerup-main {
   flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 10px;
   min-width: 0;
 }
 
@@ -2033,15 +2030,6 @@ iframe[src*="vercel.live"] {
   0%, 100% { transform: translateX(-120%); opacity: 0; }
   40%, 60% { opacity: 1; }
   100% { transform: translateX(120%); }
-}
-
-.vs-powerup-pct {
-  font-size: 0.85rem;
-  font-weight: 800;
-  color: #e9d5ff;
-  min-width: 2.5rem;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
 }
 
 .vs-powerup-combo {
