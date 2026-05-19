@@ -44,12 +44,6 @@ const BOARD_SCROLL_PADDING = 20;
 const SCROLL_TOP_GUTTER = 48;
 /** Extra slack (board coords) around the piece AABB when sizing the scroll region — shadows / AA. */
 const BOARD_CLOUD_SLACK = 14;
-/** Horizontal: bias scroll anchor slightly off center (narrow windows / left clipping). */
-const BOARD_VIEW_CENTER_BIAS_X = 0.06;
-/** Pixels from board-wrap top to the cloud’s top edge when framing (tabs / shadow room). */
-const FRAME_CLOUD_TOP_MARGIN_PX = 52;
-/** Extra board-space above the cloud bbox top (knobs, antialias). */
-const FRAME_CLOUD_TOP_PAD_BOARD = 12;
 const SCALE_MIN = 0.3;
 const SCALE_MAX = 3.0;
 
@@ -1365,24 +1359,48 @@ function applyScale(s, opts = {}) {
   updateBoardTransform();
 }
 
-function centerBoardInView() {
-  if (!boardWrap || boardWrap.clientWidth < 8 || boardWrap.clientHeight < 8) return;
-  boardTx = 0; boardTy = 0;
-  updateBoardTransform();
+/** Scroll the wrap so a viewport point (client coords) sits at the wrap center. */
+function scrollClientPointToWrapCenter(clientX, clientY) {
+  if (!boardWrap) return;
+  const wr = boardWrap.getBoundingClientRect();
+  const wrapCx = wr.left + wr.width / 2;
+  const wrapCy = wr.top + wr.height / 2;
+  boardWrap.scrollLeft += clientX - wrapCx;
+  boardWrap.scrollTop += clientY - wrapCy;
   const maxSl = Math.max(0, boardWrap.scrollWidth - boardWrap.clientWidth);
   const maxSt = Math.max(0, boardWrap.scrollHeight - boardWrap.clientHeight);
-  boardWrap.scrollLeft = Math.round(maxSl / 2);
-  boardWrap.scrollTop = Math.round(maxSt / 2);
+  boardWrap.scrollLeft = Math.max(0, Math.min(maxSl, Math.round(boardWrap.scrollLeft)));
+  boardWrap.scrollTop = Math.max(0, Math.min(maxSt, Math.round(boardWrap.scrollTop)));
+}
+
+function centerBoardInView() {
+  if (!boardWrap || !board || boardWrap.clientWidth < 8 || boardWrap.clientHeight < 8) return;
+  boardTx = 0;
+  boardTy = 0;
+  updateBoardTransform();
+  syncBoardScrollContentSize();
+  const br = board.getBoundingClientRect();
+  scrollClientPointToWrapCenter(br.left + br.width / 2, br.top + br.height / 2);
 }
 
 function centerPieceCloudInView() {
-  if (!boardWrap || boardWrap.clientWidth < 8 || boardWrap.clientHeight < 8) return;
+  if (!boardWrap || !board || boardWrap.clientWidth < 8 || boardWrap.clientHeight < 8) return;
   const bounds = getPieceCloudBounds();
   if (!bounds) {
     centerBoardInView();
     return;
   }
-  framePieceCloudTopInView(bounds);
+  boardTx = 0;
+  boardTy = 0;
+  updateBoardTransform();
+  syncBoardScrollContentSize();
+  const br = board.getBoundingClientRect();
+  const scaleX = br.width / BOARD_W;
+  const scaleY = br.height / BOARD_H;
+  scrollClientPointToWrapCenter(
+    br.left + bounds.cx * scaleX,
+    br.top + bounds.cy * scaleY,
+  );
 }
 
 /** After loading overlay hides: wait for real wrap dimensions (iOS / in-app WebViews can report 0 briefly). */
@@ -1398,6 +1416,10 @@ function scheduleMobilePieceFraming() {
         const h = boardWrap.clientHeight;
         if (w >= MIN && h >= MIN) {
           framePieceCloudInView();
+          requestAnimationFrame(() => {
+            if (pieceEls?.length) centerPieceCloudInView();
+            else centerBoardInView();
+          });
           return;
         }
         tries += 1;
@@ -1445,26 +1467,7 @@ function framePieceCloudInView() {
       applyScale(targetScale, zoomAnchorViewportCenter());
     }
   }
-  framePieceCloudTopInView(bounds);
-}
-
-/**
- * Scroll so the piece cloud’s top (plus pad) sits FRAME_CLOUD_TOP_MARGIN_PX below the wrap top;
- * horizontal anchor stays the cloud center (cx).
- */
-function framePieceCloudTopInView(bounds) {
-  if (!boardWrap || boardWrap.clientWidth < 8 || boardWrap.clientHeight < 8) return;
-  boardTx = 0; boardTy = 0;
-  updateBoardTransform();
-  const cw = boardWrap.clientWidth;
-  const cloudTopBoard = bounds.cy - bounds.h * 0.5 - FRAME_CLOUD_TOP_PAD_BOARD;
-  const targetLeft = board.offsetLeft + bounds.cx * scale - cw * (0.5 + BOARD_VIEW_CENTER_BIAS_X);
-  const targetTop = board.offsetTop + cloudTopBoard * scale - FRAME_CLOUD_TOP_MARGIN_PX;
-
-  const maxSl = Math.max(0, boardWrap.scrollWidth - boardWrap.clientWidth);
-  const maxSt = Math.max(0, boardWrap.scrollHeight - boardWrap.clientHeight);
-  boardWrap.scrollLeft = Math.max(0, Math.min(maxSl, Math.round(targetLeft)));
-  boardWrap.scrollTop = Math.max(0, Math.min(maxSt, Math.round(targetTop)));
+  centerPieceCloudInView();
 }
 
 /**

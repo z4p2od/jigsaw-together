@@ -4,7 +4,15 @@ function isStandalone() {
   return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
 }
 
+/** Same signals as js/mobile-quality.js — home-screen install is for phones/tablets, not desktop. */
+function isMobileInstallTarget() {
+  const coarse = window.matchMedia?.('(pointer: coarse)')?.matches ?? false;
+  const mobileUa = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
+  return coarse || mobileUa;
+}
+
 function shouldOfferInstall() {
+  if (!isMobileInstallTarget()) return false;
   if (isStandalone()) return false;
   try {
     if (sessionStorage.getItem(INSTALL_DISMISS_KEY) === '1') return false;
@@ -54,6 +62,7 @@ function setupInstallPrompt() {
   };
 
   window.addEventListener('beforeinstallprompt', (event) => {
+    if (!isMobileInstallTarget()) return;
     event.preventDefault();
     deferredPrompt = event;
     mount();
@@ -79,7 +88,7 @@ function setupInstallPrompt() {
 
   const isIos = /iPhone|iPad|iPod/i.test(navigator.userAgent);
   const isSafari = /Safari/i.test(navigator.userAgent) && !/CriOS|FxiOS|EdgiOS/i.test(navigator.userAgent);
-  if (isIos && isSafari && !isStandalone()) {
+  if (isMobileInstallTarget() && isIos && isSafari && !isStandalone()) {
     mount();
     banner.hidden = false;
     const installBtn = banner.querySelector('#pwa-install-btn');
