@@ -844,6 +844,7 @@ function onMouseDown(e) {
 
   if (indices.some(i => pieceStates[i].lockedBy && pieceStates[i].lockedBy !== playerId)) return;
 
+  const anchorWasFaceDown = !!state.faceDown;
   revealFaceDownInIndices(indices);
 
   const boardRect = board.getBoundingClientRect();
@@ -871,6 +872,8 @@ function onMouseDown(e) {
     startClientY: e.clientY,
     startTs: Date.now(),
     fromTouch: !!e?.isTouch,
+    /** Face-down click without drag: flip only, do not pocket. */
+    flipOnlyClick: anchorWasFaceDown,
   };
 }
 
@@ -942,7 +945,7 @@ async function onMouseUp(e) {
     if (!dragging.locked) dragging = null;
     return;
   }
-  const { indices, anchorIndex, offsetX, offsetY, relOffsets, locked } = dragging;
+  const { indices, anchorIndex, offsetX, offsetY, relOffsets, locked, flipOnlyClick } = dragging;
   dragging = null;
 
   indices.forEach(i => {
@@ -951,7 +954,7 @@ async function onMouseUp(e) {
   });
 
   if (!locked) {
-    addToHand(anchorIndex);
+    if (!flipOnlyClick) addToHand(anchorIndex);
     return;
   }
 
