@@ -2073,6 +2073,25 @@ function clampPieceIndicesFormationToBoard(indices, pad, elW, elH) {
   }
 }
 
+/** Pocket drop: tighter Vogel spiral + fallback so dbl-click/tap scatters less around the point. */
+const DROP_SCATTER_SPIRAL_BASE = 0.22;
+const DROP_SCATTER_SPIRAL_GROW = 0.055;
+const DROP_SCATTER_FB_BASE = 0.52;
+const DROP_SCATTER_FB_STEP = 0.16;
+const DROP_SCATTER_GAP_RATIO = 0.04;
+
+function dropScatterSpiralRadius(pieceSize, spiralStep, count) {
+  const raw = pieceSize * (DROP_SCATTER_SPIRAL_BASE + DROP_SCATTER_SPIRAL_GROW * Math.sqrt(spiralStep));
+  const cap = pieceSize * (0.32 + 0.07 * Math.sqrt(Math.max(1, count)));
+  return Math.min(raw, cap);
+}
+
+function dropScatterFallbackRadius(pieceSize, index, count) {
+  const raw = pieceSize * (DROP_SCATTER_FB_BASE + index * DROP_SCATTER_FB_STEP);
+  const cap = pieceSize * (0.45 + 0.1 * Math.sqrt(Math.max(1, count)));
+  return Math.min(raw, cap);
+}
+
 /** Rough radius (board units) for spacing pocket slots so clusters do not overlap. */
 function estimateSlotDropRadius(slotIndices, pad, dW, dH) {
   const elW = dW + pad * 2;
@@ -2095,7 +2114,7 @@ function estimateSlotDropRadius(slotIndices, pad, dW, dH) {
   if (!Number.isFinite(minX)) return Math.hypot(elW, elH) * 0.35;
   const bw = maxX - minX;
   const bh = maxY - minY;
-  return Math.hypot(bw, bh) / 2 + Math.min(elW, elH) * 0.06;
+  return Math.hypot(bw, bh) / 2 + Math.min(elW, elH) * 0.035;
 }
 
 /**
@@ -2145,7 +2164,8 @@ function scatterIndicesAroundTap(indices, centerX, centerY) {
 
   const gridCols = meta?.cols ?? 1;
   const ordered = indices.length > 1 ? shuffleNonAdjacent([...indices], gridCols) : [...indices];
-  const gap = Math.max(2, Math.round(Math.min(dW, dH) * 0.06));
+  const pieceSize = Math.min(elW, elH);
+  const gap = Math.max(2, Math.round(Math.min(dW, dH) * DROP_SCATTER_GAP_RATIO));
   const golden = Math.PI * (3 - Math.sqrt(5));
   const placed = [];
 
@@ -2158,7 +2178,7 @@ function scatterIndicesAroundTap(indices, centerX, centerY) {
     }
     let found = false;
     for (let j = 1; j < 600 && !found; j++) {
-      const r = Math.min(elW, elH) * (0.42 + 0.11 * Math.sqrt(j));
+      const r = dropScatterSpiralRadius(pieceSize, j, ordered.length);
       const a = (i + j * 0.09) * golden;
       const ix = centerX + r * Math.cos(a) - dW / 2;
       const iy = centerY + r * Math.sin(a) - dH / 2;
@@ -2171,7 +2191,7 @@ function scatterIndicesAroundTap(indices, centerX, centerY) {
     }
     if (!found) {
       const fb = (i * 0.6180339887) % 1;
-      const r = Math.min(elW, elH) * (0.95 + i * 0.42);
+      const r = dropScatterFallbackRadius(pieceSize, i, ordered.length);
       placed.push({
         idx: ordered[i],
         x: centerX + r * Math.cos(fb * Math.PI * 2) - dW / 2,
@@ -2205,7 +2225,8 @@ function placePocketSlotsAroundTap(slots, centerX, centerY) {
     return;
   }
 
-  const gap = Math.max(2, Math.round(Math.min(dW, dH) * 0.06));
+  const pieceSize = Math.min(elW, elH);
+  const gap = Math.max(2, Math.round(Math.min(dW, dH) * DROP_SCATTER_GAP_RATIO));
   const golden = Math.PI * (3 - Math.sqrt(5));
   const radii = slots.map(s => estimateSlotDropRadius(s, pad, dW, dH));
   /** @type {{ x: number, y: number, rad: number }[]} */
@@ -2221,7 +2242,7 @@ function placePocketSlotsAroundTap(slots, centerX, centerY) {
       const needR = radii[i];
       let found = false;
       for (let j = 1; j < 600 && !found; j++) {
-        const r = Math.min(elW, elH) * (0.42 + 0.11 * Math.sqrt(j));
+        const r = dropScatterSpiralRadius(pieceSize, j, slots.length);
         const a = (i + j * 0.09) * golden;
         const tx = centerX + r * Math.cos(a);
         const ty = centerY + r * Math.sin(a);
@@ -2235,7 +2256,7 @@ function placePocketSlotsAroundTap(slots, centerX, centerY) {
       }
       if (!found) {
         const fb = (i * 0.6180339887) % 1;
-        const r = Math.min(elW, elH) * (0.95 + i * 0.42);
+        const r = dropScatterFallbackRadius(pieceSize, i, slots.length);
         cx = centerX + r * Math.cos(fb * Math.PI * 2);
         cy = centerY + r * Math.sin(fb * Math.PI * 2);
       }
