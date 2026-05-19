@@ -1,7 +1,6 @@
-/** Teal back using the cut-piece alpha as a mask (jigsaw shape, not a square). */
+/** Cardboard back clipped to the cut-piece shape (see `.piece-back` in style.css). */
 export function applyPieceBackMask(backEl, dataUrl) {
   backEl.className = 'piece-back';
-  backEl.style.backgroundColor = '#86cece';
   const safeUrl = String(dataUrl).replace(/"/g, '\\"');
   const mask = `url("${safeUrl}")`;
   backEl.style.maskImage = mask;
