@@ -8,8 +8,17 @@ import {
   getPlayerColor, getVSIndexCreatorPlayerId,
   setVSTeamId, renameVSTeam,
   sendChatMessage, onChatMessages,
-  writeVSPowerupEarned, writeVSEffect, onVSEffects, onVSPowerups, writeVSShufflePositions,
+  writeVSPowerupEarned, writeVSEffect, onVSEffects, writeVSShufflePositions,
 } from './firebase.js';
+import {
+  applyCharge,
+  computeMergeFill,
+  isPuzzleComplete,
+  nextComboLevel,
+  pickRandomPowerup,
+  POWERUP_EMOJI,
+  POWERUP_TYPES,
+} from './vs-powerup-meter.js';
 import { getLobbySlotPids } from './vs-lobby-slots.js';
 import { cutPiece, getPad } from './jigsaw.js';
 import {
@@ -23,7 +32,7 @@ import {
   rotateGroupQuarterTurnCW,
   randomQuarterRotation,
 } from './puzzle-rotation.js';
-import { scatterFromSeed, seededRandom } from './scatter-pieces.js';
+import { scatterFromSeed } from './scatter-pieces.js';
 import { applyPieceBackMask } from './piece-dom.js';
 
 function safeLocalGet(key) {
@@ -83,11 +92,13 @@ let lastTap     = { time: 0, el: null };
 let chatUnread = 0;
 let chatOpen   = false;
 
-// Chaos mode powerups
-let powerupPieces    = {};        // { pieceIndex: 'bw'|'invert'|'scramble' }
-const powerupMarkerEls = [];      // DOM marker elements per piece index
-const oppPowerupMarkerEls = [];
-const earnedPowerups = new Set(); // indices already triggered
+// Chaos mode powerup meter
+let powerupCharge = 0;
+let lastPowerupSnapAt = null;
+let powerupComboLevel = 1;
+let powerupEarnCounter = 0;
+let powerupSlotBusy = false;
+const pendingPowerupAwards = [];
 let invertActive     = false;
 const faceDownPieces = new Set(); // indices currently face-down
 const activeEffects  = {};        // timers
@@ -167,6 +178,13 @@ const vspMePct       = document.getElementById('vsp-me-pct');
 const vspOppName     = document.getElementById('vsp-opp-name');
 const vspOppFill     = document.getElementById('vsp-opp-fill');
 const vspOppPct      = document.getElementById('vsp-opp-pct');
+const vsPowerupMeterEl = document.getElementById('vs-powerup-meter');
+const vsPowerupIconEl  = document.getElementById('vs-powerup-icon');
+const vsPowerupFillEl  = document.getElementById('vs-powerup-fill');
+const vsPowerupComboEl = document.getElementById('vs-powerup-combo');
+const vsPowerupBurstEl = document.getElementById('vs-powerup-burst');
+let comboHideTimer = null;
+let powerupAnimTimer = null;
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
@@ -199,41 +217,6 @@ function getOrCreatePlayerId() {
   let id = sessionStorage.getItem('playerId');
   if (!id) { id = crypto.randomUUID(); sessionStorage.setItem('playerId', id); }
   return id;
-}
-
-function pickPowerupPieces(seed, totalPieces, cols, rows) {
-  // Only pick interior pieces — those with all 4 neighbours present
-  const interior = [];
-  for (let i = 0; i < totalPieces; i++) {
-    const col = i % cols;
-    const row = Math.floor(i / cols);
-    if (col > 0 && col < cols - 1 && row > 0 && row < rows - 1) interior.push(i);
-  }
-  if (interior.length === 0) return {}; // tiny puzzle fallback
-
-  // Use a separate seeded RNG — multiply seed by large prime to get different sequence
-  const rand = seededRandom((seed * 1000003) & 0xffffffff);
-  const TYPES = ['bw', 'invert', 'scramble', 'flip', 'shake', 'shuffle'];
-  const picked = new Set();
-  const excluded = new Set(); // picked indices + their direct neighbours
-  const assignments = {};
-  const count = Math.min(5, Math.floor(interior.length / 3));
-  let attempts = 0;
-  while (picked.size < count && attempts < 1000) {
-    attempts++;
-    const idx = interior[Math.floor(rand() * interior.length)];
-    if (picked.has(idx) || excluded.has(idx)) continue;
-    assignments[idx] = TYPES[picked.size % TYPES.length];
-    picked.add(idx);
-    // Exclude this piece and all its direct neighbours from future picks
-    excluded.add(idx);
-    const col = idx % cols, row = Math.floor(idx / cols);
-    if (row > 0)          excluded.add((row - 1) * cols + col);
-    if (row < rows - 1)   excluded.add((row + 1) * cols + col);
-    if (col > 0)          excluded.add(row * cols + (col - 1));
-    if (col < cols - 1)   excluded.add(row * cols + (col + 1));
-  }
-  return assignments;
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
@@ -637,10 +620,8 @@ async function startGame(room) {
 
   solvedCount = pieceStates.filter(p => p.solved).length;
 
-  // Chaos mode setup
-  if (m.chaosMode) {
-    powerupPieces = pickPowerupPieces(m.seed, count, m.cols, m.rows);
-  }
+  resetPowerupMeter();
+  showPowerupMeter(!!m.chaosMode);
 
   setupBoard();
   await renderAllPieces();
@@ -679,10 +660,6 @@ async function startGame(room) {
     await renderOppPieces(initialOppPieces);
 
     unsubOpp = onVSOpponentPieces(roomId, oppBoardKey, applyOppUpdate);
-
-    if (m.chaosMode) {
-      renderOppPowerupMarkers();
-    }
   }
 
   // Subscribe to incoming powerup effects (chaos mode)
@@ -801,12 +778,6 @@ function renderPiece(index, dataUrl, x, y, solved, elW, elH) {
   pieceEls[index] = el;
   updatePieceZIndex(index);
 
-  if (powerupPieces[index] !== undefined && !solved) {
-    el.classList.add(`powerup-glow-${powerupPieces[index]}`);
-    const marker = createPowerupMarker(index, powerupPieces[index], x, y);
-    board.appendChild(marker);
-    powerupMarkerEls[index] = marker;
-  }
 }
 
 function movePieceEl(index, x, y, el) {
@@ -823,11 +794,6 @@ function movePieceEl(index, x, y, el) {
     ? `translate3d(${tx}px,${ty}px,0) rotate(${rotDeg}deg)`
     : `translate3d(${tx}px,${ty}px,0)`;
   if (!el) syncPieceFaceDownClass(index, e);
-  // Move powerup marker with piece
-  if (!el && powerupMarkerEls[index]) {
-    powerupMarkerEls[index].style.left = x + 'px';
-    powerupMarkerEls[index].style.top  = y + 'px';
-  }
 }
 
 function updatePieceZIndex(index) {
@@ -903,10 +869,7 @@ async function renderOppPieces(states) {
     const col     = i % cols;
     const row     = Math.floor(i / cols);
     const dataUrl = cutPiece(img, col, row, pieceW, pieceH, texDisplayW, texDisplayH, edges[i]);
-    const glowCls = (meta.chaosMode && powerupPieces[i] !== undefined && !oppPieceStates[i].solved)
-      ? ` powerup-glow-${powerupPieces[i]}` : '';
     const el = buildVsPieceElement(i, dataUrl, !!oppPieceStates[i].solved, elW, elH, !!oppPieceStates[i].faceDown);
-    if (glowCls) el.className += glowCls;
     moveOppPieceEl(i, oppPieceStates[i].x, oppPieceStates[i].y, el);
     oppBoard.appendChild(el);
     oppPieceEls[i] = el;
@@ -954,12 +917,6 @@ function applyOppUpdate(allPieces) {
     syncOppPieceFaceDownClass(i);
     if (p.solved) {
       oppPieceEls[i].classList.add('solved');
-      if (oppPowerupMarkerEls[i]) oppPowerupMarkerEls[i].style.display = 'none';
-    }
-    // Move opp powerup marker
-    if (oppPowerupMarkerEls[i] && !p.solved) {
-      oppPowerupMarkerEls[i].style.left = p.x + 'px';
-      oppPowerupMarkerEls[i].style.top  = p.y + 'px';
     }
   });
 }
@@ -1290,7 +1247,9 @@ async function onMouseUp(e) {
     const gid = pieceGroup[allIndices[0]];
     await writeVSSnap(roomId, myBoardKey, positions, gid);
     checkSolvedState();
-    checkPowerupTrigger(allIndices);
+    if (meta.chaosMode && !winnerDeclared && !isBoardComplete()) {
+      addPowerupChargeFromMerge(indices.length);
+    }
     updateMyProgress();
     checkCompletion();
   } else {
@@ -1353,65 +1312,181 @@ function applyScale(s) {
   board.style.marginBottom = scale > 1 ? BOARD_H * (scale - 1) + 'px' : '';
 }
 
-// ── Chaos mode powerups ───────────────────────────────────────────────────────
+// ── Chaos mode powerup meter ──────────────────────────────────────────────────
 
-function createPowerupMarker(index, type, x, y) {
-  const ICONS = { bw: '👁', invert: '🔄', scramble: '💥' };
-  const marker = document.createElement('div');
-  marker.className = `powerup-marker powerup-${type}`;
-  marker.dataset.index = index;
-  marker.textContent = ICONS[type] ?? '⚡';
-  marker.style.left = x + 'px';
-  marker.style.top  = y + 'px';
-  return marker;
+function resetPowerupMeter() {
+  powerupCharge = 0;
+  lastPowerupSnapAt = null;
+  powerupComboLevel = 1;
+  powerupEarnCounter = 0;
+  powerupSlotBusy = false;
+  pendingPowerupAwards.length = 0;
+  updatePowerupMeterUI();
 }
 
-function renderOppPowerupMarkers() {
-  if (!oppBoard) return;
-  Object.entries(powerupPieces).forEach(([idxStr, type]) => {
-    const i = Number(idxStr);
-    if (oppPieceStates[i]?.solved) return;
-    const state = oppPieceStates[i];
-    if (!state) return;
-    const marker = createPowerupMarker(i, type, state.x, state.y);
-    marker.className = `powerup-marker powerup-${type} opp-powerup-marker`;
-    oppBoard.appendChild(marker);
-    oppPowerupMarkerEls[i] = marker;
+function showPowerupMeter(show) {
+  if (!vsPowerupMeterEl) return;
+  if (show) vsPowerupMeterEl.removeAttribute('hidden');
+  else vsPowerupMeterEl.setAttribute('hidden', '');
+}
+
+function isBoardComplete() {
+  return isPuzzleComplete({
+    solvedCount,
+    totalPieces,
+    pieceGroup,
+    groups,
   });
 }
 
-function getNeighbours(idx) {
-  const { cols, rows } = meta;
-  const col = idx % cols;
-  const row = Math.floor(idx / cols);
-  return [
-    row > 0          ? (row - 1) * cols + col : -1, // top
-    row < rows - 1   ? (row + 1) * cols + col : -1, // bottom
-    col > 0          ? row * cols + (col - 1) : -1, // left
-    col < cols - 1   ? row * cols + (col + 1) : -1, // right
-  ];
+function powerupMeterDisplayPct() {
+  if (powerupSlotBusy) return 100;
+  if (powerupCharge >= 100) return 100;
+  return Math.min(99, Math.floor(powerupCharge));
 }
 
-function checkPowerupTrigger(mergedIndices) {
-  if (!meta.chaosMode) return;
-  mergedIndices.forEach(idx => {
-    if (powerupPieces[idx] === undefined) return;
-    if (earnedPowerups.has(idx)) return;
-    // Check all 4 neighbours are in the same group as this piece
-    const myGroup = pieceGroup[idx];
-    if (!myGroup) return;
-    const neighbours = getNeighbours(idx);
-    const allNeighboursSnapped = neighbours.every(n => {
-      if (n === -1) return true; // board edge counts as satisfied
-      return pieceGroup[n] === myGroup || pieceStates[n]?.solved;
-    });
-    if (!allNeighboursSnapped) return;
-    earnedPowerups.add(idx);
-    firePowerup(powerupPieces[idx], idx);
+function setPowerupFillScale(pct) {
+  if (!vsPowerupFillEl) return;
+  vsPowerupFillEl.style.setProperty('--charge-scale', String(Math.min(1, Math.max(0, pct / 100))));
+}
+
+function updatePowerupMeterUI() {
+  const pct = powerupMeterDisplayPct();
+  setPowerupFillScale(pct);
+  if (vsPowerupIconEl && !powerupSlotBusy) vsPowerupIconEl.textContent = '?';
+  if (!vsPowerupMeterEl) return;
+  vsPowerupMeterEl.classList.toggle('vs-powerup-high', powerupCharge >= 85 && powerupCharge < 100 && !powerupSlotBusy);
+}
+
+function flashPowerupMeterFull() {
+  setPowerupFillScale(100);
+}
+
+function pulsePowerupCharged() {
+  if (!vsPowerupMeterEl) return;
+  vsPowerupMeterEl.classList.remove('vs-powerup-charged');
+  void vsPowerupMeterEl.offsetWidth;
+  vsPowerupMeterEl.classList.add('vs-powerup-charged');
+  clearTimeout(powerupAnimTimer);
+  powerupAnimTimer = setTimeout(() => {
+    vsPowerupMeterEl?.classList.remove('vs-powerup-charged');
+  }, 600);
+}
+
+function playPowerupLaunchAnimation(type) {
+  if (!vsPowerupMeterEl) return;
+  vsPowerupMeterEl.classList.remove('vs-powerup-launched');
+  void vsPowerupMeterEl.offsetWidth;
+  vsPowerupMeterEl.classList.add('vs-powerup-launched');
+  if (vsPowerupBurstEl) {
+    vsPowerupBurstEl.style.background = `radial-gradient(circle, rgba(250,204,21,0.95) 0%, rgba(124,58,237,0) 70%)`;
+  }
+  const oppPanel = oppBoard?.closest('.vs-board-panel');
+  if (oppPanel) {
+    oppPanel.classList.remove('vs-powerup-target-flash');
+    void oppPanel.offsetWidth;
+    oppPanel.classList.add('vs-powerup-target-flash');
+    setTimeout(() => oppPanel.classList.remove('vs-powerup-target-flash'), 750);
+  }
+  clearTimeout(powerupAnimTimer);
+  powerupAnimTimer = setTimeout(() => {
+    vsPowerupMeterEl?.classList.remove('vs-powerup-launched');
+  }, 700);
+  if (vsPowerupIconEl && POWERUP_EMOJI[type]) {
+    vsPowerupIconEl.textContent = POWERUP_EMOJI[type];
+  }
+}
+
+function flashComboLabel(level) {
+  if (!vsPowerupComboEl || level <= 1) return;
+  vsPowerupComboEl.textContent = `${level}×`;
+  vsPowerupComboEl.removeAttribute('hidden');
+  clearTimeout(comboHideTimer);
+  comboHideTimer = setTimeout(() => {
+    vsPowerupComboEl.setAttribute('hidden', '');
+  }, 1200);
+}
+
+function addPowerupChargeFromMerge(draggedCount) {
+  if (!meta?.chaosMode || winnerDeclared || isBoardComplete()) return;
+
+  const now = Date.now();
+  powerupComboLevel = nextComboLevel(lastPowerupSnapAt, now, powerupComboLevel);
+  lastPowerupSnapAt = now;
+
+  const fill = computeMergeFill(draggedCount, totalPieces, powerupComboLevel);
+  if (fill <= 0) return;
+
+  flashComboLabel(powerupComboLevel);
+
+  const { charge, awards } = applyCharge(powerupCharge, fill);
+  powerupCharge = charge;
+
+  if (awards > 0) {
+    flashPowerupMeterFull();
+    pulsePowerupCharged();
+    for (let i = 0; i < awards; i++) {
+      pendingPowerupAwards.push(pickRandomPowerup());
+    }
+    void drainPowerupAwardQueue();
+  } else {
+    updatePowerupMeterUI();
+  }
+}
+
+function enqueuePowerupAward() {
+  if (winnerDeclared || isBoardComplete()) return;
+  pendingPowerupAwards.push(pickRandomPowerup());
+  void drainPowerupAwardQueue();
+}
+
+async function drainPowerupAwardQueue() {
+  if (powerupSlotBusy || pendingPowerupAwards.length === 0) return;
+  if (winnerDeclared || isBoardComplete()) {
+    pendingPowerupAwards.length = 0;
+    return;
+  }
+
+  powerupSlotBusy = true;
+  const type = pendingPowerupAwards.shift();
+  await runPowerupSlotAnimation(type);
+  powerupComboLevel = 1;
+
+  if (!winnerDeclared && !isBoardComplete()) {
+    playPowerupLaunchAnimation(type);
+    await firePowerup(type);
+  }
+
+  powerupSlotBusy = false;
+  if (vsPowerupIconEl) vsPowerupIconEl.textContent = '?';
+  updatePowerupMeterUI();
+  drainPowerupAwardQueue();
+}
+
+function runPowerupSlotAnimation(finalType) {
+  return new Promise(resolve => {
+    if (!vsPowerupIconEl || !vsPowerupMeterEl) {
+      resolve();
+      return;
+    }
+    vsPowerupMeterEl.classList.add('vs-powerup-slotting');
+    const emojis = POWERUP_TYPES.map(t => POWERUP_EMOJI[t]);
+    let step = 0;
+    const totalSteps = 18;
+    const interval = setInterval(() => {
+      vsPowerupIconEl.textContent = emojis[step % emojis.length];
+      step += 1;
+      if (step >= totalSteps) {
+        clearInterval(interval);
+        vsPowerupIconEl.textContent = POWERUP_EMOJI[finalType] ?? '?';
+        vsPowerupMeterEl.classList.remove('vs-powerup-slotting');
+        setTimeout(resolve, 350);
+      }
+    }, 50);
   });
 }
 
-async function firePowerup(type, pieceIndex) {
+async function firePowerup(type) {
   const targetKey = meta.teamMode ? oppTeamId : oppId;
   if (!targetKey) return;
   const effect = { type, fromPlayer: playerId };
@@ -1459,11 +1534,12 @@ async function firePowerup(type, pieceIndex) {
     effect.positions = positions;
   }
 
-  await writeVSPowerupEarned(roomId, myBoardKey, pieceIndex);
+  await writeVSPowerupEarned(roomId, myBoardKey, powerupEarnCounter++);
   await writeVSEffect(roomId, targetKey, effect);
 
   const SENT_NAMES = { bw: 'Grayscale', invert: 'Invert', scramble: 'Scramble', flip: 'Flip', shake: 'Shake', shuffle: 'Shuffle' };
-  showPowerupToast(`🎉 ${SENT_NAMES[type] ?? type} sent!`, false);
+  const emoji = POWERUP_EMOJI[type] ?? '⚡';
+  showPowerupToast(`🚀 ${emoji} ${SENT_NAMES[type] ?? type} launched!`, false, true);
 
   // Sender sees the effect on opponent's board for visual feedback
   if (oppBoard) {
@@ -1471,13 +1547,6 @@ async function firePowerup(type, pieceIndex) {
     if (type === 'flip') { oppBoard.classList.add('board-flip');                   setTimeout(() => oppBoard.classList.remove('board-flip'),      20000); }
     if (type === 'shake'){ oppBoard.parentElement.classList.add('board-shake');    setTimeout(() => oppBoard.parentElement.classList.remove('board-shake'), 10000); }
   }
-
-  // Hide my marker + glow
-  if (powerupMarkerEls[pieceIndex]) powerupMarkerEls[pieceIndex].style.display = 'none';
-  if (pieceEls[pieceIndex]) pieceEls[pieceIndex].classList.remove(`powerup-glow-${type}`);
-  // Hide opp's marker + glow on their view
-  if (oppPowerupMarkerEls[pieceIndex]) oppPowerupMarkerEls[pieceIndex].style.display = 'none';
-  if (oppPieceEls[pieceIndex]) oppPieceEls[pieceIndex].classList.remove(`powerup-glow-${type}`);
 }
 
 function applyEffect(effect) {
@@ -1624,13 +1693,17 @@ setInterval(() => {
   });
 }, 200);
 
-function showPowerupToast(msg, isReceived) {
+function showPowerupToast(msg, isReceived, launched = false) {
   if (!powerupToastEl) return;
   powerupToastEl.textContent = msg;
   powerupToastEl.style.display = '';
   powerupToastEl.style.background = isReceived ? 'rgba(185,28,28,0.9)' : 'rgba(5,150,105,0.9)';
+  powerupToastEl.classList.toggle('powerup-toast-launched', launched);
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { powerupToastEl.style.display = 'none'; }, 2500);
+  toastTimer = setTimeout(() => {
+    powerupToastEl.style.display = 'none';
+    powerupToastEl.classList.remove('powerup-toast-launched');
+  }, launched ? 3200 : 2500);
 }
 
 // ── Snap / merge ──────────────────────────────────────────────────────────────
@@ -1795,6 +1868,7 @@ function checkCompletion() {
     })();
   if (!done || winnerDeclared) return;
   winnerDeclared = true;
+  pendingPowerupAwards.length = 0;
 
   stopTimer();
   const finishedAt = Date.now();
