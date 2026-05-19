@@ -1072,13 +1072,13 @@ function revealPiece(index, { correctRotation = false } = {}) {
   const needsReveal = !!state.faceDown;
   if (!needsReveal && !correctRotation) return;
 
-  let rotation = state.rotation ?? 0;
-  if (correctRotation) {
-    rotation = meta?.hardMode ? randomQuarterRotation() : 0;
-  }
+  const applyCorrect = needsReveal || correctRotation;
+  const rotation = applyCorrect
+    ? (meta?.hardMode ? randomQuarterRotation() : 0)
+    : (state.rotation ?? 0);
 
   state.faceDown = false;
-  if (correctRotation) state.rotation = rotation;
+  if (applyCorrect) state.rotation = rotation;
 
   syncPieceFaceDownClass(index);
   if (Number.isFinite(state.x) && Number.isFinite(state.y)) {
@@ -1086,7 +1086,7 @@ function revealPiece(index, { correctRotation = false } = {}) {
   }
 
   const patch = { faceDown: false };
-  if (correctRotation) patch.rotation = rotation;
+  if (applyCorrect) patch.rotation = rotation;
   updateVSPieceReveal(roomId, myBoardKey, index, patch);
 }
 
@@ -1096,6 +1096,7 @@ function onPieceDblClick(e) {
   e.stopPropagation();
   const index = Number(el.dataset.index);
   if (pieceStates[index]?.lockedBy && pieceStates[index].lockedBy !== playerId) return;
+  if (pieceStates[index]?.faceDown) return;
   revealPiece(index, { correctRotation: true });
 }
 
@@ -1106,6 +1107,7 @@ function onContextMenu(e) {
   const index = Number(el.dataset.index);
   if (dragging?.locked && !dragging.indices.includes(index)) return;
   if (pieceStates[index]?.lockedBy && pieceStates[index].lockedBy !== playerId) return;
+  if (pieceStates[index]?.faceDown) return;
 
   const syncDragAfterRotate = dragging?.locked && dragging.indices.includes(index);
   const dragAnchor = syncDragAfterRotate ? dragging.anchorIndex : null;
@@ -1144,6 +1146,7 @@ function onDoubleTap(e) {
   e.preventDefault();
   const index = Number(el.dataset.index);
   if (pieceStates[index]?.lockedBy && pieceStates[index].lockedBy !== playerId) return;
+  if (pieceStates[index]?.faceDown) return;
   revealPiece(index, { correctRotation: true });
 }
 
@@ -1185,10 +1188,12 @@ function onMouseDown(e) {
   const state = pieceStates[index];
   if (state.faceDown) {
     revealPiece(index);
+    return;
   }
   if (state.lockedBy && state.lockedBy !== playerId) return;
   const gid     = pieceGroup[index];
   const indices = gid ? [...groups[gid]] : [index];
+  if (indices.some(i => pieceStates[i].faceDown)) return;
   if (indices.some(i => pieceStates[i].lockedBy && pieceStates[i].lockedBy !== playerId)) return;
   const boardRect = board.getBoundingClientRect();
   const anchorX   = pieceStates[index].x;

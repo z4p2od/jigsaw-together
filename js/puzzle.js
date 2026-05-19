@@ -839,11 +839,15 @@ function onMouseDown(e) {
 
   if (hand.includes(index)) return;
 
-  if (state.faceDown) revealPiece(index);
+  if (state.faceDown) {
+    revealPiece(index);
+    return;
+  }
 
   const gid     = pieceGroup[index];
   const indices = gid ? [...groups[gid]] : [index];
 
+  if (indices.some(i => pieceStates[i].faceDown)) return;
   if (indices.some(i => pieceStates[i].lockedBy && pieceStates[i].lockedBy !== playerId)) return;
 
   const boardRect = board.getBoundingClientRect();
@@ -1151,13 +1155,13 @@ function revealPiece(index, { correctRotation = false } = {}) {
   const needsReveal = !!state.faceDown;
   if (!needsReveal && !correctRotation) return;
 
-  let rotation = state.rotation ?? 0;
-  if (correctRotation) {
-    rotation = meta?.hardMode ? randomQuarterRotation() : 0;
-  }
+  const applyCorrect = needsReveal || correctRotation;
+  const rotation = applyCorrect
+    ? (meta?.hardMode ? randomQuarterRotation() : 0)
+    : (state.rotation ?? 0);
 
   state.faceDown = false;
-  if (correctRotation) state.rotation = rotation;
+  if (applyCorrect) state.rotation = rotation;
 
   syncPieceFaceDownClass(index);
   if (Number.isFinite(state.x) && Number.isFinite(state.y)) {
@@ -1165,7 +1169,7 @@ function revealPiece(index, { correctRotation = false } = {}) {
   }
 
   const patch = { faceDown: false };
-  if (correctRotation) patch.rotation = rotation;
+  if (applyCorrect) patch.rotation = rotation;
   updatePieceReveal(puzzleId, index, patch);
   scheduleSyncBoardScrollContentSize();
 }
@@ -1176,6 +1180,7 @@ function onPieceDblClick(e) {
   e.stopPropagation();
   const index = Number(el.dataset.index);
   if (pieceStates[index].lockedBy && pieceStates[index].lockedBy !== playerId) return;
+  if (pieceStates[index].faceDown) return;
   revealPiece(index, { correctRotation: true });
 }
 
@@ -1193,6 +1198,7 @@ function onContextMenu(e) {
   }
   if (dragging?.locked && !dragging.indices.includes(index)) return;
   if (pieceStates[index].lockedBy && pieceStates[index].lockedBy !== playerId) return;
+  if (pieceStates[index].faceDown) return;
 
   const syncDragAfterRotate = dragging?.locked && dragging.indices.includes(index);
   const dragAnchor = syncDragAfterRotate ? dragging.anchorIndex : null;
@@ -1228,6 +1234,7 @@ function onDoubleTap(e) {
   e.preventDefault();
   const index = Number(el.dataset.index);
   if (pieceStates[index].lockedBy && pieceStates[index].lockedBy !== playerId) return;
+  if (pieceStates[index].faceDown) return;
   revealPiece(index, { correctRotation: true });
 }
 
@@ -1997,10 +2004,7 @@ function buildHandSlotPreviewElement(slotIndices, maxW, maxH) {
       const src = getPieceFrontSrc(pieceEls[index]);
       if (!src) continue;
       const p = pieceStates[index];
-      const home = pocketHomeByIndex.get(index);
-      const rot = p.faceDown && home?.placementRotation != null
-        ? home.placementRotation
-        : (Number(p.rotation) || 0);
+      const rot = Number(p.rotation) || 0;
       const left = (p.x - pad - minX) * k;
       const top = (p.y - pad - minY) * k;
       const w = elW * k;
@@ -2036,6 +2040,7 @@ function addToHand(index) {
   if (!indices) return;
 
   if (indices.some(i => pieceStates[i].lockedBy && pieceStates[i].lockedBy !== playerId)) return;
+  if (indices.some(i => pieceStates[i]?.faceDown)) return;
 
   const pocketExactMatch =
     hand.length > 0 &&
@@ -2059,15 +2064,11 @@ function addToHand(index) {
 
   for (const i of indices) {
     if (!hand.includes(i)) {
-      const wasFaceDown = !!pieceStates[i].faceDown;
       pocketHomeByIndex.set(i, {
         x: pieceStates[i].x,
         y: pieceStates[i].y,
         rotation: pieceStates[i].rotation ?? 0,
-        faceDown: wasFaceDown,
-        placementRotation: wasFaceDown
-          ? (meta?.hardMode ? randomQuarterRotation() : 0)
-          : undefined,
+        faceDown: false,
       });
       hand.push(i);
     }
