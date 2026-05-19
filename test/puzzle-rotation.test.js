@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   normalizeRotationDeg,
   rotateGroupQuarterTurnCW,
+  snapRotationToQuarterTurn,
 } from '../js/puzzle-rotation.js';
 
 describe('rotateGroupQuarterTurnCW', () => {
@@ -29,5 +30,14 @@ describe('rotateGroupQuarterTurnCW', () => {
     expect(normalizeRotationDeg(-90)).toBe(270);
     expect(normalizeRotationDeg(450)).toBe(90);
     expect(normalizeRotationDeg('bad')).toBe(0);
+  });
+});
+
+describe('snapRotationToQuarterTurn', () => {
+  it('snaps to nearest quarter turn', () => {
+    expect(snapRotationToQuarterTurn(45)).toBe(0);
+    expect(snapRotationToQuarterTurn(50)).toBe(90);
+    expect(snapRotationToQuarterTurn(315)).toBe(0);
+    expect(snapRotationToQuarterTurn(140)).toBe(180);
   });
 });

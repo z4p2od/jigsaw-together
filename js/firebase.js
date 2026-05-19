@@ -65,7 +65,13 @@ export async function createPuzzle(meta, pieces) {
   const puzzleId = generateUUID();
   const piecesObj = {};
   pieces.forEach((p, i) => {
-    piecesObj[i] = { x: p.x, y: p.y, rotation: p.rotation ?? 0, solved: false };
+    piecesObj[i] = {
+      x: p.x,
+      y: p.y,
+      rotation: p.rotation ?? 0,
+      faceDown: !!p.faceDown,
+      solved: false,
+    };
   });
 
   await set(ref(db, `puzzles/${puzzleId}`), {
@@ -182,10 +188,11 @@ export function unlockGroup(puzzleId, indices) {
  */
 export function writePocketRestoreStates(puzzleId, entries) {
   const flat = {};
-  entries.forEach(({ index, x, y, rotation }) => {
+  entries.forEach(({ index, x, y, rotation, faceDown }) => {
     flat[`${index}/x`] = x;
     flat[`${index}/y`] = y;
     flat[`${index}/rotation`] = rotation;
+    if (faceDown !== undefined) flat[`${index}/faceDown`] = !!faceDown;
   });
   return update(ref(_db, `puzzles/${puzzleId}/pieces`), flat);
 }
@@ -208,6 +215,13 @@ export function writeSnappedPositions(puzzleId, positions, groupId) {
 /** Update the rotation of a single piece. */
 export function updatePieceRotation(puzzleId, pieceIndex, rotation) {
   return update(ref(_db, `puzzles/${puzzleId}/pieces/${pieceIndex}`), { rotation });
+}
+
+/** Flip face-up and optionally correct rotation (co-op). */
+export function updatePieceReveal(puzzleId, pieceIndex, { faceDown, rotation }) {
+  const patch = { faceDown };
+  if (rotation !== undefined) patch.rotation = rotation;
+  return update(ref(_db, `puzzles/${puzzleId}/pieces/${pieceIndex}`), patch);
 }
 
 /** Batch-update rotation for multiple pieces (group rotate). */
@@ -386,7 +400,15 @@ export function onVSRoom(roomId, callback) {
 
 export function initVSPieces(roomId, boardKey, pieces) {
   const flat = {};
-  pieces.forEach((p, i) => { flat[i] = { x: p.x, y: p.y, rotation: 0, solved: false }; });
+  pieces.forEach((p, i) => {
+    flat[i] = {
+      x: p.x,
+      y: p.y,
+      rotation: p.rotation ?? 0,
+      faceDown: !!p.faceDown,
+      solved: false,
+    };
+  });
   return set(ref(_db, `vs/${roomId}/pieces/${boardKey}`), flat);
 }
 
@@ -458,6 +480,13 @@ export function writeVSSnap(roomId, boardKey, positions, groupId) {
 
 export function updateVSPieceRotation(roomId, boardKey, index, rotation) {
   return update(ref(_db, `vs/${roomId}/pieces/${boardKey}/${index}`), { rotation });
+}
+
+/** Flip face-up and optionally correct rotation (VS). */
+export function updateVSPieceReveal(roomId, boardKey, index, { faceDown, rotation }) {
+  const patch = { faceDown };
+  if (rotation !== undefined) patch.rotation = rotation;
+  return update(ref(_db, `vs/${roomId}/pieces/${boardKey}/${index}`), patch);
 }
 
 export function updateVSGroupRotationAndPositions(roomId, boardKey, positions) {

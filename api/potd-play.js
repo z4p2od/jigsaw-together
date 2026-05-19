@@ -8,18 +8,10 @@
  * Redirects to /puzzle.html?id=<newPuzzleId>
  */
 import crypto from 'crypto';
+import { scatterPieces } from '../js/scatter-pieces.js';
 
 const BOARD_W = 1080;
 const BOARD_H = 780;
-
-function scatterPieces(count, dispW, dispH, hardMode) {
-  const ROTS = [0, 90, 180, 270];
-  return Array.from({ length: count }, () => ({
-    x:        Math.random() * (BOARD_W - dispW),
-    y:        Math.random() * (BOARD_H - dispH),
-    rotation: hardMode ? ROTS[Math.floor(Math.random() * 4)] : 0,
-  }));
-}
 
 function fbGet(path) {
   const { FIREBASE_DB_URL: url, FIREBASE_DB_SECRET: s } = process.env;
@@ -57,11 +49,24 @@ export default async function handler(req, res) {
 
   // Create a fresh clone with new scattered pieces
   const count  = templateMeta.cols * templateMeta.rows;
-  const pieces = scatterPieces(count, templateMeta.displayW, templateMeta.displayH, templateMeta.hardMode);
+  const pieces = scatterPieces({
+    count,
+    dispW: templateMeta.displayW,
+    dispH: templateMeta.displayH,
+    hardMode: templateMeta.hardMode,
+    boardW: BOARD_W,
+    boardH: BOARD_H,
+  });
 
   const piecesObj = {};
   pieces.forEach((p, i) => {
-    piecesObj[i] = { x: p.x, y: p.y, rotation: p.rotation, solved: false };
+    piecesObj[i] = {
+      x: p.x,
+      y: p.y,
+      rotation: p.rotation,
+      faceDown: !!p.faceDown,
+      solved: false,
+    };
   });
 
   const { startedAt: _drop, ...templateMetaClean } = templateMeta;

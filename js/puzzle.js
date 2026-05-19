@@ -15,6 +15,7 @@ import {
   getPlayerColor,
   setStartedAt,
   updatePieceRotation,
+  updatePieceReveal,
   updateGroupRotationAndPositions,
   recordPOTDScore,
   onPOTDLeaderboard,
@@ -32,6 +33,7 @@ import {
 import {
   normalizeRotationDeg,
   rotateGroupQuarterTurnCW,
+  snapRotationToQuarterTurn,
 } from './puzzle-rotation.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -460,7 +462,8 @@ function normalizeLoadedPuzzle(data) {
       x,
       y,
       solved: !!p.solved,
-      rotation: Number.isFinite(Number(p.rotation)) ? normalizeRotationDeg(p.rotation) : 0,
+      rotation: Number.isFinite(Number(p.rotation)) ? Number(p.rotation) : 0,
+      faceDown: !!p.faceDown,
       lockedBy: p.lockedBy ?? null,
       groupId: p.groupId ?? null,
     };
@@ -624,17 +627,40 @@ async function renderAllPieces() {
   // #endregion
 }
 
+function syncPieceFaceDownClass(index) {
+  const el = pieceEls[index];
+  if (!el) return;
+  if (pieceStates[index]?.faceDown) el.classList.add('face-down');
+  else el.classList.remove('face-down');
+}
+
 function renderPiece(index, dataUrl, x, y, solved, elW, elH) {
-  const el      = document.createElement('img');
-  el.src        = dataUrl;
-  el.className  = 'piece' + (solved ? ' solved' : '');
-  el.dataset.index = index;
-  el.style.width   = elW + 'px';
-  el.style.height  = elH + 'px';
-  el.draggable     = false;
-  movePieceEl(index, x, y, el);
-  board.appendChild(el);
-  pieceEls[index] = el;
+  const pieceEl = document.createElement('div');
+  pieceEl.className = 'piece' + (solved ? ' solved' : '');
+  pieceEl.dataset.index = String(index);
+  pieceEl.style.width = elW + 'px';
+  pieceEl.style.height = elH + 'px';
+
+  const innerEl = document.createElement('div');
+  innerEl.className = 'piece-inner';
+
+  const front = document.createElement('img');
+  front.className = 'piece-front';
+  front.src = dataUrl;
+  front.draggable = false;
+
+  const back = document.createElement('div');
+  back.className = 'piece-back';
+
+  innerEl.appendChild(front);
+  innerEl.appendChild(back);
+  pieceEl.appendChild(innerEl);
+
+  if (pieceStates[index]?.faceDown) pieceEl.classList.add('face-down');
+
+  movePieceEl(index, x, y, pieceEl);
+  board.appendChild(pieceEl);
+  pieceEls[index] = pieceEl;
   updatePieceZIndex(index);
 }
 
@@ -662,15 +688,19 @@ function movePieceEl(index, x, y, el) {
   const pad = meta?._pad ?? 0;
   const e   = el ?? pieceEls[index];
   if (!e) return;
-  const rot = normalizeRotationDeg(pieceStates[index]?.rotation);
+  const rot = Number(pieceStates[index]?.rotation);
+  const rotDeg = Number.isFinite(rot) ? rot : 0;
   e.style.left = '0';
   e.style.top  = '0';
   const tx = x - pad;
   const ty = y - pad;
-  e.style.transform = rot
-    ? `translate3d(${tx}px,${ty}px,0) rotate(${rot}deg)`
+  e.style.transform = rotDeg
+    ? `translate3d(${tx}px,${ty}px,0) rotate(${rotDeg}deg)`
     : `translate3d(${tx}px,${ty}px,0)`;
-  if (!el) updateAvatarPosition(index); // el is only passed during initial render
+  if (!el) {
+    syncPieceFaceDownClass(index);
+    updateAvatarPosition(index);
+  }
 }
 
 
@@ -761,6 +791,7 @@ function attachDragListeners() {
     boardWrap.addEventListener('pointerleave', onBoardWrapPointerLeave,{ passive: true });
   }
   board.addEventListener('touchend', onDoubleTap);
+  board.addEventListener('dblclick', onPieceDblClick);
   boardWrap.addEventListener('dblclick', onBoardDblClick);
   boardWrap.addEventListener('touchstart', onTouchStart, { passive: false });
   boardWrap.addEventListener('touchmove',  onTouchMove,  { passive: false });
@@ -806,6 +837,8 @@ function onMouseDown(e) {
   }
 
   if (hand.includes(index)) return;
+
+  if (state.faceDown) revealPiece(index);
 
   const gid     = pieceGroup[index];
   const indices = gid ? [...groups[gid]] : [index];
@@ -1109,6 +1142,42 @@ function cancelTouchHoldSelection() {
   touchHold = null;
 }
 
+// ── Face-down reveal / rotation ───────────────────────────────────────────────
+
+function revealPiece(index, { correctRotation = false } = {}) {
+  const state = pieceStates[index];
+  if (!state) return;
+  const needsReveal = !!state.faceDown;
+  if (!needsReveal && !correctRotation) return;
+
+  let rotation = state.rotation ?? 0;
+  if (correctRotation) {
+    rotation = meta?.hardMode ? snapRotationToQuarterTurn(rotation) : 0;
+  }
+
+  state.faceDown = false;
+  if (correctRotation) state.rotation = rotation;
+
+  syncPieceFaceDownClass(index);
+  if (Number.isFinite(state.x) && Number.isFinite(state.y)) {
+    movePieceEl(index, state.x, state.y);
+  }
+
+  const patch = { faceDown: false };
+  if (correctRotation) patch.rotation = rotation;
+  updatePieceReveal(puzzleId, index, patch);
+  scheduleSyncBoardScrollContentSize();
+}
+
+function onPieceDblClick(e) {
+  const el = e.target.closest('.piece');
+  if (!el) return;
+  e.stopPropagation();
+  const index = Number(el.dataset.index);
+  if (pieceStates[index].lockedBy && pieceStates[index].lockedBy !== playerId) return;
+  revealPiece(index, { correctRotation: true });
+}
+
 // ── Rotation ──────────────────────────────────────────────────────────────────
 
 function onContextMenu(e) {
@@ -1146,7 +1215,6 @@ function onContextMenu(e) {
 }
 
 function onDoubleTap(e) {
-  if (!meta?.hardMode) return;
   const touch = e.changedTouches[0];
   const el    = document.elementFromPoint(touch.clientX, touch.clientY)?.closest('.piece');
   if (!el) return;
@@ -1156,11 +1224,10 @@ function onDoubleTap(e) {
   lastTap = { time: now, el };
   if (!same) return;
 
-  // Double-tap confirmed
   e.preventDefault();
   const index = Number(el.dataset.index);
   if (pieceStates[index].lockedBy && pieceStates[index].lockedBy !== playerId) return;
-  rotateAtIndex(index);
+  revealPiece(index, { correctRotation: true });
 }
 
 function rotateAtIndex(index) {
@@ -1815,6 +1882,8 @@ function restorePocketHomeLocal(indices) {
     pieceStates[i].x = home.x;
     pieceStates[i].y = home.y;
     pieceStates[i].rotation = home.rotation;
+    pieceStates[i].faceDown = !!home.faceDown;
+    syncPieceFaceDownClass(i);
     movePieceEl(i, home.x, home.y);
     pocketHomeByIndex.delete(i);
     entries.push({
@@ -1822,6 +1891,7 @@ function restorePocketHomeLocal(indices) {
       x: home.x,
       y: home.y,
       rotation: home.rotation,
+      faceDown: !!home.faceDown,
     });
   }
   return entries;
@@ -1988,7 +2058,8 @@ function addToHand(index) {
       pocketHomeByIndex.set(i, {
         x: pieceStates[i].x,
         y: pieceStates[i].y,
-        rotation: normalizeRotationDeg(pieceStates[i].rotation ?? 0),
+        rotation: pieceStates[i].rotation ?? 0,
+        faceDown: !!pieceStates[i].faceDown,
       });
       hand.push(i);
     }
@@ -2675,6 +2746,7 @@ function applyRemoteUpdate(index, data) {
     delete patch.x;
     delete patch.y;
     delete patch.rotation;
+    delete patch.faceDown;
   }
   const incoming = { ...patch, lockedBy };
   if (
@@ -2687,7 +2759,11 @@ function applyRemoteUpdate(index, data) {
   }
   pieceStates[index] = { ...pieceStates[index], ...incoming };
   if (Object.prototype.hasOwnProperty.call(pieceStates[index], 'rotation')) {
-    pieceStates[index].rotation = normalizeRotationDeg(pieceStates[index].rotation);
+    const r = Number(pieceStates[index].rotation);
+    pieceStates[index].rotation = Number.isFinite(r) ? r : 0;
+  }
+  if (Object.prototype.hasOwnProperty.call(incoming, 'faceDown')) {
+    syncPieceFaceDownClass(index);
   }
 
   // If a piece in our hand got force-released remotely, remove from hand

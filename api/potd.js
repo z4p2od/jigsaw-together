@@ -12,6 +12,7 @@
  *   POTD_SECRET            — Bearer token for this endpoint
  */
 import crypto from 'crypto';
+import { scatterPieces } from '../js/scatter-pieces.js';
 
 const BOARD_W = 1080;
 const BOARD_H = 780;
@@ -34,15 +35,6 @@ function calculateGrid(pieceCount, imgWidth, imgHeight) {
     if (diff < bestDiff) { bestDiff = diff; bestCols = cols; bestRows = rows; }
   }
   return { cols: bestCols, rows: bestRows };
-}
-
-function scatterPieces(count, dispW, dispH, hardMode) {
-  const ROTS = [0, 90, 180, 270];
-  return Array.from({ length: count }, () => ({
-    x:        Math.random() * (BOARD_W - dispW),
-    y:        Math.random() * (BOARD_H - dispH),
-    rotation: hardMode ? ROTS[Math.floor(Math.random() * 4)] : 0,
-  }));
 }
 
 function generateEdges(cols, rows) {
@@ -213,12 +205,25 @@ export default async function handler(req, res) {
     const displayH = Math.floor(pieceH * scale);
 
     const edges  = generateEdges(cols, rows);
-    const pieces = scatterPieces(actualCount, displayW, displayH, diff.hardMode);
+    const pieces = scatterPieces({
+      count: actualCount,
+      dispW: displayW,
+      dispH: displayH,
+      hardMode: diff.hardMode,
+      boardW: BOARD_W,
+      boardH: BOARD_H,
+    });
 
     const puzzleId   = crypto.randomUUID();
     const piecesObj  = {};
     pieces.forEach((p, i) => {
-      piecesObj[i] = { x: p.x, y: p.y, rotation: p.rotation, solved: false };
+      piecesObj[i] = {
+        x: p.x,
+        y: p.y,
+        rotation: p.rotation,
+        faceDown: !!p.faceDown,
+        solved: false,
+      };
     });
 
     const meta = {

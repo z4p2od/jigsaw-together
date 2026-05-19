@@ -1,6 +1,7 @@
 import { createPuzzle, getPOTD, getPuzzleImageUrl, onPOTDLeaderboard } from './firebase.js';
 import { generateEdges } from './jigsaw.js';
 import { getImageDimensions, withTimeout } from './image-utils.js';
+import { scatterPieces } from './scatter-pieces.js';
 
 const fileInput   = document.getElementById('file-input');
 const uploadZone  = document.getElementById('upload-zone');
@@ -430,17 +431,6 @@ function calculateGrid(pieceCount, imgWidth, imgHeight) {
 
 // ── Scatter pieces ────────────────────────────────────────────────────────────
 
-function scatterPieces(count, dispW, dispH, hardMode) {
-  const boardW = 1080;
-  const boardH = 780;
-  const ROTS   = [0, 90, 180, 270];
-  return Array.from({ length: count }, () => ({
-    x:        Math.random() * (boardW - dispW),
-    y:        Math.random() * (boardH - dispH),
-    rotation: hardMode ? ROTS[Math.floor(Math.random() * 4)] : 0,
-  }));
-}
-
 // ── Cloudinary upload (direct from browser; in-app WebViews may block — see status copy) ──
 
 let cloudinaryConfigCache = null;
@@ -500,7 +490,7 @@ async function handleCreatePuzzle() {
 
     const hardMode = document.querySelector('input[name="mode"]:checked').value === 'hard';
     const edges    = generateEdges(cols, rows);
-    const pieces   = scatterPieces(actualCount, displayW, displayH, hardMode);
+    const pieces   = scatterPieces({ count: actualCount, dispW: displayW, dispH: displayH, hardMode });
     // #region agent log
     {
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;

@@ -2,7 +2,7 @@ import {
   loadVSRoom, joinVSRoom, setVSReady, onVSRoom,
   initVSPieces, getVSPiecesOnce, onVSPieces, onVSOpponentPieces,
   updateVSGroupPosition, lockVSGroup, unlockVSGroup,
-  writeVSSnap, updateVSPieceRotation,
+  writeVSSnap, updateVSPieceRotation, updateVSPieceReveal,
   updateVSGroupRotationAndPositions, solveVSGroup,
   setVSPlaying, setVSWinner, setVSWinnerTeam, setVSFinished, setVSRematch, offerVSRematch,
   getPlayerColor, getVSIndexCreatorPlayerId,
@@ -21,7 +21,9 @@ import {
 import {
   normalizeRotationDeg,
   rotateGroupQuarterTurnCW,
+  snapRotationToQuarterTurn,
 } from './puzzle-rotation.js';
+import { scatterFromSeed, seededRandom } from './scatter-pieces.js';
 
 function safeLocalGet(key) {
   try {
@@ -196,26 +198,6 @@ function getOrCreatePlayerId() {
   let id = sessionStorage.getItem('playerId');
   if (!id) { id = crypto.randomUUID(); sessionStorage.setItem('playerId', id); }
   return id;
-}
-
-// ── Seeded scatter (same seed = same positions for both players) ──────────────
-
-function seededRandom(seed) {
-  let s = seed;
-  return () => {
-    s = (s * 1664525 + 1013904223) & 0xffffffff;
-    return (s >>> 0) / 0x100000000;
-  };
-}
-
-function scatterFromSeed(seed, count, dispW, dispH, hardMode) {
-  const rand = seededRandom(seed);
-  const ROTS = [0, 90, 180, 270];
-  return Array.from({ length: count }, () => ({
-    x: rand() * (BOARD_W - dispW),
-    y: rand() * (BOARD_H - dispH),
-    rotation: hardMode ? ROTS[Math.floor(rand() * 4)] : 0,
-  }));
 }
 
 function pickPowerupPieces(seed, totalPieces, cols, rows) {
@@ -599,7 +581,7 @@ async function startGame(room) {
 
   const count     = m.cols * m.rows;
   totalPieces     = count;
-  const scattered = scatterFromSeed(m.seed, count, m.displayW, m.displayH, m.hardMode);
+  const scattered = scatterFromSeed(m.seed, count, m.displayW, m.displayH, m.hardMode, BOARD_W, BOARD_H);
 
   if (m.teamMode) {
     // ── Team mode board setup ────────────────────────────────────────────────
@@ -770,20 +752,54 @@ function setupOppBoard() {
   applyOppScale(scale);
 }
 
-function renderPiece(index, dataUrl, x, y, solved, elW, elH) {
-  const el     = document.createElement('img');
-  el.src       = dataUrl;
+function syncPieceFaceDownClass(index, el = pieceEls[index]) {
+  if (!el) return;
+  const down = !!pieceStates[index]?.faceDown;
+  if (down) el.classList.add('face-down');
+  else el.classList.remove('face-down');
+}
+
+function syncOppPieceFaceDownClass(index) {
+  const el = oppPieceEls[index];
+  if (!el) return;
+  const down = !!oppPieceStates[index]?.faceDown;
+  if (down) el.classList.add('face-down');
+  else el.classList.remove('face-down');
+}
+
+function buildVsPieceElement(index, dataUrl, solved, elW, elH, faceDown) {
+  const el = document.createElement('div');
   el.className = 'piece' + (solved ? ' solved' : '');
-  el.dataset.index = index;
-  el.style.width   = elW + 'px';
-  el.style.height  = elH + 'px';
-  el.draggable     = false;
+  el.dataset.index = String(index);
+  el.style.width = elW + 'px';
+  el.style.height = elH + 'px';
+
+  const innerEl = document.createElement('div');
+  innerEl.className = 'piece-inner';
+
+  const front = document.createElement('img');
+  front.className = 'piece-front';
+  front.src = dataUrl;
+  front.draggable = false;
+
+  const backEl = document.createElement('div');
+  backEl.className = 'piece-back';
+
+  innerEl.appendChild(front);
+  innerEl.appendChild(backEl);
+  el.appendChild(innerEl);
+
+  if (faceDown) el.classList.add('face-down');
+  return el;
+}
+
+function renderPiece(index, dataUrl, x, y, solved, elW, elH) {
+  const el = buildVsPieceElement(index, dataUrl, solved, elW, elH, !!pieceStates[index]?.faceDown);
   movePieceEl(index, x, y, el);
   board.appendChild(el);
   pieceEls[index] = el;
   updatePieceZIndex(index);
 
-  // Chaos mode: powerup glow + marker
   if (powerupPieces[index] !== undefined && !solved) {
     el.classList.add(`powerup-glow-${powerupPieces[index]}`);
     const marker = createPowerupMarker(index, powerupPieces[index], x, y);
@@ -796,14 +812,16 @@ function movePieceEl(index, x, y, el) {
   const pad = meta?._pad ?? 0;
   const e   = el ?? pieceEls[index];
   if (!e) return;
-  const rot = pieceStates[index]?.rotation ?? 0;
+  const rot = Number(pieceStates[index]?.rotation);
+  const rotDeg = Number.isFinite(rot) ? rot : 0;
   e.style.left = '0';
   e.style.top  = '0';
   const tx = x - pad;
   const ty = y - pad;
-  e.style.transform = rot
-    ? `translate3d(${tx}px,${ty}px,0) rotate(${rot}deg)`
+  e.style.transform = rotDeg
+    ? `translate3d(${tx}px,${ty}px,0) rotate(${rotDeg}deg)`
     : `translate3d(${tx}px,${ty}px,0)`;
+  if (!el) syncPieceFaceDownClass(index, e);
   // Move powerup marker with piece
   if (!el && powerupMarkerEls[index]) {
     powerupMarkerEls[index].style.left = x + 'px';
@@ -879,18 +897,15 @@ async function renderOppPieces(states) {
   const texDisplayH = Math.round(displayH * textureScale);
 
   for (let i = 0; i < states.length; i++) {
-    oppPieceStates[i] = states[i] ?? { x: 0, y: 0, rotation: 0, solved: false };
+    const st = states[i] ?? { x: 0, y: 0, rotation: 0, faceDown: false, solved: false };
+    oppPieceStates[i] = { ...st, faceDown: !!st.faceDown };
     const col     = i % cols;
     const row     = Math.floor(i / cols);
     const dataUrl = cutPiece(img, col, row, pieceW, pieceH, texDisplayW, texDisplayH, edges[i]);
-    const el      = document.createElement('img');
-    el.src        = dataUrl;
     const glowCls = (meta.chaosMode && powerupPieces[i] !== undefined && !oppPieceStates[i].solved)
       ? ` powerup-glow-${powerupPieces[i]}` : '';
-    el.className  = 'piece' + (oppPieceStates[i].solved ? ' solved' : '') + glowCls;
-    el.draggable  = false;
-    el.style.width  = elW + 'px';
-    el.style.height = elH + 'px';
+    const el = buildVsPieceElement(i, dataUrl, !!oppPieceStates[i].solved, elW, elH, !!oppPieceStates[i].faceDown);
+    if (glowCls) el.className += glowCls;
     moveOppPieceEl(i, oppPieceStates[i].x, oppPieceStates[i].y, el);
     oppBoard.appendChild(el);
     oppPieceEls[i] = el;
@@ -901,14 +916,16 @@ function moveOppPieceEl(index, x, y, el) {
   const pad = meta?._pad ?? 0;
   const e   = el ?? oppPieceEls[index];
   if (!e) return;
-  const rot = oppPieceStates[index]?.rotation ?? 0;
+  const rot = Number(oppPieceStates[index]?.rotation);
+  const rotDeg = Number.isFinite(rot) ? rot : 0;
   e.style.left = '0';
   e.style.top  = '0';
   const tx = x - pad;
   const ty = y - pad;
-  e.style.transform = rot
-    ? `translate3d(${tx}px,${ty}px,0) rotate(${rot}deg)`
+  e.style.transform = rotDeg
+    ? `translate3d(${tx}px,${ty}px,0) rotate(${rotDeg}deg)`
     : `translate3d(${tx}px,${ty}px,0)`;
+  if (!el) syncOppPieceFaceDownClass(index);
 }
 
 function applyOppUpdate(allPieces) {
@@ -929,7 +946,11 @@ function applyOppUpdate(allPieces) {
     const i = Number(key);
     if (!oppPieceEls[i]) return;
     oppPieceStates[i] = { ...(oppPieceStates[i] ?? {}), ...p };
-    moveOppPieceEl(i, p.x, p.y);
+    if (p.faceDown !== undefined) oppPieceStates[i].faceDown = !!p.faceDown;
+    const ox = Number.isFinite(p.x) ? p.x : oppPieceStates[i].x;
+    const oy = Number.isFinite(p.y) ? p.y : oppPieceStates[i].y;
+    moveOppPieceEl(i, ox, oy);
+    syncOppPieceFaceDownClass(i);
     if (p.solved) {
       oppPieceEls[i].classList.add('solved');
       if (oppPowerupMarkerEls[i]) oppPowerupMarkerEls[i].style.display = 'none';
@@ -1026,6 +1047,8 @@ function attachDragListeners() {
   wrap.addEventListener('touchstart', onTouchStart, { passive: false });
   wrap.addEventListener('touchmove',  onTouchMove,  { passive: false });
   wrap.addEventListener('touchend',   onTouchEnd);
+  board.addEventListener('dblclick', onPieceDblClick);
+  board.addEventListener('touchend', onDoubleTap);
 }
 
 function onBoardPointerDownPickVs(e) {
@@ -1040,7 +1063,39 @@ function onBoardPointerDownPickVs(e) {
 
 function attachRotateListeners() {
   board.addEventListener('contextmenu', onContextMenu);
-  board.addEventListener('touchend',    onDoubleTap);
+}
+
+function revealPiece(index, { correctRotation = false } = {}) {
+  const state = pieceStates[index];
+  if (!state) return;
+  const needsReveal = !!state.faceDown;
+  if (!needsReveal && !correctRotation) return;
+
+  let rotation = state.rotation ?? 0;
+  if (correctRotation) {
+    rotation = meta?.hardMode ? snapRotationToQuarterTurn(rotation) : 0;
+  }
+
+  state.faceDown = false;
+  if (correctRotation) state.rotation = rotation;
+
+  syncPieceFaceDownClass(index);
+  if (Number.isFinite(state.x) && Number.isFinite(state.y)) {
+    movePieceEl(index, state.x, state.y);
+  }
+
+  const patch = { faceDown: false };
+  if (correctRotation) patch.rotation = rotation;
+  updateVSPieceReveal(roomId, myBoardKey, index, patch);
+}
+
+function onPieceDblClick(e) {
+  const el = e.target.closest('.piece');
+  if (!el) return;
+  e.stopPropagation();
+  const index = Number(el.dataset.index);
+  if (pieceStates[index]?.lockedBy && pieceStates[index].lockedBy !== playerId) return;
+  revealPiece(index, { correctRotation: true });
 }
 
 function onContextMenu(e) {
@@ -1088,7 +1143,7 @@ function onDoubleTap(e) {
   e.preventDefault();
   const index = Number(el.dataset.index);
   if (pieceStates[index]?.lockedBy && pieceStates[index].lockedBy !== playerId) return;
-  rotateAtIndex(index);
+  revealPiece(index, { correctRotation: true });
 }
 
 function rotateAtIndex(index) {
@@ -1126,11 +1181,10 @@ function onMouseDown(e) {
   if (!el || el.classList.contains('solved')) return;
   const index = Number(el.dataset.index);
 
-  if (faceDownPieces.has(index)) {
-    setFaceDown(index, false);
-    return;
-  }
   const state = pieceStates[index];
+  if (state.faceDown) {
+    revealPiece(index);
+  }
   if (state.lockedBy && state.lockedBy !== playerId) return;
   const gid     = pieceGroup[index];
   const indices = gid ? [...groups[gid]] : [index];
@@ -1511,15 +1565,11 @@ function applyEffect(effect) {
 }
 
 function setFaceDown(index, faceDown) {
-  const el = pieceEls[index];
-  if (!el) return;
-  if (faceDown) {
-    faceDownPieces.add(index);
-    el.classList.add('face-down');
-  } else {
-    faceDownPieces.delete(index);
-    el.classList.remove('face-down');
-  }
+  if (!pieceStates[index]) return;
+  pieceStates[index].faceDown = !!faceDown;
+  if (faceDown) faceDownPieces.add(index);
+  else faceDownPieces.delete(index);
+  syncPieceFaceDownClass(index);
 }
 
 const powerupToastEl  = document.getElementById('powerup-toast');
@@ -1688,7 +1738,19 @@ function applyRemoteUpdate(index, data) {
     delete incoming.lockedBy;
   }
   pieceStates[index] = { ...pieceStates[index], ...incoming };
-  movePieceEl(index, data.x, data.y);
+  if (Object.prototype.hasOwnProperty.call(incoming, 'faceDown')) {
+    pieceStates[index].faceDown = !!incoming.faceDown;
+    if (incoming.faceDown) faceDownPieces.add(index);
+    else faceDownPieces.delete(index);
+    syncPieceFaceDownClass(index);
+  }
+  if (Object.prototype.hasOwnProperty.call(incoming, 'rotation')) {
+    const r = Number(pieceStates[index].rotation);
+    pieceStates[index].rotation = Number.isFinite(r) ? r : 0;
+  }
+  const px = Number.isFinite(data.x) ? data.x : pieceStates[index].x;
+  const py = Number.isFinite(data.y) ? data.y : pieceStates[index].y;
+  if (Number.isFinite(px) && Number.isFinite(py)) movePieceEl(index, px, py);
 
   if (data.groupId && data.groupId !== wasGroupId) {
     const groupMembers = pieceStates
