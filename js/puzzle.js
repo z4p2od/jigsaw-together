@@ -1277,13 +1277,10 @@ function scheduleSyncBoardScrollContentSize() {
   });
 }
 
-/** Center of the visible scroll viewport (stable zoom pivot for toolbar +/-). */
+/** Center of the visible play band (stable zoom pivot for toolbar +/-). */
 function zoomAnchorViewportCenter() {
-  const wr = boardWrap.getBoundingClientRect();
-  return {
-    anchorClientX: wr.left + wr.width / 2,
-    anchorClientY: wr.top + wr.height / 2,
-  };
+  const { centerX, centerY } = getBoardViewportCenter();
+  return { anchorClientX: centerX, anchorClientY: centerY };
 }
 
 /**
@@ -1362,18 +1359,53 @@ function applyScale(s, opts = {}) {
   updateBoardTransform();
 }
 
-/** Scroll the wrap so a viewport point (client coords) sits at the wrap center. */
-function scrollClientPointToWrapCenter(clientX, clientY) {
-  if (!boardWrap) return;
+/** Visible play band: below header, above chat/feedback FABs (client coords). */
+function getPlayBandViewport() {
+  if (!boardWrap) return null;
   const wr = boardWrap.getBoundingClientRect();
-  const wrapCx = wr.left + wr.width / 2;
-  const wrapCy = wr.top + wr.height / 2;
-  boardWrap.scrollLeft += clientX - wrapCx;
-  boardWrap.scrollTop += clientY - wrapCy;
+  const header = document.querySelector('.puzzle-header');
+  const bandTop = header ? header.getBoundingClientRect().bottom : wr.top;
+
+  let bandBottom = wr.bottom;
+  const chatBtn = document.querySelector('#chat-launcher button');
+  const fbBtn = document.querySelector('#feedback-launcher button');
+  if (chatBtn) bandBottom = Math.min(bandBottom, chatBtn.getBoundingClientRect().top - 10);
+  if (fbBtn) bandBottom = Math.min(bandBottom, fbBtn.getBoundingClientRect().top - 10);
+
+  const bandHeight = Math.max(0, bandBottom - bandTop);
+  return {
+    centerX: wr.left + wr.width / 2,
+    centerY: bandTop + bandHeight / 2,
+    bandHeight,
+    bandWidth: wr.width,
+  };
+}
+
+/** Scroll so a point (client coords) lines up with a target center (client coords). */
+function scrollClientPointToCenter(clientX, clientY, targetCx, targetCy) {
+  if (!boardWrap) return;
+  boardWrap.scrollLeft += clientX - targetCx;
+  boardWrap.scrollTop += clientY - targetCy;
   const maxSl = Math.max(0, boardWrap.scrollWidth - boardWrap.clientWidth);
   const maxSt = Math.max(0, boardWrap.scrollHeight - boardWrap.clientHeight);
   boardWrap.scrollLeft = Math.max(0, Math.min(maxSl, Math.round(boardWrap.scrollLeft)));
   boardWrap.scrollTop = Math.max(0, Math.min(maxSt, Math.round(boardWrap.scrollTop)));
+}
+
+function getBoardViewportCenter() {
+  if (!boardWrap) return { centerX: 0, centerY: 0 };
+  if (isMobileLike) {
+    const band = getPlayBandViewport();
+    if (band && band.bandHeight > 32) {
+      return { centerX: band.centerX, centerY: band.centerY, bandHeight: band.bandHeight };
+    }
+  }
+  const wr = boardWrap.getBoundingClientRect();
+  return {
+    centerX: wr.left + wr.width / 2,
+    centerY: wr.top + wr.height / 2,
+    bandHeight: wr.height,
+  };
 }
 
 function centerBoardInView() {
@@ -1383,7 +1415,13 @@ function centerBoardInView() {
   updateBoardTransform();
   syncBoardScrollContentSize();
   const br = board.getBoundingClientRect();
-  scrollClientPointToWrapCenter(br.left + br.width / 2, br.top + br.height / 2);
+  const { centerX, centerY } = getBoardViewportCenter();
+  scrollClientPointToCenter(
+    br.left + br.width / 2,
+    br.top + br.height / 2,
+    centerX,
+    centerY,
+  );
 }
 
 function centerPieceCloudInView() {
@@ -1400,9 +1438,12 @@ function centerPieceCloudInView() {
   const br = board.getBoundingClientRect();
   const scaleX = br.width / BOARD_W;
   const scaleY = br.height / BOARD_H;
-  scrollClientPointToWrapCenter(
+  const { centerX, centerY } = getBoardViewportCenter();
+  scrollClientPointToCenter(
     br.left + bounds.cx * scaleX,
     br.top + bounds.cy * scaleY,
+    centerX,
+    centerY,
   );
 }
 
@@ -1514,8 +1555,10 @@ function getPieceCloudBounds() {
 function fitBoardToViewport() {
   if (!boardWrap || boardWrap.clientWidth < 8 || boardWrap.clientHeight < 8) return;
   const gutter = BOARD_SCROLL_PADDING * 2;
+  const viewport = getBoardViewportCenter();
+  const viewH = viewport.bandHeight > 32 ? viewport.bandHeight : boardWrap.clientHeight;
   const wFit = Math.max(0.01, (boardWrap.clientWidth - gutter) / BOARD_W);
-  const hFit = Math.max(0.01, (boardWrap.clientHeight - gutter) / BOARD_H);
+  const hFit = Math.max(0.01, (viewH - gutter) / BOARD_H);
   const fit = Math.min(1, wFit, hFit);
   const boundByHeight = hFit <= wFit;
   const snapped = snapBoardScaleToDevicePixels(

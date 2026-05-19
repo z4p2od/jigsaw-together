@@ -17,6 +17,8 @@ html {
   --shadow: 0 10px 40px rgba(5, 0, 16, 0.65);
   --vv-keyboard-offset: 0px;
   --toast-top: 60px;
+  /* Space for chat + feedback FABs (24px inset + 52px btn + 12px gap) */
+  --board-bottom-chrome: calc(88px + env(safe-area-inset-bottom, 0px));
 }
 
 body {
@@ -695,6 +697,12 @@ body.puzzle-body {
   scroll-behavior: auto;
   min-height: 0;
   padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@media (pointer: coarse) {
+  .puzzle-board-wrap {
+    padding-bottom: var(--board-bottom-chrome);
+  }
 }
 
 .puzzle-board-scroll-content {
