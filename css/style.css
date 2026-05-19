@@ -1914,6 +1914,70 @@ iframe[src*="vercel.live"] {
   min-width: 30px;
 }
 
+/* Chaos powerup charge meter */
+.vs-powerup-meter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.vs-powerup-meter[hidden] {
+  display: none !important;
+}
+
+.vs-powerup-slot {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.vs-powerup-icon {
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.vs-powerup-meter.vs-powerup-slotting .vs-powerup-icon {
+  animation: vs-powerup-slot-wiggle 0.12s ease-in-out infinite;
+}
+
+@keyframes vs-powerup-slot-wiggle {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+}
+
+.vs-powerup-track {
+  flex: 1;
+  height: 10px;
+  background: var(--surface2);
+  border-radius: 5px;
+  overflow: hidden;
+  max-width: 320px;
+}
+
+.vs-powerup-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #7c3aed, #a78bfa);
+  border-radius: 5px;
+  transition: width 0.35s ease;
+}
+
+.vs-powerup-combo {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #fbbf24;
+  min-width: 2rem;
+}
+
 /* Active effect timers row */
 .vs-effect-timers {
   display: flex;
