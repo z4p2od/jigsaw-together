@@ -14,6 +14,13 @@
   <link rel="apple-touch-icon" href="/icons/icon-192.png" />
   <title>Jigsaw Together</title>
   <link rel="stylesheet" href="/css/style.css" />
+  <link rel="preconnect" href="https://res.cloudinary.com" crossorigin />
+  <link rel="dns-prefetch" href="https://res.cloudinary.com" />
+  <script>
+    window.__potdTodayFetch = fetch('/api/potd-today')
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .catch(function () { return null; });
+  </script>
 </head>
 <body>
   <div id="in-app-hint" class="in-app-hint" hidden>
@@ -48,7 +55,7 @@
         </div>
         <p id="potd-desc" class="potd-desc"></p>
         <div id="potd-preview" class="potd-preview-wrap" hidden>
-          <img id="potd-preview-img" class="potd-preview-img" alt="" width="640" height="360" loading="lazy" decoding="async" />
+          <img id="potd-preview-img" class="potd-preview-img" alt="" width="640" height="360" decoding="async" fetchpriority="high" />
         </div>
         <a id="potd-play" class="btn potd-play" href="#">Play today's puzzle</a>
         <div class="potd-leaderboard">

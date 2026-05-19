@@ -236,7 +236,7 @@ export default async function handler(req, res) {
     await fbPut(`puzzles/${puzzleId}`, { meta, pieces: piecesObj });
 
     // Update potd/{difficulty} pointer
-    await fbPatch(`potd/${diff.key}`, { puzzleId, date });
+    await fbPatch(`potd/${diff.key}`, { puzzleId, date, imageUrl: image.secure_url });
 
     created.push({ difficulty: diff.key, puzzleId, pieces: actualCount });
   }

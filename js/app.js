@@ -66,6 +66,54 @@ let selectedPotdKey = 'easy';
 const leaderboardCache = Object.create(null);
 /** @type {Record<string, string|null>} */
 const potdImageByKey = Object.create(null);
+let potdLeaderboardsAttached = false;
+
+const POTD_CACHE_KEY = 'jt-potd-today-v1';
+
+function getPotdTodayDate() {
+  return new Date().toLocaleDateString('sv', { timeZone: 'Europe/Athens' });
+}
+
+function readPotdCache(today) {
+  try {
+    const raw = sessionStorage.getItem(POTD_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed?.date !== today || !Array.isArray(parsed.puzzles)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writePotdCache(payload) {
+  try {
+    sessionStorage.setItem(POTD_CACHE_KEY, JSON.stringify(payload));
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+function preloadPotdImages() {
+  for (const key of DIFFICULTIES.map((d) => d.key)) {
+    const url = potdImageByKey[key];
+    if (!url) continue;
+    const img = new Image();
+    img.decoding = 'async';
+    img.src = url;
+  }
+}
+
+async function fetchPotdTodayPayload() {
+  if (window.__potdTodayFetch) {
+    const data = await window.__potdTodayFetch;
+    window.__potdTodayFetch = null;
+    if (data?.puzzles?.length) return data;
+  }
+  const res = await fetch('/api/potd-today');
+  if (!res.ok) return null;
+  return res.json();
+}
 
 function setPotdPreview(key) {
   if (!potdPreview || !potdPreviewImg) return;
@@ -132,43 +180,103 @@ document.querySelectorAll('.potd-tab').forEach((btn) => {
   });
 });
 
-async function loadPOTD() {
-  if (!potdSection || !potdLb || !potdPlay || !potdDesc) return;
+function applyPotdPayload(payload) {
+  if (!potdSection || !potdLb || !potdPlay || !potdDesc || !payload) return [];
 
-  const today = new Date().toLocaleDateString('sv', { timeZone: 'Europe/Athens' });
+  const today = getPotdTodayDate();
+  if (payload.date !== today) return [];
+
   const available = [];
-
-  for (const diff of DIFFICULTIES) {
-    try {
-      const data = await getPOTD(diff.key);
-      if (!data || data.date !== today) continue;
-      available.push(diff.key);
-      const tab = document.querySelector(`.potd-tab[data-diff="${diff.key}"]`);
-      if (tab) tab.hidden = false;
-      if (data.puzzleId) {
-        try {
-          const url = await getPuzzleImageUrl(data.puzzleId);
-          potdImageByKey[diff.key] = url || null;
-        } catch {
-          potdImageByKey[diff.key] = null;
-        }
-      } else {
-        potdImageByKey[diff.key] = null;
-      }
-    } catch { /* ignore */ }
+  for (const p of payload.puzzles) {
+    if (!p?.difficulty || p.date !== today) continue;
+    available.push(p.difficulty);
+    potdImageByKey[p.difficulty] = p.imageUrl || null;
+    const tab = document.querySelector(`.potd-tab[data-diff="${p.difficulty}"]`);
+    if (tab) tab.hidden = false;
   }
 
-  if (available.length === 0) return;
+  if (available.length === 0) return [];
 
   const tabsRow = document.getElementById('potd-tabs');
   if (tabsRow) tabsRow.style.display = available.length <= 1 ? 'none' : '';
 
   potdSection.style.display = '';
-  setSelectedPotd(available[0]);
-
-  for (const key of available) {
-    onPOTDLeaderboard(key, today, (entries) => onPotdLeaderboardUpdate(key, entries));
+  if (!available.includes(selectedPotdKey)) {
+    setSelectedPotd(available[0]);
+  } else {
+    setSelectedPotd(selectedPotdKey);
   }
+
+  if (!potdLeaderboardsAttached) {
+    potdLeaderboardsAttached = true;
+    for (const key of available) {
+      onPOTDLeaderboard(key, today, (entries) => onPotdLeaderboardUpdate(key, entries));
+    }
+  }
+
+  return available;
+}
+
+async function loadPOTDFromFirebase(today) {
+  const rows = await Promise.all(
+    DIFFICULTIES.map(async (diff) => {
+      try {
+        const data = await getPOTD(diff.key);
+        if (!data || data.date !== today || !data.puzzleId) return null;
+        let imageUrl = data.imageUrl || null;
+        if (!imageUrl) {
+          try {
+            imageUrl = await getPuzzleImageUrl(data.puzzleId);
+          } catch {
+            imageUrl = null;
+          }
+        }
+        return {
+          difficulty: diff.key,
+          puzzleId: data.puzzleId,
+          date: data.date,
+          imageUrl,
+        };
+      } catch {
+        return null;
+      }
+    }),
+  );
+
+  return { date: today, puzzles: rows.filter(Boolean) };
+}
+
+async function loadPOTD() {
+  if (!potdSection || !potdLb || !potdPlay || !potdDesc) return;
+
+  const today = getPotdTodayDate();
+
+  const cached = readPotdCache(today);
+  if (cached) {
+    applyPotdPayload(cached);
+    preloadPotdImages();
+  }
+
+  let payload = null;
+  try {
+    payload = await fetchPotdTodayPayload();
+  } catch {
+    payload = null;
+  }
+
+  if (!payload?.puzzles?.length) {
+    try {
+      payload = await loadPOTDFromFirebase(today);
+    } catch {
+      payload = null;
+    }
+  }
+
+  if (!payload?.puzzles?.length) return;
+
+  writePotdCache(payload);
+  applyPotdPayload(payload);
+  preloadPotdImages();
 }
 
 function formatNames(names) {
