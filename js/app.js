@@ -7,9 +7,14 @@ const fileInput   = document.getElementById('file-input');
 const uploadZone  = document.getElementById('upload-zone');
 const placeholder = document.getElementById('upload-placeholder');
 const preview     = document.getElementById('preview');
-const createBtn   = document.getElementById('create-btn');
-const statusEl    = document.getElementById('status');
+const statusEl    = document.getElementById('shell-status');
 const modeHint    = document.getElementById('mode-hint');
+const shellPlayBtn = document.getElementById('shell-play-btn');
+
+/** @type {'potd' | 'play' | 'vs' | 'upload'} */
+let shellMode = 'potd';
+let shellPlayImagesLoaded = false;
+let playSelectedImage = null;
 
 const MAX_BYTES = 10 * 1024 * 1024;
 
@@ -58,7 +63,6 @@ const DIFFICULTIES = [
 
 const potdSection   = document.getElementById('potd-section');
 const potdLb        = document.getElementById('potd-lb');
-const potdPlay      = document.getElementById('potd-play');
 const potdDesc      = document.getElementById('potd-desc');
 const potdPreview   = document.getElementById('potd-preview');
 const potdPreviewImg = document.getElementById('potd-preview-img');
@@ -131,8 +135,9 @@ function setPotdPreview(key) {
 }
 
 function setSelectedPotd(key) {
-  if (!potdPlay || !potdDesc) return;
+  if (!potdDesc) return;
   selectedPotdKey = key;
+  shellMode = 'potd';
   document.querySelectorAll('.potd-tab').forEach((btn) => {
     if (btn.hidden) return;
     const on = btn.dataset.diff === key;
@@ -140,11 +145,11 @@ function setSelectedPotd(key) {
     btn.setAttribute('aria-selected', on ? 'true' : 'false');
     btn.tabIndex = on ? 0 : -1;
   });
-  potdPlay.href = `/api/potd-play?difficulty=${key}`;
   const d = DIFFICULTIES.find((x) => x.key === key);
   potdDesc.textContent = d ? (d.hard ? `${d.pieces} pieces · rotated` : `${d.pieces} pieces`) : '';
   setPotdPreview(key);
   paintPotdLeaderboard();
+  updateShellPlayButton();
 }
 
 function renderLeaderboardList(el, entries) {
@@ -174,15 +179,9 @@ function onPotdLeaderboardUpdate(diffKey, entries) {
   if (diffKey === selectedPotdKey) paintPotdLeaderboard();
 }
 
-document.querySelectorAll('.potd-tab').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    if (btn.hidden) return;
-    setSelectedPotd(btn.dataset.diff);
-  });
-});
 
 function applyPotdPayload(payload) {
-  if (!potdSection || !potdLb || !potdPlay || !potdDesc || !payload) return [];
+  if (!potdSection || !potdLb || !potdDesc || !payload) return [];
 
   const today = getPotdTodayDate();
   if (payload.date !== today) return [];
@@ -248,7 +247,7 @@ async function loadPOTDFromFirebase(today) {
 }
 
 async function loadPOTD() {
-  if (!potdSection || !potdLb || !potdPlay || !potdDesc) return;
+  if (!potdSection || !potdLb || !potdDesc) return;
 
   const today = getPotdTodayDate();
 
@@ -293,7 +292,63 @@ function formatTime(secs) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-loadPOTD();
+loadPOTD().then(async () => {
+  const existingId = new URLSearchParams(location.search).get('id');
+  if (!existingId && potdSection?.style.display !== 'none') {
+    await autoLoadPotdEasy();
+  }
+});
+
+async function fetchPotdPuzzleId(difficulty) {
+  const res = await fetch(`/api/potd-play?difficulty=${encodeURIComponent(difficulty)}&json=1`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Could not start puzzle of the day');
+  }
+  const data = await res.json();
+  if (!data?.puzzleId) throw new Error('Could not start puzzle of the day');
+  return data.puzzleId;
+}
+
+async function waitForPuzzleBoot() {
+  const deadline = Date.now() + 10000;
+  while (typeof window.__JT_bootPuzzle !== 'function') {
+    if (Date.now() > deadline) throw new Error('Puzzle failed to load');
+    await new Promise((r) => setTimeout(r, 40));
+  }
+}
+
+async function autoLoadPotdEasy() {
+  try {
+    setShellStatus('Loading today\'s easy puzzle…');
+    await waitForPuzzleBoot();
+    const id = await fetchPotdPuzzleId('easy');
+    await window.__JT_bootPuzzle(id);
+    setShellStatus('');
+  } catch (err) {
+    console.error(err);
+    setShellStatus(err.message || 'No puzzle of the day available.', true);
+  }
+}
+
+async function startSelectedPotd() {
+  setShellStatus('Starting puzzle…');
+  shellPlayBtn.disabled = true;
+  try {
+    const id = await fetchPotdPuzzleId(selectedPotdKey);
+    if (typeof window.__JT_bootPuzzle === 'function') {
+      await window.__JT_bootPuzzle(id);
+    } else {
+      location.href = `/?id=${encodeURIComponent(id)}`;
+    }
+    setShellStatus('');
+  } catch (err) {
+    console.error(err);
+    setShellStatus(err.message || 'Could not start puzzle.', true);
+  } finally {
+    shellPlayBtn.disabled = false;
+  }
+}
 
 // ── VS Mode create ────────────────────────────────────────────────────────────
 
@@ -343,7 +398,11 @@ async function loadVSImagePicker() {
   }
 }
 
-document.getElementById('vs-create-btn').addEventListener('click', () => {
+document.getElementById('vs-create-btn')?.addEventListener('click', () => {
+  startVsMatch();
+});
+
+function startVsMatch() {
   const pieces    = document.querySelector('input[name="vs-pieces"]:checked').value;
   const mode      = document.querySelector('input[name="vs-mode"]:checked').value;
   const hard      = mode === 'hard';
@@ -356,11 +415,11 @@ document.getElementById('vs-create-btn').addEventListener('click', () => {
   if (imageMode === 'pick' && vsPickedImage) {
     url += `&imageUrl=${encodeURIComponent(vsPickedImage.url)}&imageW=${vsPickedImage.width}&imageH=${vsPickedImage.height}`;
   } else if (imageMode === 'pick' && !vsPickedImage) {
-    document.getElementById('vs-image-status').textContent = '⚠️ Please select an image first.';
+    setShellStatus('Please select an image first.', true);
     return;
   }
   window.location.href = url;
-});
+}
 
 // ── Image upload ──────────────────────────────────────────────────────────────
 
@@ -379,14 +438,15 @@ uploadZone.addEventListener('drop', (e) => {
 
 function handleFile(file) {
   if (!file) return;
-  if (!file.type.startsWith('image/')) return setStatus('Please upload an image file.', true);
-  if (file.size > MAX_BYTES) return setStatus('Image must be under 10MB.', true);
+  if (!file.type.startsWith('image/')) return setShellStatus('Please upload an image file.', true);
+  if (file.size > MAX_BYTES) return setShellStatus('Image must be under 10MB.', true);
 
   // Preview using an object URL to avoid base64 memory spikes in iOS in-app browsers.
   selectedFile = file;
   selectedDims = null;
-  createBtn.disabled = true;
-  setStatus('Preparing image…');
+  shellMode = 'upload';
+  updateShellPlayButton();
+  setShellStatus('Preparing image…');
 
   const objUrl = URL.createObjectURL(file);
   preview.onload = () => URL.revokeObjectURL(objUrl);
@@ -399,15 +459,15 @@ function handleFile(file) {
   getImageDimensions(file)
     .then(dims => {
       selectedDims = dims;
-      createBtn.disabled = false;
-      setStatus('');
+      updateShellPlayButton();
+      setShellStatus('');
     })
     .catch(err => {
       console.error(err);
       selectedFile = null;
       selectedDims = null;
-      createBtn.disabled = true;
-      setStatus('Could not read that image. Please try a different photo.', true);
+      updateShellPlayButton();
+      setShellStatus('Could not read that image. Please try a different photo.', true);
     });
 }
 
@@ -467,14 +527,12 @@ async function uploadToCloudinary(file) {
 
 // ── Create puzzle ─────────────────────────────────────────────────────────────
 
-createBtn.addEventListener('click', handleCreatePuzzle);
-
 async function handleCreatePuzzle() {
   if (!selectedFile || !selectedDims) return;
 
   const pieceCount = Number(document.querySelector('input[name="pieces"]:checked').value);
-  setStatus('Generating puzzle...');
-  createBtn.disabled = true;
+  setShellStatus('Generating puzzle...');
+  shellPlayBtn.disabled = true;
 
   try {
     const { cols, rows } = calculateGrid(pieceCount, selectedDims.width, selectedDims.height);
@@ -510,7 +568,7 @@ async function handleCreatePuzzle() {
     }
     // #endregion
 
-    setStatus('Uploading image...');
+    setShellStatus('Uploading image...');
     const { imageUrl, imagePublicId } = await withTimeout(
       uploadToCloudinary(selectedFile),
       120000,
@@ -537,9 +595,14 @@ async function handleCreatePuzzle() {
     });
     // #endregion
 
-    setStatus(`Creating ${actualCount}-piece puzzle...`);
-    const puzzleId = await withTimeout(createPuzzle(meta, pieces), 15000, 'puzzle creation');
-    window.location.href = `/puzzle.html?id=${puzzleId}`;
+    setShellStatus(`Creating ${actualCount}-piece puzzle...`);
+    const newPuzzleId = await withTimeout(createPuzzle(meta, pieces), 15000, 'puzzle creation');
+    if (typeof window.__JT_bootPuzzle === 'function') {
+      await window.__JT_bootPuzzle(newPuzzleId);
+    } else {
+      window.location.href = `/?id=${encodeURIComponent(newPuzzleId)}`;
+    }
+    setShellStatus('');
   } catch (err) {
     console.error(err);
     let msg = err?.message || 'Something went wrong. Please try again.';
@@ -549,14 +612,165 @@ async function handleCreatePuzzle() {
     if (isLikelyInAppBrowser()) {
       msg += ' Open this page in Safari or Chrome: Share → Open in Browser.';
     }
-    setStatus(msg, true);
-    createBtn.disabled = false;
+    setShellStatus(msg, true);
+  } finally {
+    shellPlayBtn.disabled = false;
+    updateShellPlayButton();
   }
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Shell sidebar ─────────────────────────────────────────────────────────────
 
-function setStatus(msg, isError = false) {
+function setShellStatus(msg, isError = false) {
+  if (!statusEl) return;
   statusEl.textContent = msg;
   statusEl.className = 'status' + (isError ? ' error' : '');
 }
+
+function updateShellPlayButton() {
+  if (!shellPlayBtn) return;
+  if (shellMode === 'upload') {
+    shellPlayBtn.textContent = 'Load Puzzle';
+    shellPlayBtn.disabled = !selectedFile || !selectedDims;
+    return;
+  }
+  if (shellMode === 'vs') {
+    shellPlayBtn.textContent = 'Start Vs Match';
+    shellPlayBtn.disabled = false;
+    return;
+  }
+  if (shellMode === 'play') {
+    shellPlayBtn.textContent = 'Play Puzzle';
+    shellPlayBtn.disabled = !playSelectedImage;
+    return;
+  }
+  shellPlayBtn.textContent = 'Play Puzzle';
+  shellPlayBtn.disabled = potdSection?.style.display === 'none';
+}
+
+function openDrawer(name) {
+  document.querySelectorAll('.sidebar-drawer-head').forEach((head) => {
+    const key = head.dataset.drawer;
+    const panel = document.getElementById(`drawer-${key}`);
+    const open = key === name;
+    head.setAttribute('aria-expanded', open ? 'true' : 'false');
+    head.classList.toggle('is-open', open);
+    panel?.classList.toggle('is-open', open);
+  });
+  shellMode = name;
+  updateShellPlayButton();
+  if (name === 'play' && !shellPlayImagesLoaded) loadShellPlayImages();
+}
+
+document.querySelectorAll('.sidebar-drawer-head').forEach((head) => {
+  head.addEventListener('click', () => {
+    const key = head.dataset.drawer;
+    const panel = document.getElementById(`drawer-${key}`);
+    const isOpen = panel?.classList.contains('is-open');
+    if (isOpen) {
+      panel.classList.remove('is-open');
+      head.classList.remove('is-open');
+      head.setAttribute('aria-expanded', 'false');
+      shellMode = 'potd';
+      updateShellPlayButton();
+      return;
+    }
+    openDrawer(key);
+  });
+});
+
+document.querySelectorAll('.potd-tab').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    if (btn.hidden) return;
+    shellMode = 'potd';
+    setSelectedPotd(btn.dataset.diff);
+  });
+});
+
+async function loadShellPlayImages() {
+  const grid = document.getElementById('play-image-grid');
+  const loading = document.getElementById('play-images-loading');
+  if (!grid || !loading) return;
+  try {
+    const res = await fetch('/api/room-images');
+    const images = await res.json();
+    if (!images.length) {
+      loading.textContent = 'No images available.';
+      return;
+    }
+    loading.style.display = 'none';
+    grid.style.display = '';
+    grid.innerHTML = '';
+    images.forEach((img) => {
+      const card = document.createElement('div');
+      card.className = 'play-image-card';
+      const el = document.createElement('img');
+      el.src = img.url;
+      el.alt = '';
+      el.loading = 'lazy';
+      card.appendChild(el);
+      card.addEventListener('click', () => {
+        document.querySelectorAll('#play-image-grid .play-image-card').forEach((c) => c.classList.remove('selected'));
+        card.classList.add('selected');
+        playSelectedImage = img;
+        shellMode = 'play';
+        updateShellPlayButton();
+      });
+      grid.appendChild(card);
+    });
+    shellPlayImagesLoaded = true;
+  } catch {
+    loading.textContent = 'Failed to load images.';
+  }
+}
+
+async function startPlayTogether() {
+  if (!playSelectedImage) {
+    setShellStatus('Pick an image first.', true);
+    return;
+  }
+  shellPlayBtn.disabled = true;
+  setShellStatus('Creating puzzle…');
+  const pieces = document.querySelector('input[name="play-pieces"]:checked').value;
+  const hard = document.querySelector('input[name="play-mode"]:checked').value === 'hard';
+  const isPublic = document.querySelector('input[name="play-visibility"]:checked').value === 'public';
+  const params = new URLSearchParams({
+    pieces,
+    hard,
+    public: isPublic,
+    image: playSelectedImage.url,
+    w: playSelectedImage.width,
+    h: playSelectedImage.height,
+  });
+  try {
+    const res = await fetch(`/api/room-create?${params}`);
+    const data = await res.json();
+    if (!res.ok || !data.puzzleId) throw new Error(data.error || 'Failed to create puzzle');
+    if (typeof window.__JT_bootPuzzle === 'function') {
+      await window.__JT_bootPuzzle(data.puzzleId);
+    } else {
+      location.href = `/?id=${encodeURIComponent(data.puzzleId)}`;
+    }
+    setShellStatus('');
+  } catch (err) {
+    setShellStatus(err.message || 'Failed to create puzzle.', true);
+  } finally {
+    shellPlayBtn.disabled = false;
+    updateShellPlayButton();
+  }
+}
+
+shellPlayBtn?.addEventListener('click', async () => {
+  if (shellMode === 'potd') return startSelectedPotd();
+  if (shellMode === 'play') return startPlayTogether();
+  if (shellMode === 'vs') return startVsMatch();
+  if (shellMode === 'upload') return handleCreatePuzzle();
+});
+
+document.getElementById('celebration-new-btn')?.addEventListener('click', () => {
+  document.getElementById('celebration').style.display = 'none';
+  shellMode = 'potd';
+  updateShellPlayButton();
+});
+
+updateShellPlayButton();

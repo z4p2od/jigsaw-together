@@ -81,7 +81,7 @@ startBtn.addEventListener('click', async () => {
     const res  = await fetch(`/api/room-create?${params}`);
     const data = await res.json();
     if (!res.ok || !data.puzzleId) throw new Error(data.error || 'Failed to create puzzle');
-    location.href = `/puzzle.html?id=${data.puzzleId}`;
+    location.href = `/?id=${encodeURIComponent(data.puzzleId)}`;
   } catch (err) {
     statusEl.textContent = err.message;
     statusEl.className = 'status error';

@@ -14,7 +14,7 @@ function getContext() {
   const roomId = params.get('room') || null;
 
   let screen = 'landing';
-  if (path.includes('puzzle.html')) screen = 'puzzle';
+  if (path.includes('puzzle.html') || document.body.classList.contains('home-shell')) screen = 'puzzle';
   else if (path.includes('vs.html')) screen = 'vs';
   else if (path.includes('play.html')) screen = 'play-picker';
   else if (path.includes('rooms.html')) screen = 'rooms';

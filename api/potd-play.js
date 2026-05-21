@@ -5,7 +5,8 @@
  * scattered pieces and a new puzzleId.
  *
  * GET /api/potd-play?difficulty=easy|medium|hard
- * Redirects to /puzzle.html?id=<newPuzzleId>
+ * GET /api/potd-play?difficulty=easy&json=1  → { puzzleId }
+ * Redirects to /?id=<newPuzzleId> (or puzzle.html for legacy clients)
  */
 import crypto from 'crypto';
 import { scatterPieces } from '../js/scatter-pieces.js';
@@ -80,5 +81,9 @@ export default async function handler(req, res) {
   const puzzleId = crypto.randomUUID();
   await fbPut(`puzzles/${puzzleId}`, { meta: newMeta, pieces: piecesObj });
 
-  res.redirect(302, `/puzzle.html?id=${puzzleId}`);
+  if (req.query.json === '1' || req.query.format === 'json') {
+    return res.status(200).json({ puzzleId });
+  }
+
+  res.redirect(302, `/?id=${puzzleId}`);
 }

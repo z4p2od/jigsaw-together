@@ -113,7 +113,8 @@ function safeLocalSet(key, val) {
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
-const puzzleId  = new URLSearchParams(location.search).get('id');
+let puzzleId  = new URLSearchParams(location.search).get('id');
+const isHomeShell = document.body.classList.contains('home-shell');
 let fallbackPlayerId = null;
 const playerId  = getOrCreatePlayerId();
 
@@ -254,13 +255,30 @@ const qualityBtn      = document.getElementById('quality-btn');
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
-if (!puzzleId) {
+if (!isHomeShell && !puzzleId) {
   location.href = '/';
-} else {
+} else if (puzzleId) {
   askNameThenInit();
 }
 
+/** Home shell: load or swap the puzzle in the right-hand viewport. */
+window.__JT_bootPuzzle = async function bootPuzzle(newId) {
+  if (!newId) return;
+  if (puzzleId && puzzleId !== newId) {
+    location.href = `/?id=${encodeURIComponent(newId)}`;
+    return;
+  }
+  if (puzzleId === newId && meta) return;
+  puzzleId = newId;
+  history.replaceState({}, '', `/?id=${encodeURIComponent(newId)}`);
+  await askNameThenInit();
+};
+
+let puzzleBootStarted = false;
+
 async function askNameThenInit() {
+  if (puzzleBootStarted) return;
+  puzzleBootStarted = true;
   if (!playerName) {
     playerName = await showNameModal();
     safeSessionSet('playerName', playerName);

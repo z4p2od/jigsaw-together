@@ -22,7 +22,7 @@
       .catch(function () { return null; });
   </script>
 </head>
-<body>
+<body class="home-shell puzzle-body">
   <div id="in-app-hint" class="in-app-hint" hidden>
     <p>In-app browsers (Instagram, Messenger, TikTok) often block uploads. For creating puzzles, use <strong>Safari</strong> or Chrome: Share → Open in Browser.</p>
     <button type="button" class="in-app-hint-dismiss" aria-label="Dismiss">×</button>
@@ -38,120 +38,286 @@
       if (b) b.addEventListener('click', function () { el.hidden = true; });
     })();
   </script>
-  <main class="landing landing-dashboard">
-    <div class="brand-logo" aria-label="Pu8l.io">Pu8l.io</div>
 
-    <!-- Puzzle of the Day — hidden until JS confirms today's puzzles exist -->
-    <section id="potd-section" class="panel" style="display:none">
-      <h2 class="panel-heading potd-heading">Puzzle of the Day</h2>
-      <div class="potd-card potd-card--compact">
-        <div id="potd-tabs" class="potd-tabs" role="tablist" aria-label="Daily difficulty">
-          <button type="button" class="potd-tab" role="tab" data-diff="easy" id="potd-tab-easy" hidden aria-selected="false" tabindex="-1">Easy</button>
-          <button type="button" class="potd-tab" role="tab" data-diff="medium" id="potd-tab-medium" hidden aria-selected="false" tabindex="-1">Medium</button>
-          <button type="button" class="potd-tab" role="tab" data-diff="hard" id="potd-tab-hard" hidden aria-selected="false" tabindex="-1">Hard</button>
-        </div>
-        <p id="potd-desc" class="potd-desc"></p>
-        <div id="potd-preview" class="potd-preview-wrap" hidden>
-          <img id="potd-preview-img" class="potd-preview-img" alt="" width="640" height="360" decoding="async" fetchpriority="high" />
-        </div>
-        <div class="potd-leaderboard">
-          <p class="potd-lb-title">Today's Top Times</p>
-          <ol id="potd-lb" class="potd-lb-list"><li class="lb-empty">No completions yet — be the first!</li></ol>
-        </div>
-        <a id="potd-play" class="btn btn-pale potd-play" href="#">Play Today's Puzzle</a>
-      </div>
-    </section>
+  <div id="loading-overlay">
+    <div class="spinner"></div>
+    <p id="loading-text">Loading puzzle...</p>
+  </div>
 
-    <!-- Pick an Image entry -->
-    <section class="panel">
-      <h2 class="panel-heading">Play Together</h2>
-      <p class="subtitle">Solve puzzles from our library and invite friends</p>
-      <a href="/play" class="btn">Pick an Image</a>
-      <a href="/rooms" class="panel-link">Browse open rooms →</a>
-    </section>
+  <div id="name-modal" class="modal-overlay">
+    <div class="modal">
+      <h3>What's your name?</h3>
+      <input id="name-input" type="text" class="name-input" placeholder="Your name" maxlength="20" autocomplete="off" autocapitalize="words" />
+      <button id="name-submit" class="btn">Join Puzzle</button>
+    </div>
+  </div>
 
-    <!-- VS Mode entry -->
-    <section class="panel">
-      <h2 class="panel-heading">Vs Mode</h2>
-      <p class="subtitle">Play against a friend — same puzzle, first to finish wins</p>
-      <div class="piece-section">
-        <p class="field-label">Match Type</p>
-        <div class="piece-options">
-          <label><input type="radio" name="vs-type" value="1v1" checked /> <span>1 Vs 1</span></label>
-          <label><input type="radio" name="vs-type" value="team" /> <span>Team Vs Team</span></label>
-        </div>
-      </div>
-      <div class="piece-section">
-        <p class="field-label">Pieces</p>
-        <div class="piece-options">
-          <label><input type="radio" name="vs-pieces" value="24" /> <span>24</span></label>
-          <label><input type="radio" name="vs-pieces" value="40" checked /> <span>40</span></label>
-          <label><input type="radio" name="vs-pieces" value="250" /> <span>250</span></label>
-        </div>
-      </div>
-      <div class="piece-section">
-        <p class="field-label">Mode</p>
-        <div class="piece-options">
-          <label><input type="radio" name="vs-mode" value="normal" checked /> <span>Casual</span></label>
-          <label><input type="radio" name="vs-mode" value="hard" /> <span>Hard</span></label>
-          <label><input type="radio" name="vs-mode" value="chaos" /> <span>Chaos</span></label>
-        </div>
-      </div>
-      <div class="piece-section">
-        <p class="field-label">Image</p>
-        <div class="piece-options">
-          <label><input type="radio" name="vs-image" value="random" checked /> <span>Random</span></label>
-          <label><input type="radio" name="vs-image" value="pick" /> <span>Pick from library</span></label>
-        </div>
-        <div id="vs-image-picker" style="display:none;margin-top:10px">
-          <div id="vs-image-grid" class="vs-image-grid"></div>
-          <p id="vs-image-status" class="potd-desc">Loading…</p>
-        </div>
-      </div>
-      <button class="btn btn-pale" id="vs-create-btn">Start Vs Match</button>
-      <a href="/vs-rooms" class="panel-link">Browse open rooms →</a>
-    </section>
+  <div id="help-modal" class="modal-overlay">
+    <div class="modal">
+      <h3>How to play</h3>
+      <ul class="help-list" id="help-list"></ul>
+      <button id="help-close" class="btn">Got it</button>
+    </div>
+  </div>
 
-    <section class="panel panel-upload">
-      <h2 class="panel-heading">Upload</h2>
-      <p class="subtitle">Use your own photo and share a link</p>
-      <div class="upload-zone" id="upload-zone">
-        <input type="file" id="file-input" accept="image/*" />
-        <div id="upload-placeholder">
-          <div class="icon">🖼️</div>
-          <p><strong>Click or drag a photo here</strong></p>
-          <p>JPEG, PNG, WebP — up to 10MB</p>
-        </div>
-        <img class="preview" id="preview" alt="Preview" />
+  <div id="box-cover">
+    <img id="box-cover-img" alt="Puzzle image" />
+    <p class="box-cover-hint">Tap or click anywhere to close</p>
+  </div>
+
+  <div id="celebration">
+    <h2>Puzzle Complete!</h2>
+    <p id="celebration-time"></p>
+    <div id="celebration-lb" style="display:none">
+      <p class="potd-lb-title">Today's Top Times</p>
+      <ol id="celebration-lb-list" class="potd-lb-list"></ol>
+    </div>
+    <button type="button" class="btn" id="celebration-new-btn">Play another puzzle</button>
+  </div>
+
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Game menu">
+      <div class="sidebar-scroll">
+        <div class="brand-logo" aria-label="Pu8l.io">Pu8l.io</div>
+
+        <!-- Puzzle of the Day — always expanded -->
+        <section id="potd-section" class="sidebar-block sidebar-block--static" style="display:none">
+          <h2 class="panel-heading potd-heading">Puzzle of the Day</h2>
+          <div class="potd-card potd-card--compact">
+            <div id="potd-tabs" class="potd-tabs" role="tablist" aria-label="Daily difficulty">
+              <button type="button" class="potd-tab" role="tab" data-diff="easy" id="potd-tab-easy" hidden aria-selected="false" tabindex="-1">Easy</button>
+              <button type="button" class="potd-tab" role="tab" data-diff="medium" id="potd-tab-medium" hidden aria-selected="false" tabindex="-1">Medium</button>
+              <button type="button" class="potd-tab" role="tab" data-diff="hard" id="potd-tab-hard" hidden aria-selected="false" tabindex="-1">Hard</button>
+            </div>
+            <p id="potd-desc" class="potd-desc"></p>
+            <div id="potd-preview" class="potd-preview-wrap" hidden>
+              <img id="potd-preview-img" class="potd-preview-img" alt="" width="640" height="360" decoding="async" fetchpriority="high" />
+            </div>
+            <div class="potd-leaderboard">
+              <p class="potd-lb-title">Today's Top Times</p>
+              <ol id="potd-lb" class="potd-lb-list"><li class="lb-empty">No completions yet — be the first!</li></ol>
+            </div>
+          </div>
+        </section>
+
+        <!-- Play Together -->
+        <section class="sidebar-block">
+          <button type="button" class="sidebar-drawer-head" data-drawer="play" aria-expanded="false" aria-controls="drawer-play">
+            Play Together
+          </button>
+          <div class="sidebar-drawer" id="drawer-play">
+            <div class="sidebar-drawer-inner">
+              <p class="subtitle">Solve puzzles from our library and invite friends</p>
+              <div id="play-image-grid-wrap">
+                <p id="play-images-loading" class="potd-desc">Loading images…</p>
+                <div id="play-image-grid" class="play-image-grid shell-image-grid" style="display:none"></div>
+              </div>
+              <div class="piece-section">
+                <p class="field-label">Pieces</p>
+                <div class="piece-options">
+                  <label><input type="radio" name="play-pieces" value="24" /> <span>24</span></label>
+                  <label><input type="radio" name="play-pieces" value="100" checked /> <span>100</span></label>
+                  <label><input type="radio" name="play-pieces" value="250" /> <span>250</span></label>
+                </div>
+              </div>
+              <div class="piece-section">
+                <p class="field-label">Mode</p>
+                <div class="piece-options">
+                  <label><input type="radio" name="play-mode" value="normal" checked /> <span>Normal</span></label>
+                  <label><input type="radio" name="play-mode" value="hard" /> <span>Hard</span></label>
+                </div>
+              </div>
+              <div class="piece-section">
+                <p class="field-label">Visibility</p>
+                <div class="piece-options">
+                  <label><input type="radio" name="play-visibility" value="private" checked /> <span>Private</span></label>
+                  <label><input type="radio" name="play-visibility" value="public" /> <span>Public</span></label>
+                </div>
+              </div>
+              <a href="/rooms" class="panel-link">Browse open rooms →</a>
+            </div>
+          </div>
+        </section>
+
+        <!-- VS Mode -->
+        <section class="sidebar-block">
+          <button type="button" class="sidebar-drawer-head" data-drawer="vs" aria-expanded="false" aria-controls="drawer-vs">
+            Vs Mode
+          </button>
+          <div class="sidebar-drawer" id="drawer-vs">
+            <div class="sidebar-drawer-inner">
+              <p class="subtitle">Play against a friend — same puzzle, first to finish wins</p>
+              <div class="piece-section">
+                <p class="field-label">Match Type</p>
+                <div class="piece-options">
+                  <label><input type="radio" name="vs-type" value="1v1" checked /> <span>1 Vs 1</span></label>
+                  <label><input type="radio" name="vs-type" value="team" /> <span>Team Vs Team</span></label>
+                </div>
+              </div>
+              <div class="piece-section">
+                <p class="field-label">Pieces</p>
+                <div class="piece-options">
+                  <label><input type="radio" name="vs-pieces" value="24" /> <span>24</span></label>
+                  <label><input type="radio" name="vs-pieces" value="40" checked /> <span>40</span></label>
+                  <label><input type="radio" name="vs-pieces" value="250" /> <span>250</span></label>
+                </div>
+              </div>
+              <div class="piece-section">
+                <p class="field-label">Mode</p>
+                <div class="piece-options">
+                  <label><input type="radio" name="vs-mode" value="normal" checked /> <span>Casual</span></label>
+                  <label><input type="radio" name="vs-mode" value="hard" /> <span>Hard</span></label>
+                  <label><input type="radio" name="vs-mode" value="chaos" /> <span>Chaos</span></label>
+                </div>
+              </div>
+              <div class="piece-section">
+                <p class="field-label">Image</p>
+                <div class="piece-options">
+                  <label><input type="radio" name="vs-image" value="random" checked /> <span>Random</span></label>
+                  <label><input type="radio" name="vs-image" value="pick" /> <span>Pick from library</span></label>
+                </div>
+                <div id="vs-image-picker" style="display:none;margin-top:10px">
+                  <div id="vs-image-grid" class="vs-image-grid"></div>
+                  <p id="vs-image-status" class="potd-desc">Loading…</p>
+                </div>
+              </div>
+              <a href="/vs-rooms" class="panel-link">Browse open rooms →</a>
+            </div>
+          </div>
+        </section>
+
+        <!-- Upload -->
+        <section class="sidebar-block">
+          <button type="button" class="sidebar-drawer-head" data-drawer="upload" aria-expanded="false" aria-controls="drawer-upload">
+            Upload
+          </button>
+          <div class="sidebar-drawer" id="drawer-upload">
+            <div class="sidebar-drawer-inner">
+              <p class="subtitle">Use your own photo and share a link</p>
+              <div class="upload-zone upload-zone--compact" id="upload-zone">
+                <input type="file" id="file-input" accept="image/*" />
+                <div id="upload-placeholder">
+                  <p><strong>Click or drag a photo</strong></p>
+                  <p>JPEG, PNG, WebP — up to 10MB</p>
+                </div>
+                <img class="preview" id="preview" alt="Preview" />
+              </div>
+              <div class="piece-section">
+                <p class="field-label">Pieces</p>
+                <div class="piece-options">
+                  <label><input type="radio" name="pieces" value="4" /> <span>4</span></label>
+                  <label><input type="radio" name="pieces" value="24" /> <span>24</span></label>
+                  <label><input type="radio" name="pieces" value="100" checked /> <span>100</span></label>
+                  <label><input type="radio" name="pieces" value="250" /> <span>250</span></label>
+                  <label><input type="radio" name="pieces" value="500" /> <span>500</span></label>
+                  <label><input type="radio" name="pieces" value="1000" /> <span>1000</span></label>
+                </div>
+              </div>
+              <div class="piece-section">
+                <p class="field-label">Mode</p>
+                <div class="piece-options">
+                  <label><input type="radio" name="mode" value="normal" checked /> <span>Normal</span></label>
+                  <label><input type="radio" name="mode" value="hard" /> <span>Hard</span></label>
+                </div>
+                <p class="mode-hint" id="mode-hint" style="display:none">Pieces start randomly rotated. Right-click or double-tap to rotate them into position.</p>
+              </div>
+            </div>
+          </div>
+        </section>
       </div>
 
-      <div class="piece-section">
-        <p class="field-label">Pieces</p>
-        <div class="piece-options">
-          <label><input type="radio" name="pieces" value="4" /> <span>4</span></label>
-          <label><input type="radio" name="pieces" value="24" /> <span>24</span></label>
-          <label><input type="radio" name="pieces" value="100" checked /> <span>100</span></label>
-          <label><input type="radio" name="pieces" value="250" /> <span>250</span></label>
-          <label><input type="radio" name="pieces" value="500" /> <span>500</span></label>
-          <label><input type="radio" name="pieces" value="1000" /> <span>1000</span></label>
+      <div class="sidebar-footer">
+        <button type="button" class="btn" id="shell-play-btn">Play Puzzle</button>
+        <p class="status" id="shell-status"></p>
+        <p class="status" id="status"></p>
+      </div>
+    </aside>
+
+    <div class="play-viewport puzzle-page">
+      <header class="puzzle-header">
+        <div class="share-box">
+          <span id="share-url"></span>
+        </div>
+        <button type="button" id="copy-btn" class="btn-copy">Copy Link</button>
+        <span id="hard-badge" class="hard-badge" style="display:none" title="Pieces start rotated — right-click or long-press to rotate them">Hard</span>
+        <div class="header-actions">
+          <button type="button" id="quality-btn" class="icon-btn" title="Toggle high quality pieces">HQ</button>
+          <button type="button" id="peek-btn" class="icon-btn" title="See the full image">🖼️</button>
+          <button type="button" id="help-btn" class="icon-btn" title="Controls">?</button>
+        </div>
+      </header>
+
+      <div class="puzzle-board-wrap" id="puzzle-board-wrap">
+        <div class="puzzle-board-scroll-content" id="puzzle-board-scroll-content">
+          <div id="puzzle-board"></div>
         </div>
       </div>
 
-      <div class="piece-section">
-        <p class="field-label">Mode</p>
-        <div class="piece-options">
-          <label><input type="radio" name="mode" value="normal" checked /> <span>Normal</span></label>
-          <label><input type="radio" name="mode" value="hard" /> <span>Hard</span></label>
+      <footer class="puzzle-status-bar">
+        <div class="status-segment status-segment--name">
+          <div id="players-list" class="players-list"></div>
         </div>
-        <p class="mode-hint" id="mode-hint" style="display:none">Pieces start randomly rotated. Right-click or double-tap to rotate them into position.</p>
+        <div class="status-segment status-segment--timer">
+          <span id="timer-display" class="timer">0:00</span>
+        </div>
+        <div class="status-segment status-segment--progress">
+          <span class="progress-text" id="progress-text">0 / 0 pieces</span>
+        </div>
+      </footer>
+    </div>
+  </div>
+
+  <div id="chat-launcher">
+    <button type="button" id="chat-btn" title="Chat">💬</button>
+  </div>
+
+  <div id="chat-panel" class="chat-panel">
+    <div class="chat-header">
+      <span>Chat</span>
+      <button type="button" id="chat-close" class="icon-btn">✕</button>
+    </div>
+    <div id="chat-messages" class="chat-messages"></div>
+    <div class="chat-input-row">
+      <div class="chat-emojis">
+        <button type="button" class="emoji-btn" data-emoji="🎉">🎉</button>
+        <button type="button" class="emoji-btn" data-emoji="👏">👏</button>
+        <button type="button" class="emoji-btn" data-emoji="🔥">🔥</button>
+        <button type="button" class="emoji-btn" data-emoji="😮">😮</button>
+        <button type="button" class="emoji-btn" data-emoji="😂">😂</button>
+        <button type="button" class="emoji-btn" data-emoji="❤️">❤️</button>
       </div>
+      <div class="chat-compose">
+        <input type="text" id="chat-input" class="chat-input-field" placeholder="Say something…" maxlength="200" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" />
+        <button type="button" id="chat-send" class="icon-btn">↑</button>
+      </div>
+    </div>
+  </div>
 
-      <button class="btn" id="create-btn" disabled>Load Puzzle</button>
-      <p class="status" id="status"></p>
-    </section>
-  </main>
-
+  <script>
+    var _moduleErrorShown = false;
+    function showModuleError() {
+      if (_moduleErrorShown) return;
+      _moduleErrorShown = true;
+      var overlay = document.getElementById('loading-overlay');
+      var text    = document.getElementById('loading-text');
+      var spinner = overlay ? overlay.querySelector('.spinner') : null;
+      if (overlay) overlay.classList.add('loading-overlay--error');
+      if (spinner) spinner.style.display = 'none';
+      if (text) text.textContent =
+        'Could not load puzzle. If you opened this from a social app, tap Share → Open in Safari. Otherwise refresh the page.';
+    }
+    setTimeout(function () {
+      var overlay = document.getElementById('loading-overlay');
+      if (overlay && overlay.style.display !== 'none'
+          && !overlay.classList.contains('loading-overlay--error')) {
+        showModuleError();
+      }
+    }, 25000);
+  </script>
+  <script>window.__JT_CLIENT_ERROR_ENDPOINT = '/api/client-error';</script>
+  <script type="module" src="/js/client-observe.js"></script>
   <script type="module" src="/js/app.js"></script>
+  <script type="module" src="/js/puzzle.js" onerror="showModuleError()"></script>
   <script type="module" src="/js/feedback.js"></script>
   <script src="/js/pwa.js" defer></script>
 </body>
