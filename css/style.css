@@ -1255,7 +1255,6 @@ iframe[src*="vercel.live"] {
 
 .potd-heading {
   text-align: center;
-  margin-bottom: 4px;
 }
 
 .potd-card {
@@ -1263,12 +1262,12 @@ iframe[src*="vercel.live"] {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .potd-card--compact {
   padding: 0;
-  gap: 12px;
+  gap: 10px;
 }
 
 .potd-tabs {
@@ -1280,14 +1279,13 @@ iframe[src*="vercel.live"] {
 
 .potd-tab {
   min-width: 0;
-  padding: 10px 6px;
-  font-size: 0.85rem;
+  padding: 9px 4px;
+  font-size: 0.82rem;
   font-family: var(--font-display);
   color: var(--accent);
   background: var(--surface);
   border: none;
   border-right: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
   cursor: pointer;
   transition: color 0.12s, box-shadow 0.12s;
 }
@@ -1296,13 +1294,19 @@ iframe[src*="vercel.live"] {
   border-right: none;
 }
 
-.potd-tab:hover {
+.potd-tab:hover:not(:disabled) {
   color: var(--neon);
 }
 
+.potd-tab:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
 .potd-tab.is-active {
-  color: var(--neon);
-  box-shadow: inset 0 0 0 2px var(--neon);
+  color: #000;
+  background: var(--neon);
+  box-shadow: none;
 }
 
 .potd-tab:focus-visible {
@@ -1315,19 +1319,14 @@ iframe[src*="vercel.live"] {
   text-align: center;
   font-size: 0.75rem;
   color: var(--text-muted);
-}
-
-.potd-play {
-  text-align: center;
-  text-decoration: none;
+  font-family: var(--font-ui);
 }
 
 .potd-preview-wrap {
   overflow: hidden;
   border: 2px solid var(--neon);
   background: var(--surface);
-  aspect-ratio: 16 / 9;
-  max-height: 220px;
+  aspect-ratio: 16 / 10;
 }
 
 .potd-preview-img {
@@ -1338,27 +1337,28 @@ iframe[src*="vercel.live"] {
   object-position: center;
 }
 
-.potd-leaderboard { display: flex; flex-direction: column; gap: 6px; }
-
 .potd-lb-title {
   font-family: var(--font-display);
-  font-size: 0.95rem;
+  font-size: 0.88rem;
   color: var(--accent);
+  text-align: center;
+  margin: 0;
 }
 
 .potd-lb-list {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
 }
 
 .potd-lb-list li {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 0.78rem;
-  color: var(--text);
+  gap: 6px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-family: var(--font-ui);
 }
 
 .lb-time {
@@ -1366,6 +1366,13 @@ iframe[src*="vercel.live"] {
   color: var(--neon);
   font-weight: 600;
   flex-shrink: 0;
+  margin-left: auto;
+}
+
+.potd-leaderboard {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .lb-empty {
@@ -2675,7 +2682,7 @@ body.home-shell::before {
 
 .app-shell {
   display: grid;
-  grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+  grid-template-columns: 300px minmax(0, 1fr);
   width: 100%;
   height: 100dvh;
   min-height: 100dvh;
@@ -2687,6 +2694,7 @@ body.home-shell::before {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;
   background: var(--bg);
   border-right: 1px solid var(--border);
 }
@@ -2695,49 +2703,92 @@ body.home-shell::before {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 16px 12px 12px;
+  overflow-x: hidden;
+  padding: 14px 10px 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.sidebar-scroll > .brand-logo {
+  width: 100px;
+  height: 100px;
+  font-size: 1.15rem;
+  margin: 0 auto 10px;
+  flex-shrink: 0;
+}
+
+.potd-sidebar-panel {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  padding: 0 2px 4px;
+  flex-shrink: 0;
+}
+
+.potd-sidebar-panel .potd-heading {
+  font-size: 1.12rem;
+  margin: 0;
+  text-align: center;
+  color: var(--accent);
 }
 
 .sidebar-footer {
   flex-shrink: 0;
-  padding: 12px;
+  padding: 10px;
+  background: var(--bg);
   border-top: 1px solid var(--border);
-  background: var(--surface);
+}
+
+.shell-play-btn {
+  font-size: 1.15rem;
+  padding: 16px 12px;
+  background: linear-gradient(90deg, #FF6B9D 0%, #FFB347 100%);
+  border: 1px solid var(--border);
 }
 
 .sidebar-block {
   background: var(--surface);
   border: 1px solid var(--border);
+  flex-shrink: 0;
+  overflow: hidden;
 }
 
 .sidebar-block--static {
-  padding: 14px 12px;
+  padding: 12px 10px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
+}
+
+.sidebar-block--static .panel-heading,
+.sidebar-block--static .potd-heading {
+  font-size: 1.05rem;
+  margin: 0;
 }
 
 .sidebar-drawer-head {
   width: 100%;
-  padding: 14px 12px;
+  padding: 14px 10px;
   border: none;
   background: var(--surface);
   color: var(--accent);
   font-family: var(--font-display);
-  font-size: 1.15rem;
+  font-size: 1.08rem;
+  line-height: 1.2;
   text-align: center;
   cursor: pointer;
-  border-bottom: 1px solid transparent;
-  transition: color 0.12s, border-color 0.12s;
+  transition: color 0.12s, background 0.12s;
 }
 
-.sidebar-drawer-head:hover,
+.sidebar-drawer-head:hover {
+  color: var(--neon);
+}
+
 .sidebar-drawer-head.is-open {
   color: var(--neon);
-  border-bottom-color: var(--border-muted);
+  background: var(--surface2);
 }
 
 .sidebar-drawer {
@@ -2771,10 +2822,31 @@ body.home-shell::before {
   display: flex;
   flex-direction: column;
   background: #000;
+  position: relative;
 }
 
 .play-viewport.puzzle-page {
   height: 100%;
+}
+
+/* Loading overlay — full page on legacy puzzle route, play area only on home shell */
+body.home-shell #loading-overlay,
+body.home-shell .play-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  background: rgba(0, 0, 0, 0.88);
+}
+
+body.home-shell .play-viewport .puzzle-header,
+body.home-shell .play-viewport .puzzle-status-bar {
+  opacity: 1;
+  transition: opacity 0.15s;
+}
+
+body.home-shell .play-viewport.is-loading .puzzle-header,
+body.home-shell .play-viewport.is-loading .puzzle-status-bar {
+  opacity: 0.35;
 }
 
 .upload-zone--compact {
@@ -2790,6 +2862,10 @@ body.home-shell::before {
   margin-top: 8px;
   min-height: 16px;
   font-size: 0.72rem;
+}
+
+.sidebar-footer .status:empty {
+  display: none;
 }
 
 @media (max-width: 900px) {
@@ -2822,15 +2898,14 @@ body.home-shell::before {
 }
 
 .welcome-screen {
-  position: fixed;
+  position: absolute;
   inset: 0;
-  z-index: 10050;
+  z-index: 40;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: max(20px, env(safe-area-inset-top, 0px)) 20px max(20px, env(safe-area-inset-bottom, 0px));
-  background: rgba(58, 46, 70, 0.82);
-  backdrop-filter: blur(2px);
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.72);
 }
 
 .welcome-screen[hidden] {

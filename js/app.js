@@ -74,6 +74,7 @@ const potdPreview   = document.getElementById('potd-preview');
 const potdPreviewImg = document.getElementById('potd-preview-img');
 
 let selectedPotdKey = 'easy';
+let availablePotdKeys = [];
 const leaderboardCache = Object.create(null);
 /** @type {Record<string, string|null>} */
 const potdImageByKey = Object.create(null);
@@ -145,7 +146,6 @@ function setSelectedPotd(key) {
   selectedPotdKey = key;
   shellMode = 'potd';
   document.querySelectorAll('.potd-tab').forEach((btn) => {
-    if (btn.hidden) return;
     const on = btn.dataset.diff === key;
     btn.classList.toggle('is-active', on);
     btn.setAttribute('aria-selected', on ? 'true' : 'false');
@@ -197,16 +197,21 @@ function applyPotdPayload(payload) {
     if (!p?.difficulty || p.date !== today) continue;
     available.push(p.difficulty);
     potdImageByKey[p.difficulty] = p.imageUrl || null;
-    const tab = document.querySelector(`.potd-tab[data-diff="${p.difficulty}"]`);
-    if (tab) tab.hidden = false;
   }
 
-  if (available.length === 0) return [];
+  availablePotdKeys = available;
+  document.querySelectorAll('.potd-tab').forEach((tab) => {
+    const has = available.includes(tab.dataset.diff);
+    tab.disabled = !has;
+    tab.setAttribute('aria-disabled', has ? 'false' : 'true');
+  });
 
-  const tabsRow = document.getElementById('potd-tabs');
-  if (tabsRow) tabsRow.style.display = available.length <= 1 ? 'none' : '';
+  if (available.length === 0) {
+    if (potdDesc) potdDesc.textContent = 'No puzzle of the day right now.';
+    if (potdPreview) potdPreview.hidden = true;
+    return [];
+  }
 
-  potdSection.style.display = '';
   if (!available.includes(selectedPotdKey)) {
     setSelectedPotd(available[0]);
   } else {
@@ -320,6 +325,10 @@ function hideWelcome() {
 }
 
 function dismissLoadingOverlay() {
+  if (typeof window.__JT_hidePlayLoading === 'function') {
+    window.__JT_hidePlayLoading();
+    return;
+  }
   const el = document.getElementById('loading-overlay');
   if (el) {
     el.hidden = true;
@@ -746,7 +755,7 @@ function updateShellPlayButton() {
     return;
   }
   shellPlayBtn.textContent = 'Play Puzzle';
-  shellPlayBtn.disabled = potdSection?.style.display === 'none';
+  shellPlayBtn.disabled = shellMode === 'potd' && !availablePotdKeys.includes(selectedPotdKey);
 }
 
 function openDrawer(name) {
@@ -782,7 +791,7 @@ document.querySelectorAll('.sidebar-drawer-head').forEach((head) => {
 
 document.querySelectorAll('.potd-tab').forEach((btn) => {
   btn.addEventListener('click', () => {
-    if (btn.hidden) return;
+    if (btn.disabled) return;
     shellMode = 'potd';
     setSelectedPotd(btn.dataset.diff);
   });

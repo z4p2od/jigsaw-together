@@ -267,6 +267,33 @@ window.__JT_setPlayerName = function setPlayerName(name) {
   playerName = String(name || '').trim() || 'Anonymous';
 };
 
+function setPlayViewportLoading(on) {
+  if (!isHomeShell) return;
+  document.querySelector('.play-viewport')?.classList.toggle('is-loading', !!on);
+}
+
+function showPlayLoading(message) {
+  setPlayViewportLoading(true);
+  if (loadingEl) {
+    loadingEl.hidden = false;
+    loadingEl.style.display = 'flex';
+    loadingEl.classList.remove('loading-overlay--error');
+  }
+  if (loadingText && message) loadingText.textContent = message;
+  const sp = loadingEl?.querySelector('.spinner');
+  if (sp) sp.style.display = '';
+}
+
+function hidePlayLoading() {
+  setPlayViewportLoading(false);
+  if (loadingEl) {
+    loadingEl.hidden = true;
+    loadingEl.style.display = 'none';
+  }
+}
+
+window.__JT_hidePlayLoading = hidePlayLoading;
+
 let presenceHeartbeat = null;
 let unsubChat = null;
 let dragListenersAttached = false;
@@ -349,14 +376,7 @@ async function teardownPuzzle() {
 
   puzzleBootStarted = false;
 
-  if (loadingEl) {
-    loadingEl.classList.remove('loading-overlay--error');
-    loadingEl.hidden = false;
-    loadingEl.style.display = 'flex';
-    if (loadingText) loadingText.textContent = 'Loading puzzle...';
-    const sp = loadingEl.querySelector('.spinner');
-    if (sp) sp.style.display = '';
-  }
+  hidePlayLoading();
 }
 
 let puzzleBootStarted = false;
@@ -364,10 +384,7 @@ let puzzleBootStarted = false;
 async function askNameThenInit() {
   if (puzzleBootStarted) return;
   puzzleBootStarted = true;
-  if (loadingEl) {
-    loadingEl.hidden = false;
-    loadingEl.style.display = 'flex';
-  }
+  showPlayLoading('Loading puzzle...');
   if (!playerName) {
     if (isHomeShell) {
       playerName = safeSessionGet('playerName') || 'Anonymous';
@@ -398,9 +415,8 @@ if (!isHomeShell && !puzzleId) {
   location.href = '/';
 } else if (!isHomeShell && puzzleId) {
   askNameThenInit();
-} else if (isHomeShell && loadingEl) {
-  loadingEl.hidden = true;
-  loadingEl.style.display = 'none';
+} else if (isHomeShell) {
+  hidePlayLoading();
 }
 
 function fatalOverlayError(err) {
@@ -410,6 +426,7 @@ function fatalOverlayError(err) {
     loadingEl.classList.add('loading-overlay--error');
     const sp = loadingEl.querySelector('.spinner');
     if (sp) sp.style.display = 'none';
+    showPlayLoading();
   }
 }
 
@@ -527,10 +544,7 @@ async function initPuzzle() {
     }
 
     window.clearTimeout(watchdog);
-    if (loadingEl) {
-      loadingEl.hidden = true;
-      loadingEl.style.display = 'none';
-    }
+    hidePlayLoading();
     scheduleMobilePieceFraming();
     updateProgress();
   } catch (err) {
@@ -553,6 +567,7 @@ async function initPuzzle() {
         : 'Puzzle not found.';
     if (loadingText) loadingText.textContent = msg;
     if (loadingEl) loadingEl.classList.add('loading-overlay--error');
+    setPlayViewportLoading(true);
     const sp = loadingEl?.querySelector('.spinner');
     if (sp) sp.style.display = 'none';
   }

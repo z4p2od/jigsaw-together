@@ -46,22 +46,6 @@
     })();
   </script>
 
-  <div id="loading-overlay" hidden>
-    <div class="spinner"></div>
-    <p id="loading-text">Loading puzzle...</p>
-  </div>
-
-  <div id="welcome-screen" class="welcome-screen">
-    <div class="welcome-card">
-      <div class="brand-logo welcome-logo" aria-hidden="true">Pu8l.io</div>
-      <h1 class="welcome-title">Welcome to Pu8l.io</h1>
-      <p class="welcome-sub">What's your name?</p>
-      <input id="welcome-name-input" type="text" class="name-input" placeholder="Your name" maxlength="20" autocomplete="nickname" autocapitalize="words" />
-      <button type="button" id="welcome-start-btn" class="btn">Play Today's Puzzle</button>
-      <p id="welcome-status" class="welcome-status"></p>
-    </div>
-  </div>
-
   <div id="name-modal" class="modal-overlay" hidden>
     <div class="modal">
       <h3>What's your name?</h3>
@@ -99,15 +83,15 @@
         <div class="brand-logo" aria-label="Pu8l.io">Pu8l.io</div>
 
         <!-- Puzzle of the Day — always expanded -->
-        <section id="potd-section" class="sidebar-block sidebar-block--static" style="display:none">
+        <section id="potd-section" class="potd-sidebar-panel">
           <h2 class="panel-heading potd-heading">Puzzle of the Day</h2>
           <div class="potd-card potd-card--compact">
             <div id="potd-tabs" class="potd-tabs" role="tablist" aria-label="Daily difficulty">
-              <button type="button" class="potd-tab" role="tab" data-diff="easy" id="potd-tab-easy" hidden aria-selected="false" tabindex="-1">Easy</button>
-              <button type="button" class="potd-tab" role="tab" data-diff="medium" id="potd-tab-medium" hidden aria-selected="false" tabindex="-1">Medium</button>
-              <button type="button" class="potd-tab" role="tab" data-diff="hard" id="potd-tab-hard" hidden aria-selected="false" tabindex="-1">Hard</button>
+              <button type="button" class="potd-tab is-active" role="tab" data-diff="easy" id="potd-tab-easy" aria-selected="true">Easy</button>
+              <button type="button" class="potd-tab" role="tab" data-diff="medium" id="potd-tab-medium" aria-selected="false" tabindex="-1">Medium</button>
+              <button type="button" class="potd-tab" role="tab" data-diff="hard" id="potd-tab-hard" aria-selected="false" tabindex="-1">Hard</button>
             </div>
-            <p id="potd-desc" class="potd-desc"></p>
+            <p id="potd-desc" class="potd-desc">25 pieces</p>
             <div id="potd-preview" class="potd-preview-wrap" hidden>
               <img id="potd-preview-img" class="potd-preview-img" alt="" width="640" height="360" decoding="async" fetchpriority="high" />
             </div>
@@ -245,13 +229,27 @@
       </div>
 
       <div class="sidebar-footer">
-        <button type="button" class="btn" id="shell-play-btn">Play Puzzle</button>
+        <button type="button" class="btn shell-play-btn" id="shell-play-btn">Play Puzzle</button>
         <p class="status" id="shell-status"></p>
-        <p class="status" id="status"></p>
       </div>
     </aside>
 
     <div class="play-viewport puzzle-page">
+      <div id="welcome-screen" class="welcome-screen">
+        <div class="welcome-card">
+          <h1 class="welcome-title">Welcome to Pu8l.io</h1>
+          <p class="welcome-sub">What's your name?</p>
+          <input id="welcome-name-input" type="text" class="name-input" placeholder="Your name" maxlength="20" autocomplete="nickname" autocapitalize="words" />
+          <button type="button" id="welcome-start-btn" class="btn">Play Today's Puzzle</button>
+          <p id="welcome-status" class="welcome-status"></p>
+        </div>
+      </div>
+
+      <div id="loading-overlay" class="play-loading" hidden>
+        <div class="spinner"></div>
+        <p id="loading-text">Loading puzzle...</p>
+      </div>
+
       <header class="puzzle-header">
         <div class="share-box">
           <span id="share-url"></span>
