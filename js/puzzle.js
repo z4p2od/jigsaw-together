@@ -267,6 +267,98 @@ window.__JT_setPlayerName = function setPlayerName(name) {
   playerName = String(name || '').trim() || 'Anonymous';
 };
 
+let presenceHeartbeat = null;
+let unsubChat = null;
+let dragListenersAttached = false;
+let helpUiBound = false;
+let peekUiBound = false;
+let qualityUiBound = false;
+let horizontalPageLockBound = false;
+let chatUiBound = false;
+let shareLinkBound = false;
+
+async function teardownPuzzle() {
+  const oldId = puzzleId;
+  if (!oldId) return;
+
+  if (dragging?.locked) {
+    try { await unlockGroup(oldId, dragging.indices); } catch (_) { /* ignore */ }
+  }
+  if (hand.length) {
+    try { await unlockGroup(oldId, hand); } catch (_) { /* ignore */ }
+  }
+
+  if (unsubscribe) { unsubscribe(); unsubscribe = null; }
+  if (unsubPlayers) { unsubPlayers(); unsubPlayers = null; }
+  if (unsubChat) { unsubChat(); unsubChat = null; }
+
+  stopTimer();
+  if (presenceHeartbeat) {
+    clearInterval(presenceHeartbeat);
+    presenceHeartbeat = null;
+  }
+
+  clearHandCursorSequence();
+  if (handSlotTimerTickInterval) {
+    clearInterval(handSlotTimerTickInterval);
+    handSlotTimerTickInterval = null;
+  }
+  for (const tid of handSlotTimeoutIds.values()) clearTimeout(tid);
+  handSlotTimeoutIds.clear();
+
+  try { await removePlayer(oldId, playerId); } catch (_) { /* ignore */ }
+
+  if (board) board.innerHTML = '';
+  if (chatMessages) chatMessages.innerHTML = '';
+  if (celebration) celebration.classList.remove('show');
+  if (handContainer) {
+    handContainer.remove();
+    handContainer = null;
+  }
+
+  meta = null;
+  pieceEls = [];
+  pieceStates = [];
+  solvedCount = 0;
+  totalPieces = 0;
+  placedCount = 0;
+  activeGroupCount = 0;
+  groupedPieceCount = 0;
+  placedFlags = [];
+  for (const k of Object.keys(groups)) delete groups[k];
+  pieceGroup.length = 0;
+  dragging = null;
+  hand = [];
+  pocketHomeByIndex.clear();
+  handSlotExpiresAt.clear();
+  playersMap = {};
+  startedAt = null;
+  scale = 1;
+  boardTx = 0;
+  boardTy = 0;
+  chatUnread = 0;
+  chatOpen = false;
+  if (chatPanel) chatPanel.classList.remove('open');
+  setChatBadge(0);
+
+  if (playersListEl) playersListEl.innerHTML = '';
+  if (timerEl) timerEl.textContent = '0:00';
+  if (progressEl) progressEl.textContent = '0 / 0 pieces';
+  const hardBadgeEl = document.getElementById('hard-badge');
+  if (hardBadgeEl) hardBadgeEl.style.display = 'none';
+
+  puzzleBootStarted = false;
+
+  if (loadingEl) {
+    loadingEl.classList.remove('loading-overlay--error');
+    loadingEl.hidden = false;
+    loadingEl.style.display = 'flex';
+    if (loadingText) loadingText.textContent = 'Loading puzzle...';
+    const sp = loadingEl.querySelector('.spinner');
+    if (sp) sp.style.display = '';
+  }
+}
+
 let puzzleBootStarted = false;
 
 async function askNameThenInit() {
@@ -291,14 +383,14 @@ async function askNameThenInit() {
 /** Home shell: load or swap the puzzle in the right-hand viewport. */
 window.__JT_bootPuzzle = async function bootPuzzle(newId) {
   if (!newId) return;
-  if (puzzleId && puzzleId !== newId) {
-    location.href = `/?id=${encodeURIComponent(newId)}`;
-    return;
-  }
   if (puzzleId === newId && meta) return;
+
+  if (puzzleId && puzzleId !== newId) {
+    await teardownPuzzle();
+  }
+
   puzzleId = newId;
   history.replaceState({}, '', `/?id=${encodeURIComponent(newId)}`);
-  puzzleBootStarted = false;
   await askNameThenInit();
 };
 
@@ -422,8 +514,8 @@ async function initPuzzle() {
 
     // Register this player
     await updatePlayerPresence(puzzleId, playerId, playerName);
-    // Heartbeat every 15s
-    setInterval(() => updatePlayerPresence(puzzleId, playerId, playerName), 15000);
+    if (presenceHeartbeat) clearInterval(presenceHeartbeat);
+    presenceHeartbeat = setInterval(() => updatePlayerPresence(puzzleId, playerId, playerName), 15000);
 
     // Timer — resume if already started; update display immediately so
     // late-joining players see the current elapsed time without a 1s delay.
@@ -823,6 +915,8 @@ function runReleaseHandCursorSequence() {
 }
 
 function attachDragListeners() {
+  if (dragListenersAttached) return;
+  dragListenersAttached = true;
   board.addEventListener('mousedown',   onMouseDown);
   // Touch/pen: pointerdown runs before touchstart — pickup here only, then touchstart skips duplicate onMouseDown.
   if (typeof PointerEvent === 'function') {
@@ -2955,6 +3049,9 @@ function setupHelp() {
     `<li><strong>${c.key}</strong>${c.desc}</li>`
   ).join('');
 
+  if (helpUiBound) return;
+  helpUiBound = true;
+
   helpBtn.addEventListener('click', () => {
     helpModal.style.display = 'flex';
   });
@@ -2980,6 +3077,9 @@ function setupQualityMode() {
   };
   applyState();
 
+  if (qualityUiBound) return;
+  qualityUiBound = true;
+
   qualityBtn.addEventListener('click', () => {
     highQualityMode = !highQualityMode;
     safeLocalSet('jt-high-quality', highQualityMode ? '1' : '0');
@@ -2990,6 +3090,9 @@ function setupQualityMode() {
 }
 
 function setupHorizontalPageLock() {
+  if (horizontalPageLockBound) return;
+  horizontalPageLockBound = true;
+
   // iOS Safari can still rubber-band horizontally even with overflow hidden.
   // We only block horizontal swipes that start outside the puzzle board area.
   document.addEventListener('touchstart', e => {
@@ -3025,6 +3128,9 @@ function setupHorizontalPageLock() {
 function setupPeek() {
   boxCoverImg.src = meta.imageUrl ?? ('data:image/jpeg;base64,' + meta.imageData);
 
+  if (peekUiBound) return;
+  peekUiBound = true;
+
   const toggle = () => boxCover.classList.toggle('show');
   const hide   = () => boxCover.classList.remove('show');
 
@@ -3033,44 +3139,48 @@ function setupPeek() {
 }
 
 function setupChat() {
-  // Open / close panel
-  const open  = () => {
-    chatPanel.classList.add('open');
-    chatOpen = true;
-    setChatBadge(0);
-    window.dispatchEvent(new CustomEvent('jt:chat-open'));
-  };
-  const close = () => { chatPanel.classList.remove('open'); chatOpen = false; };
+  if (unsubChat) {
+    unsubChat();
+    unsubChat = null;
+  }
 
-  chatBtn.addEventListener('click', () => chatOpen ? close() : open());
-  chatClose.addEventListener('click', close);
-  document.addEventListener('keydown', e => { if (e.key === 'Escape' && chatOpen) close(); });
-  window.addEventListener('jt:feedback-open', () => {
-    if (chatOpen) close();
-  });
+  if (!chatUiBound) {
+    chatUiBound = true;
+    const open  = () => {
+      chatPanel.classList.add('open');
+      chatOpen = true;
+      setChatBadge(0);
+      window.dispatchEvent(new CustomEvent('jt:chat-open'));
+    };
+    const close = () => { chatPanel.classList.remove('open'); chatOpen = false; };
 
-  // Send on Enter or send button
-  const send = () => {
-    const text = chatInput.value.trim();
-    if (!text) return;
-    chatInput.value = '';
-    const color = getPlayerColor(playerId);
-    sendChatMessage(puzzleId, { playerId, name: playerName, color, text, ts: Date.now() });
-  };
-  chatSendBtn.addEventListener('click', send);
-  chatInput.addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
-
-  // Emoji buttons — send as chat message
-  chatPanel.querySelectorAll('.emoji-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const emoji = btn.dataset.emoji;
-      const color = getPlayerColor(playerId);
-      sendChatMessage(puzzleId, { playerId, name: playerName, color, text: emoji, ts: Date.now() });
+    chatBtn.addEventListener('click', () => chatOpen ? close() : open());
+    chatClose.addEventListener('click', close);
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && chatOpen) close(); });
+    window.addEventListener('jt:feedback-open', () => {
+      if (chatOpen) close();
     });
-  });
 
-  // Listen for incoming messages
-  onChatMessages(puzzleId, msg => {
+    const send = () => {
+      const text = chatInput.value.trim();
+      if (!text) return;
+      chatInput.value = '';
+      const color = getPlayerColor(playerId);
+      sendChatMessage(puzzleId, { playerId, name: playerName, color, text, ts: Date.now() });
+    };
+    chatSendBtn.addEventListener('click', send);
+    chatInput.addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
+
+    chatPanel.querySelectorAll('.emoji-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const emoji = btn.dataset.emoji;
+        const color = getPlayerColor(playerId);
+        sendChatMessage(puzzleId, { playerId, name: playerName, color, text: emoji, ts: Date.now() });
+      });
+    });
+  }
+
+  unsubChat = onChatMessages(puzzleId, msg => {
     appendChatMessage(msg);
     if (isSingleEmoji(msg.text)) spawnBoardEmoji(msg);
     if (!chatOpen && msg.playerId !== playerId) setChatBadge(chatUnread + 1);
@@ -3135,7 +3245,9 @@ function escapeHtml(str) {
 }
 
 function setupShareLink() {
-  shareUrlEl.textContent = location.href;
+  if (shareUrlEl) shareUrlEl.textContent = location.href;
+  if (!copyBtn || shareLinkBound) return;
+  shareLinkBound = true;
   copyBtn.addEventListener('click', () => {
     navigator.clipboard.writeText(location.href).then(() => {
       copyBtn.textContent = 'Copied!';
