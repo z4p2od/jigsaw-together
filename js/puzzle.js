@@ -255,10 +255,37 @@ const qualityBtn      = document.getElementById('quality-btn');
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
-if (!isHomeShell && !puzzleId) {
-  location.href = '/';
-} else if (puzzleId) {
-  askNameThenInit();
+let prefetchCache = null;
+
+window.__JT_prefetchPuzzle = function prefetchPuzzle(id) {
+  if (!id) return;
+  if (prefetchCache?.id === id) return;
+  prefetchCache = { id, promise: loadPuzzle(id) };
+};
+
+window.__JT_setPlayerName = function setPlayerName(name) {
+  playerName = String(name || '').trim() || 'Anonymous';
+};
+
+let puzzleBootStarted = false;
+
+async function askNameThenInit() {
+  if (puzzleBootStarted) return;
+  puzzleBootStarted = true;
+  if (loadingEl) {
+    loadingEl.hidden = false;
+    loadingEl.style.display = 'flex';
+  }
+  if (!playerName) {
+    if (isHomeShell) {
+      playerName = safeSessionGet('playerName') || 'Anonymous';
+    } else {
+      playerName = await showNameModal();
+      safeSessionSet('playerName', playerName);
+    }
+  }
+  if (nameModal) nameModal.style.display = 'none';
+  await initPuzzle().catch(fatalOverlayError);
 }
 
 /** Home shell: load or swap the puzzle in the right-hand viewport. */
@@ -271,20 +298,17 @@ window.__JT_bootPuzzle = async function bootPuzzle(newId) {
   if (puzzleId === newId && meta) return;
   puzzleId = newId;
   history.replaceState({}, '', `/?id=${encodeURIComponent(newId)}`);
+  puzzleBootStarted = false;
   await askNameThenInit();
 };
 
-let puzzleBootStarted = false;
-
-async function askNameThenInit() {
-  if (puzzleBootStarted) return;
-  puzzleBootStarted = true;
-  if (!playerName) {
-    playerName = await showNameModal();
-    safeSessionSet('playerName', playerName);
-  }
-  nameModal.style.display = 'none';
-  initPuzzle().catch(fatalOverlayError);
+if (!isHomeShell && !puzzleId) {
+  location.href = '/';
+} else if (!isHomeShell && puzzleId) {
+  askNameThenInit();
+} else if (isHomeShell && loadingEl) {
+  loadingEl.hidden = true;
+  loadingEl.style.display = 'none';
 }
 
 function fatalOverlayError(err) {
@@ -333,7 +357,10 @@ async function initPuzzle() {
       },
     });
     loadingText.textContent = 'Loading puzzle...';
-    const data = await loadPuzzle(puzzleId);
+    const data = prefetchCache?.id === puzzleId
+      ? await prefetchCache.promise
+      : await loadPuzzle(puzzleId);
+    if (prefetchCache?.id === puzzleId) prefetchCache = null;
     // #region agent log
     jtDbgLog({
       runId: 'pre-fix-1',
@@ -408,7 +435,10 @@ async function initPuzzle() {
     }
 
     window.clearTimeout(watchdog);
-    loadingEl.style.display = 'none';
+    if (loadingEl) {
+      loadingEl.hidden = true;
+      loadingEl.style.display = 'none';
+    }
     scheduleMobilePieceFraming();
     updateProgress();
   } catch (err) {

@@ -14,6 +14,13 @@
   <link rel="apple-touch-icon" href="/icons/icon-192.png" />
   <title>Pu8l.io — Jigsaw Together</title>
   <link rel="stylesheet" href="/css/style.css" />
+  <script>
+    try {
+      if (sessionStorage.getItem('playerName')) {
+        document.documentElement.classList.add('jt-skip-welcome');
+      }
+    } catch (_) { /* private mode */ }
+  </script>
   <link rel="preconnect" href="https://res.cloudinary.com" crossorigin />
   <link rel="dns-prefetch" href="https://res.cloudinary.com" />
   <script>
@@ -39,12 +46,23 @@
     })();
   </script>
 
-  <div id="loading-overlay">
+  <div id="loading-overlay" hidden>
     <div class="spinner"></div>
     <p id="loading-text">Loading puzzle...</p>
   </div>
 
-  <div id="name-modal" class="modal-overlay">
+  <div id="welcome-screen" class="welcome-screen">
+    <div class="welcome-card">
+      <div class="brand-logo welcome-logo" aria-hidden="true">Pu8l.io</div>
+      <h1 class="welcome-title">Welcome to Pu8l.io</h1>
+      <p class="welcome-sub">What's your name?</p>
+      <input id="welcome-name-input" type="text" class="name-input" placeholder="Your name" maxlength="20" autocomplete="nickname" autocapitalize="words" />
+      <button type="button" id="welcome-start-btn" class="btn">Play Today's Puzzle</button>
+      <p id="welcome-status" class="welcome-status"></p>
+    </div>
+  </div>
+
+  <div id="name-modal" class="modal-overlay" hidden>
     <div class="modal">
       <h3>What's your name?</h3>
       <input id="name-input" type="text" class="name-input" placeholder="Your name" maxlength="20" autocomplete="off" autocapitalize="words" />
@@ -308,16 +326,16 @@
     }
     setTimeout(function () {
       var overlay = document.getElementById('loading-overlay');
-      if (overlay && overlay.style.display !== 'none'
-          && !overlay.classList.contains('loading-overlay--error')) {
-        showModuleError();
-      }
+      if (!overlay || overlay.hidden) return;
+      if (overlay.style.display === 'none') return;
+      if (overlay.classList.contains('loading-overlay--error')) return;
+      showModuleError();
     }, 25000);
   </script>
   <script>window.__JT_CLIENT_ERROR_ENDPOINT = '/api/client-error';</script>
   <script type="module" src="/js/client-observe.js"></script>
-  <script type="module" src="/js/app.js"></script>
   <script type="module" src="/js/puzzle.js" onerror="showModuleError()"></script>
+  <script type="module" src="/js/app.js"></script>
   <script type="module" src="/js/feedback.js"></script>
   <script src="/js/pwa.js" defer></script>
 </body>

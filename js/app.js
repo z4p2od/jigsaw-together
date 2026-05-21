@@ -10,11 +10,17 @@ const preview     = document.getElementById('preview');
 const statusEl    = document.getElementById('shell-status');
 const modeHint    = document.getElementById('mode-hint');
 const shellPlayBtn = document.getElementById('shell-play-btn');
+const welcomeScreen = document.getElementById('welcome-screen');
+const welcomeNameInput = document.getElementById('welcome-name-input');
+const welcomeStartBtn = document.getElementById('welcome-start-btn');
+const welcomeStatus = document.getElementById('welcome-status');
 
 /** @type {'potd' | 'play' | 'vs' | 'upload'} */
 let shellMode = 'potd';
 let shellPlayImagesLoaded = false;
 let playSelectedImage = null;
+let prefetchedPuzzleId = null;
+let prefetchPromise = null;
 
 const MAX_BYTES = 10 * 1024 * 1024;
 
@@ -292,12 +298,34 @@ function formatTime(secs) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-loadPOTD().then(async () => {
-  const existingId = new URLSearchParams(location.search).get('id');
-  if (!existingId && potdSection?.style.display !== 'none') {
-    await autoLoadPotdEasy();
+
+function readStoredName() {
+  try {
+    return (sessionStorage.getItem('playerName') || '').trim();
+  } catch {
+    return '';
   }
-});
+}
+
+function showWelcome() {
+  if (!welcomeScreen) return;
+  welcomeScreen.hidden = false;
+  welcomeNameInput?.focus();
+}
+
+function hideWelcome() {
+  if (!welcomeScreen) return;
+  welcomeScreen.hidden = true;
+  document.documentElement.classList.add('jt-skip-welcome');
+}
+
+function dismissLoadingOverlay() {
+  const el = document.getElementById('loading-overlay');
+  if (el) {
+    el.hidden = true;
+    el.style.display = 'none';
+  }
+}
 
 async function fetchPotdPuzzleId(difficulty) {
   const res = await fetch(`/api/potd-play?difficulty=${encodeURIComponent(difficulty)}&json=1`);
@@ -318,24 +346,97 @@ async function waitForPuzzleBoot() {
   }
 }
 
-async function autoLoadPotdEasy() {
+async function prefetchPotdEasy() {
+  await loadPOTD();
+  await waitForPuzzleBoot();
+  prefetchedPuzzleId = await fetchPotdPuzzleId('easy');
+  window.__JT_prefetchPuzzle?.(prefetchedPuzzleId);
+  return prefetchedPuzzleId;
+}
+
+async function prefetchPuzzleById(id) {
+  if (!id) throw new Error('Missing puzzle id');
+  await waitForPuzzleBoot();
+  prefetchedPuzzleId = id;
+  window.__JT_prefetchPuzzle?.(id);
+  return id;
+}
+
+async function bootPrefetchedPuzzle() {
+  if (!prefetchedPuzzleId) {
+    if (prefetchPromise) await prefetchPromise;
+  }
+  if (!prefetchedPuzzleId) throw new Error('No puzzle ready yet');
+  await window.__JT_bootPuzzle(prefetchedPuzzleId);
+}
+
+async function submitWelcome() {
+  const name = welcomeNameInput?.value.trim() || 'Anonymous';
   try {
-    setShellStatus('Loading today\'s easy puzzle…');
-    await waitForPuzzleBoot();
-    const id = await fetchPotdPuzzleId('easy');
-    await window.__JT_bootPuzzle(id);
-    setShellStatus('');
+    sessionStorage.setItem('playerName', name);
+  } catch { /* private mode */ }
+  window.__JT_setPlayerName?.(name);
+  if (welcomeStartBtn) welcomeStartBtn.disabled = true;
+  if (welcomeStatus) welcomeStatus.textContent = 'Loading puzzle…';
+  hideWelcome();
+  try {
+    await bootPrefetchedPuzzle();
+    if (welcomeStatus) welcomeStatus.textContent = '';
   } catch (err) {
     console.error(err);
-    setShellStatus(err.message || 'No puzzle of the day available.', true);
+    setShellStatus(err.message || 'Could not load puzzle.', true);
+    showWelcome();
+    if (welcomeStartBtn) welcomeStartBtn.disabled = false;
+    if (welcomeStatus) welcomeStatus.textContent = err.message || 'Could not load puzzle.';
   }
 }
+
+async function initWelcomeFlow() {
+  const existingId = new URLSearchParams(location.search).get('id');
+  const storedName = readStoredName();
+
+  prefetchPromise = existingId
+    ? prefetchPuzzleById(existingId)
+    : prefetchPotdEasy();
+
+  prefetchPromise.catch((err) => {
+    console.error(err);
+    if (welcomeStatus && !welcomeScreen?.hidden) {
+      welcomeStatus.textContent = err.message || 'Puzzle of the day unavailable';
+    }
+  });
+
+  if (storedName) {
+    window.__JT_setPlayerName?.(storedName);
+    hideWelcome();
+    try {
+      await bootPrefetchedPuzzle();
+    } catch (err) {
+      console.error(err);
+      setShellStatus(err.message || 'Could not load puzzle.', true);
+      dismissLoadingOverlay();
+    }
+    return;
+  }
+
+  showWelcome();
+  if (storedName && welcomeNameInput) welcomeNameInput.value = storedName;
+
+  welcomeStartBtn?.addEventListener('click', () => submitWelcome());
+  welcomeNameInput?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') submitWelcome();
+  });
+}
+
+initWelcomeFlow();
 
 async function startSelectedPotd() {
   setShellStatus('Starting puzzle…');
   shellPlayBtn.disabled = true;
   try {
     const id = await fetchPotdPuzzleId(selectedPotdKey);
+    prefetchedPuzzleId = id;
+    window.__JT_prefetchPuzzle?.(id);
     if (typeof window.__JT_bootPuzzle === 'function') {
       await window.__JT_bootPuzzle(id);
     } else {

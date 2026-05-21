@@ -2814,3 +2814,67 @@ body.home-shell::before {
     margin-bottom: 4px;
   }
 }
+
+/* ── Welcome screen ── */
+
+.jt-skip-welcome #welcome-screen {
+  display: none !important;
+}
+
+.welcome-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 10050;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: max(20px, env(safe-area-inset-top, 0px)) 20px max(20px, env(safe-area-inset-bottom, 0px));
+  background: rgba(58, 46, 70, 0.82);
+  backdrop-filter: blur(2px);
+}
+
+.welcome-screen[hidden] {
+  display: none !important;
+}
+
+.welcome-card {
+  width: 100%;
+  max-width: 360px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  padding: 28px 22px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  text-align: center;
+}
+
+.welcome-logo {
+  width: 96px;
+  height: 96px;
+  font-size: 1.2rem;
+  margin: 0;
+}
+
+.welcome-title {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 400;
+  color: var(--accent);
+  line-height: 1.2;
+}
+
+.welcome-sub {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.welcome-status {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  min-height: 1.2em;
+  margin: 0;
+}
