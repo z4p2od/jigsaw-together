@@ -4,15 +4,15 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="description" content="Co-op jigsaw puzzle — solve together in real time." />
-  <meta name="theme-color" content="#100018" />
+  <meta name="theme-color" content="#3A2E46" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="Jigsaw" />
+  <meta name="apple-mobile-web-app-title" content="Pu8l.io" />
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="/icons/icon-192.png" />
-  <title>Jigsaw Together</title>
+  <title>Pu8l.io — Puzzle</title>
   <link rel="stylesheet" href="/css/style.css" />
 </head>
 <body class="puzzle-body">
@@ -73,16 +73,12 @@
   <div class="puzzle-page">
     <header class="puzzle-header">
       <a href="/" class="icon-btn home-btn" title="Back to home">&#8592;</a>
-      <h2>Jigsaw Together</h2>
-      <span id="hard-badge" class="hard-badge" style="display:none" title="Pieces start rotated — right-click or long-press to rotate them">Hard 🔥</span>
       <div class="share-box">
         <span id="share-url"></span>
-        <button id="copy-btn">Copy Link</button>
       </div>
-      <div class="header-right">
-        <div id="players-list" class="players-list"></div>
-        <span id="timer-display" class="timer">0:00</span>
-        <span class="progress-text" id="progress-text">0 / 0 pieces</span>
+      <button id="copy-btn" class="btn-copy">Copy Link</button>
+      <span id="hard-badge" class="hard-badge" style="display:none" title="Pieces start rotated — right-click or long-press to rotate them">Hard</span>
+      <div class="header-actions">
         <button id="quality-btn" class="icon-btn" title="Toggle high quality pieces">HQ</button>
         <button id="peek-btn" class="icon-btn" title="See the full image">🖼️</button>
         <button id="help-btn" class="icon-btn" title="Controls">?</button>
@@ -94,6 +90,18 @@
         <div id="puzzle-board"></div>
       </div>
     </div>
+
+    <footer class="puzzle-status-bar">
+      <div class="status-segment status-segment--name">
+        <div id="players-list" class="players-list"></div>
+      </div>
+      <div class="status-segment status-segment--timer">
+        <span id="timer-display" class="timer">0:00</span>
+      </div>
+      <div class="status-segment status-segment--progress">
+        <span class="progress-text" id="progress-text">0 / 0 pieces</span>
+      </div>
+    </footer>
   </div>
 
   <!-- Chat launcher + popup (bottom-left, FB Messenger style) -->

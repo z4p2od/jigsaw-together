@@ -4,27 +4,25 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="description" content="Pick a photo and start a collaborative jigsaw puzzle." />
-  <meta name="theme-color" content="#100018" />
+  <meta name="theme-color" content="#3A2E46" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="Jigsaw" />
+  <meta name="apple-mobile-web-app-title" content="Pu8l.io" />
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="/icons/icon-192.png" />
-  <title>Pick a Puzzle — Jigsaw Together</title>
+  <title>Pu8l.io — Pick a Puzzle</title>
   <link rel="stylesheet" href="/css/style.css" />
 </head>
 <body>
-  <main class="landing">
-    <div>
-      <h1>Jigsaw <span>Together</span></h1>
-    </div>
+  <main class="landing landing-dashboard">
+    <div class="brand-logo" aria-label="Pu8l.io">Pu8l.io</div>
 
-    <div class="card" style="gap:16px">
+    <section class="panel" style="gap:16px">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-        <p class="field-label" style="margin:0">🧩 Pick an Image</p>
-        <a href="/" style="font-size:0.82rem;color:var(--text-muted)">← Back</a>
+        <h2 class="panel-heading" style="margin:0;font-size:1.1rem">Pick an Image</h2>
+        <a href="/" class="panel-link">← Back</a>
       </div>
 
       <div id="image-grid-wrap">
@@ -60,9 +58,9 @@
         <p class="mode-hint" id="public-hint" style="display:none">Anyone can find and join this room from the <a href="/rooms" style="color:var(--accent)">public lobby</a>.</p>
       </div>
 
-      <button class="btn" id="start-btn" disabled>Start Puzzle</button>
+      <button class="btn btn-pale" id="start-btn" disabled>Start Puzzle</button>
       <p class="status" id="play-status"></p>
-    </div>
+    </section>
   </main>
 
   <script type="module" src="/js/play.js"></script>

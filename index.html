@@ -4,15 +4,15 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="description" content="Upload a photo, share a link, solve jigsaw puzzles together." />
-  <meta name="theme-color" content="#100018" />
+  <meta name="theme-color" content="#3A2E46" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="Jigsaw" />
+  <meta name="apple-mobile-web-app-title" content="Pu8l.io" />
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="/icons/icon-192.png" />
-  <title>Jigsaw Together</title>
+  <title>Pu8l.io — Jigsaw Together</title>
   <link rel="stylesheet" href="/css/style.css" />
   <link rel="preconnect" href="https://res.cloudinary.com" crossorigin />
   <link rel="dns-prefetch" href="https://res.cloudinary.com" />
@@ -38,50 +38,47 @@
       if (b) b.addEventListener('click', function () { el.hidden = true; });
     })();
   </script>
-  <main class="landing">
-    <div>
-      <h1>Jigsaw <span>Together</span></h1>
-      <p class="subtitle">Upload a photo, share a link, solve it together.</p>
-    </div>
+  <main class="landing landing-dashboard">
+    <div class="brand-logo" aria-label="Pu8l.io">Pu8l.io</div>
 
     <!-- Puzzle of the Day — hidden until JS confirms today's puzzles exist -->
-    <div id="potd-section" style="display:none">
-      <p class="field-label potd-heading">Puzzle of the Day</p>
+    <section id="potd-section" class="panel" style="display:none">
+      <h2 class="panel-heading potd-heading">Puzzle of the Day</h2>
       <div class="potd-card potd-card--compact">
         <div id="potd-tabs" class="potd-tabs" role="tablist" aria-label="Daily difficulty">
-          <button type="button" class="potd-tab" role="tab" data-diff="easy" id="potd-tab-easy" hidden aria-selected="false" tabindex="-1">🟢 Easy</button>
-          <button type="button" class="potd-tab" role="tab" data-diff="medium" id="potd-tab-medium" hidden aria-selected="false" tabindex="-1">🟡 Medium</button>
-          <button type="button" class="potd-tab" role="tab" data-diff="hard" id="potd-tab-hard" hidden aria-selected="false" tabindex="-1">🔴 Hard 🔥</button>
+          <button type="button" class="potd-tab" role="tab" data-diff="easy" id="potd-tab-easy" hidden aria-selected="false" tabindex="-1">Easy</button>
+          <button type="button" class="potd-tab" role="tab" data-diff="medium" id="potd-tab-medium" hidden aria-selected="false" tabindex="-1">Medium</button>
+          <button type="button" class="potd-tab" role="tab" data-diff="hard" id="potd-tab-hard" hidden aria-selected="false" tabindex="-1">Hard</button>
         </div>
         <p id="potd-desc" class="potd-desc"></p>
         <div id="potd-preview" class="potd-preview-wrap" hidden>
           <img id="potd-preview-img" class="potd-preview-img" alt="" width="640" height="360" decoding="async" fetchpriority="high" />
         </div>
-        <a id="potd-play" class="btn potd-play" href="#">Play today's puzzle</a>
         <div class="potd-leaderboard">
-          <p class="potd-lb-title">Today's top times</p>
+          <p class="potd-lb-title">Today's Top Times</p>
           <ol id="potd-lb" class="potd-lb-list"><li class="lb-empty">No completions yet — be the first!</li></ol>
         </div>
+        <a id="potd-play" class="btn btn-pale potd-play" href="#">Play Today's Puzzle</a>
       </div>
-    </div>
+    </section>
 
     <!-- Pick an Image entry -->
-    <div class="card" style="gap:12px;text-align:center">
-      <p class="field-label">Play Together</p>
-      <p style="color:var(--text-muted);font-size:0.9rem;margin:0">Pick an image from our library and invite friends</p>
-      <a href="/play" class="btn">🧩 Pick an Image</a>
-      <a href="/rooms" style="font-size:0.85rem;color:var(--text-muted)">Browse open rooms →</a>
-    </div>
+    <section class="panel">
+      <h2 class="panel-heading">Play Together</h2>
+      <p class="subtitle">Solve puzzles from our library and invite friends</p>
+      <a href="/play" class="btn">Pick an Image</a>
+      <a href="/rooms" class="panel-link">Browse open rooms →</a>
+    </section>
 
     <!-- VS Mode entry -->
-    <div class="card" style="gap:16px;text-align:center">
-      <p class="field-label">VS Mode</p>
-      <p style="color:var(--text-muted);font-size:0.9rem;margin:0">Race a friend — same puzzle, first to finish wins</p>
+    <section class="panel">
+      <h2 class="panel-heading">Vs Mode</h2>
+      <p class="subtitle">Play against a friend — same puzzle, first to finish wins</p>
       <div class="piece-section">
         <p class="field-label">Match Type</p>
         <div class="piece-options">
-          <label><input type="radio" name="vs-type" value="1v1" checked /> <span>1v1</span></label>
-          <label><input type="radio" name="vs-type" value="team" /> <span>Team vs Team</span></label>
+          <label><input type="radio" name="vs-type" value="1v1" checked /> <span>1 Vs 1</span></label>
+          <label><input type="radio" name="vs-type" value="team" /> <span>Team Vs Team</span></label>
         </div>
       </div>
       <div class="piece-section">
@@ -96,8 +93,8 @@
         <p class="field-label">Mode</p>
         <div class="piece-options">
           <label><input type="radio" name="vs-mode" value="normal" checked /> <span>Casual</span></label>
-          <label><input type="radio" name="vs-mode" value="hard" /> <span>Hard 🔥</span></label>
-          <label><input type="radio" name="vs-mode" value="chaos" /> <span>Chaos ⚡</span></label>
+          <label><input type="radio" name="vs-mode" value="hard" /> <span>Hard</span></label>
+          <label><input type="radio" name="vs-mode" value="chaos" /> <span>Chaos</span></label>
         </div>
       </div>
       <div class="piece-section">
@@ -108,14 +105,16 @@
         </div>
         <div id="vs-image-picker" style="display:none;margin-top:10px">
           <div id="vs-image-grid" class="vs-image-grid"></div>
-          <p id="vs-image-status" style="font-size:0.8rem;color:var(--text-muted);margin:4px 0 0">Loading…</p>
+          <p id="vs-image-status" class="potd-desc">Loading…</p>
         </div>
       </div>
-      <button class="btn" id="vs-create-btn">⚡ Start VS Match</button>
-      <a href="/vs-rooms" style="font-size:0.85rem;color:var(--text-muted)">Browse open rooms →</a>
-    </div>
+      <button class="btn btn-pale" id="vs-create-btn">Start Vs Match</button>
+      <a href="/vs-rooms" class="panel-link">Browse open rooms →</a>
+    </section>
 
-    <div class="card">
+    <section class="panel panel-upload">
+      <h2 class="panel-heading">Upload</h2>
+      <p class="subtitle">Use your own photo and share a link</p>
       <div class="upload-zone" id="upload-zone">
         <input type="file" id="file-input" accept="image/*" />
         <div id="upload-placeholder">
@@ -142,14 +141,14 @@
         <p class="field-label">Mode</p>
         <div class="piece-options">
           <label><input type="radio" name="mode" value="normal" checked /> <span>Normal</span></label>
-          <label><input type="radio" name="mode" value="hard" /> <span>Hard 🔥</span></label>
+          <label><input type="radio" name="mode" value="hard" /> <span>Hard</span></label>
         </div>
         <p class="mode-hint" id="mode-hint" style="display:none">Pieces start randomly rotated. Right-click or double-tap to rotate them into position.</p>
       </div>
 
-      <button class="btn" id="create-btn" disabled>Create Puzzle</button>
+      <button class="btn" id="create-btn" disabled>Load Puzzle</button>
       <p class="status" id="status"></p>
-    </div>
+    </section>
   </main>
 
   <script type="module" src="/js/app.js"></script>
