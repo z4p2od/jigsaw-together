@@ -36,6 +36,13 @@ import {
   randomQuarterRotation,
 } from './puzzle-rotation.js';
 import { applyPieceBackMask, getPieceFrontSrc } from './piece-dom.js';
+import {
+  getDropBoxLayout,
+  getDropSpawnPosition,
+  getDropTiming,
+  pieceTransform,
+  shouldPlayDropIntro,
+} from './drop-intro.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -297,6 +304,11 @@ window.__JT_hidePlayLoading = hidePlayLoading;
 let presenceHeartbeat = null;
 let unsubChat = null;
 let dragListenersAttached = false;
+let pendingDropIntro = false;
+let dropIntroActive = false;
+/** @type {Animation[]} */
+let dropIntroAnimations = [];
+let dropIntroCleanup = null;
 let helpUiBound = false;
 let peekUiBound = false;
 let qualityUiBound = false;
@@ -374,6 +386,7 @@ async function teardownPuzzle() {
   const hardBadgeEl = document.getElementById('hard-badge');
   if (hardBadgeEl) hardBadgeEl.style.display = 'none';
 
+  cancelDropIntro(true);
   puzzleBootStarted = false;
 
   hidePlayLoading();
@@ -494,6 +507,13 @@ async function initPuzzle() {
 
     if (meta.hardMode) document.getElementById('hard-badge').style.display = '';
 
+    pendingDropIntro = shouldPlayDropIntro({
+      meta,
+      pieceStates,
+      solvedCount,
+      prefersReducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+    });
+
     setupBoard();
     syncHeaderToastOffset();
     syncKeyboardViewportOffset();
@@ -518,6 +538,14 @@ async function initPuzzle() {
     reconstructGroups();
     rebuildPlacedFlags();
     setupShareLink();
+
+    hidePlayLoading();
+
+    if (pendingDropIntro) {
+      await playDropIntro();
+    }
+    pendingDropIntro = false;
+
     attachDragListeners();
 
     setupHelp();
@@ -544,7 +572,6 @@ async function initPuzzle() {
     }
 
     window.clearTimeout(watchdog);
-    hidePlayLoading();
     scheduleMobilePieceFraming();
     updateProgress();
   } catch (err) {
@@ -679,6 +706,128 @@ function setupBoard() {
   }
 }
 
+function cancelDropIntro(silent = false) {
+  dropIntroAnimations.forEach((a) => {
+    try { a.cancel(); } catch (_) { /* ignore */ }
+  });
+  dropIntroAnimations = [];
+  dropIntroActive = false;
+  pendingDropIntro = false;
+  document.body.classList.remove('drop-intro-active');
+  if (typeof dropIntroCleanup === 'function') {
+    dropIntroCleanup();
+    dropIntroCleanup = null;
+  }
+  if (!silent && pieceStates?.length) {
+    for (let i = 0; i < pieceStates.length; i++) {
+      const p = pieceStates[i];
+      if (!pieceEls[i] || !Number.isFinite(p?.x) || !Number.isFinite(p?.y)) continue;
+      movePieceEl(i, p.x, p.y, pieceEls[i], p.rotation);
+    }
+  }
+}
+
+async function playDropIntro() {
+  if (!board || !meta || !pieceStates.length) return;
+
+  const layout = getDropBoxLayout(meta, BOARD_W, BOARD_H);
+  const { duration, stagger } = getDropTiming(totalPieces);
+  const pad = meta._pad ?? 0;
+
+  const box = document.createElement('div');
+  box.className = 'puzzle-drop-box';
+  box.setAttribute('aria-hidden', 'true');
+  box.style.left = `${layout.boxX}px`;
+  box.style.top = `${layout.boxY}px`;
+  box.style.width = `${layout.boxW}px`;
+  box.style.height = `${layout.boxH}px`;
+  box.innerHTML = '<span class="puzzle-drop-box__label">Pu8l.io</span><span class="puzzle-drop-box__mouth"></span>';
+  board.appendChild(box);
+
+  const skipHost = document.querySelector('.play-viewport') || boardWrap;
+  const skipBtn = document.createElement('button');
+  skipBtn.type = 'button';
+  skipBtn.className = 'btn btn-sm drop-intro-skip';
+  skipBtn.textContent = 'Skip';
+  skipHost?.appendChild(skipBtn);
+
+  document.body.classList.add('drop-intro-active');
+  dropIntroActive = true;
+
+  dropIntroCleanup = () => {
+    box.remove();
+    skipBtn.remove();
+  };
+
+  const indices = [];
+  for (let i = 0; i < totalPieces; i++) {
+    if (pieceStates[i]?.solved || !pieceEls[i]) continue;
+    indices.push(i);
+  }
+
+  let finished = false;
+  const finish = (snapOnly = false) => {
+    if (finished) return;
+    finished = true;
+    if (snapOnly) {
+      indices.forEach((i) => {
+        const p = pieceStates[i];
+        pieceEls[i]?.classList.remove('drop-intro-flying');
+        movePieceEl(i, p.x, p.y, pieceEls[i], p.rotation);
+      });
+    } else {
+      indices.forEach((i) => {
+        const p = pieceStates[i];
+        const el = pieceEls[i];
+        if (!el) return;
+        el.classList.remove('drop-intro-flying');
+        el.style.willChange = 'auto';
+        movePieceEl(i, p.x, p.y, el, p.rotation);
+      });
+    }
+    cancelDropIntro(true);
+    scheduleSyncBoardScrollContentSize();
+  };
+
+  skipBtn.addEventListener('click', () => finish(true));
+
+  const leaveAt = Math.max(0, Math.floor(indices.length * 0.65) - 1);
+  const animPromises = indices.map((index, order) => new Promise((resolve) => {
+    const el = pieceEls[index];
+    const p = pieceStates[index];
+    if (!el) {
+      resolve();
+      return;
+    }
+
+    const spawn = getDropSpawnPosition(index, layout);
+    const from = pieceTransform(spawn.x, spawn.y, 0, pad);
+    const to = pieceTransform(p.x, p.y, p.rotation, pad);
+
+    if (order === leaveAt) {
+      window.setTimeout(() => box.classList.add('is-leaving'), order * stagger);
+    }
+
+    el.style.willChange = 'transform';
+    el.classList.add('drop-intro-flying');
+    const anim = el.animate(
+      [{ transform: from }, { transform: to }],
+      {
+        duration,
+        delay: order * stagger,
+        easing: 'cubic-bezier(0.22, 1.05, 0.36, 1)',
+        fill: 'forwards',
+      },
+    );
+    dropIntroAnimations.push(anim);
+    anim.onfinish = () => resolve();
+    anim.oncancel = () => resolve();
+  }));
+
+  await Promise.all(animPromises);
+  if (!finished) finish(false);
+}
+
 // ── Rendering ─────────────────────────────────────────────────────────────────
 
 async function renderAllPieces() {
@@ -725,6 +874,8 @@ async function renderAllPieces() {
   meta._displayH = displayH;
   meta._pad      = pad;
 
+  const introLayout = pendingDropIntro ? getDropBoxLayout(meta, BOARD_W, BOARD_H) : null;
+
   const BATCH = 50;
   for (let start = 0; start < totalPieces; start += BATCH) {
     await new Promise(r => setTimeout(r, 0));
@@ -754,8 +905,17 @@ async function renderAllPieces() {
         throw cutErr;
       }
       const p      = pieceStates[i];
+      let px = p.x;
+      let py = p.y;
+      let startRot = p.rotation;
+      if (pendingDropIntro && !p.solved && introLayout) {
+        const spawn = getDropSpawnPosition(i, introLayout);
+        px = spawn.x;
+        py = spawn.y;
+        startRot = 0;
+      }
       // Keep gameplay dimensions exactly unchanged; only improve texture density.
-      renderPiece(i, dataUrl, p.x, p.y, p.solved, displayW + pad * 2, displayH + pad * 2);
+      renderPiece(i, dataUrl, px, py, p.solved, displayW + pad * 2, displayH + pad * 2, startRot);
     }
     loadingText.textContent = `Cutting pieces... ${Math.min(end, totalPieces)} / ${totalPieces}`;
   }
@@ -790,7 +950,7 @@ function syncPieceFaceDownClass(index) {
   else el.classList.remove('face-down');
 }
 
-function renderPiece(index, dataUrl, x, y, solved, elW, elH) {
+function renderPiece(index, dataUrl, x, y, solved, elW, elH, rotationOverride) {
   const pieceEl = document.createElement('div');
   pieceEl.className = 'piece' + (solved ? ' solved' : '');
   pieceEl.dataset.index = String(index);
@@ -814,7 +974,7 @@ function renderPiece(index, dataUrl, x, y, solved, elW, elH) {
 
   if (pieceStates[index]?.faceDown) pieceEl.classList.add('face-down');
 
-  movePieceEl(index, x, y, pieceEl);
+  movePieceEl(index, x, y, pieceEl, rotationOverride);
   board.appendChild(pieceEl);
   pieceEls[index] = pieceEl;
   updatePieceZIndex(index);
@@ -840,12 +1000,15 @@ function refreshPieceTransformAfterPocket(index) {
 // We translate by (x-pad, y-pad) then rotate around the element centre.
 // Using transform for both keeps positioning and rotation independent —
 // no interaction between left/top and rotate.
-function movePieceEl(index, x, y, el) {
+function movePieceEl(index, x, y, el, rotationOverride) {
   const pad = meta?._pad ?? 0;
   const e   = el ?? pieceEls[index];
   if (!e) return;
-  const rot = Number(pieceStates[index]?.rotation);
-  const rotDeg = Number.isFinite(rot) ? rot : 0;
+  const stateRot = Number(pieceStates[index]?.rotation);
+  const rot = Number.isFinite(Number(rotationOverride))
+    ? Number(rotationOverride)
+    : (Number.isFinite(stateRot) ? stateRot : 0);
+  const rotDeg = rot;
   e.style.left = '0';
   e.style.top  = '0';
   const tx = x - pad;
@@ -979,6 +1142,7 @@ function onBoardPointerDownPick(e) {
 }
 
 function onMouseDown(e) {
+  if (dropIntroActive) return;
   if (typeof e.button === 'number' && e.button !== 0) return;
   if (e.button === 0 && e.ctrlKey) return;
   if (Date.now() < suppressMouseDownPickUntil) return;
@@ -2901,6 +3065,7 @@ function reconstructGroups() {
 // ── Remote updates ────────────────────────────────────────────────────────────
 
 function applyRemoteUpdate(index, data) {
+  if (dropIntroActive) return;
   if (dragging && dragging.indices.includes(index)) return;
   if (!pieceStates[index]) return;
 

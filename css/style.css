@@ -1119,8 +1119,84 @@ iframe[src*="vercel.live"] {
 }
 
 .piece.solved {
+  pointer-events: none;
   cursor: default;
   z-index: 1;
+}
+
+/* ── Drop intro: pieces pour from the puzzle box ── */
+
+.puzzle-drop-box {
+  position: absolute;
+  z-index: 400;
+  pointer-events: none;
+  border: 2px solid var(--neon);
+  background: linear-gradient(180deg, #241830 0%, #000 72%);
+  box-shadow: 4px 4px 0 #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.4s ease, transform 0.4s ease;
+}
+
+.puzzle-drop-box.is-leaving {
+  opacity: 0;
+  transform: translateY(-10px) scale(0.94);
+}
+
+.puzzle-drop-box__label {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  color: var(--accent);
+  text-align: center;
+  line-height: 1.1;
+  padding: 0 8px;
+}
+
+.puzzle-drop-box__mouth {
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  bottom: -3px;
+  height: 6px;
+  background: var(--neon);
+  box-shadow: 0 0 10px rgba(0, 255, 0, 0.45);
+}
+
+.drop-intro-skip {
+  position: absolute;
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  right: calc(12px + env(safe-area-inset-right, 0px));
+  z-index: 45;
+  width: auto;
+  min-width: 72px;
+  padding: 8px 14px;
+  font-size: 0.82rem;
+  background: var(--surface);
+  color: var(--accent);
+  border: 1px solid var(--border);
+}
+
+.drop-intro-skip:hover {
+  background: var(--neon);
+  color: #000;
+}
+
+body.drop-intro-active .piece {
+  pointer-events: none;
+  cursor: default;
+}
+
+body.drop-intro-active #puzzle-board {
+  cursor: default;
+}
+
+body.drop-intro-active .puzzle-board-wrap {
+  cursor: default;
+}
+
+.piece.drop-intro-flying {
+  z-index: 900 !important;
 }
 
 /* Loading overlay */
