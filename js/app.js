@@ -2,6 +2,7 @@ import { createPuzzle, getPOTD, getPuzzleImageUrl, onPOTDLeaderboard } from './f
 import { generateEdges } from './jigsaw.js';
 import { getImageDimensions, withTimeout } from './image-utils.js';
 import { scatterPieces } from './scatter-pieces.js';
+import { resetCelebrationEl, welcomeStartLabel } from './puzzle-completion.js';
 
 const fileInput   = document.getElementById('file-input');
 const uploadZone  = document.getElementById('upload-zone');
@@ -403,6 +404,10 @@ async function submitWelcome() {
 async function initWelcomeFlow() {
   const existingId = new URLSearchParams(location.search).get('id');
   const storedName = readStoredName();
+
+  if (welcomeStartBtn) {
+    welcomeStartBtn.textContent = welcomeStartLabel(!!existingId);
+  }
 
   prefetchPromise = existingId
     ? prefetchPuzzleById(existingId)
@@ -878,7 +883,15 @@ shellPlayBtn?.addEventListener('click', async () => {
 });
 
 document.getElementById('celebration-new-btn')?.addEventListener('click', () => {
-  document.getElementById('celebration').style.display = 'none';
+  if (typeof window.__JT_hideCelebration === 'function') {
+    window.__JT_hideCelebration();
+  } else {
+    resetCelebrationEl(document.getElementById('celebration'), {
+      timeEl: document.getElementById('celebration-time'),
+      lbEl: document.getElementById('celebration-lb'),
+      lbListEl: document.getElementById('celebration-lb-list'),
+    });
+  }
   shellMode = 'potd';
   updateShellPlayButton();
 });

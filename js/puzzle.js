@@ -43,6 +43,11 @@ import {
   pieceTransform,
   shouldPlayDropIntro,
 } from './drop-intro.js';
+import {
+  isPuzzleComplete,
+  resetCelebrationEl,
+  showCelebrationEl,
+} from './puzzle-completion.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -349,7 +354,7 @@ async function teardownPuzzle() {
 
   if (board) board.innerHTML = '';
   if (chatMessages) chatMessages.innerHTML = '';
-  if (celebration) celebration.classList.remove('show');
+  hideCelebration();
   if (handContainer) {
     handContainer.remove();
     handContainer = null;
@@ -574,6 +579,9 @@ async function initPuzzle() {
     window.clearTimeout(watchdog);
     scheduleMobilePieceFraming();
     updateProgress();
+    // Already-complete shared puzzles never fire snap/remote solved events on
+    // this client — reconcile the banner without recording a new POTD score.
+    checkCompletion({ recordScore: false });
   } catch (err) {
     window.clearTimeout(watchdog);
     try { console.error(err); } catch (_) { /* */ }
@@ -3163,9 +3171,26 @@ function syncRoomsSolvedCount() {
   updateRoomsIndex(puzzleId, { solvedCount });
 }
 
-function checkCompletion() {
-  const done = solvedCount >= totalPieces ||
-    (groupedPieceCount === totalPieces && activeGroupCount === 1);
+function hideCelebration() {
+  resetCelebrationEl(celebration, {
+    timeEl: celebrationTime,
+    lbEl: celebrationLb,
+    lbListEl: celebrationLbList,
+  });
+}
+
+/**
+ * @param {{ recordScore?: boolean }} [opts]
+ *   recordScore — when false (initial load of an already-complete puzzle),
+ *   show the banner / leaderboard but do not write a new POTD score.
+ */
+function checkCompletion({ recordScore = true } = {}) {
+  const done = isPuzzleComplete({
+    solvedCount,
+    totalPieces,
+    groupedPieceCount,
+    activeGroupCount,
+  });
   if (!done) return;
 
   if (meta?.isPublic) updateRoomsIndex(puzzleId, { status: 'done', solvedCount });
@@ -3174,18 +3199,21 @@ function checkCompletion() {
   stopTimer();
   if (startedAt) {
     const secs = Math.floor((Date.now() - startedAt) / 1000);
-    celebrationTime.textContent = `Solved in ${formatTime(secs)}`;
+    if (celebrationTime) celebrationTime.textContent = `Solved in ${formatTime(secs)}`;
 
-    // Record POTD leaderboard entry — only the player who triggers completion writes it
-    if (meta.isPOTD && meta.potdDifficulty) {
+    // Record POTD leaderboard entry — only the player who triggers a live completion
+    if (recordScore && meta.isPOTD && meta.potdDifficulty) {
       const names = Object.values(playersMap).map(p => p.name);
       if (names.length === 0) names.push(playerName);
       recordPOTDScore(puzzleId, meta.potdDifficulty, names, secs);
-      // Show live leaderboard in celebration banner
+    }
+    // Show live leaderboard in celebration banner (view-only on reopen is fine)
+    if (meta.isPOTD && meta.potdDifficulty && celebrationLb) {
       const today = new Date().toLocaleDateString('sv', { timeZone: 'Europe/Athens' });
       celebrationLb.style.display = '';
       onPOTDLeaderboard(meta.potdDifficulty, today, entries => {
         const sorted = Object.values(entries).sort((a, b) => a.secs - b.secs).slice(0, 5);
+        if (!celebrationLbList) return;
         celebrationLbList.innerHTML = sorted.length === 0
           ? '<li class="lb-empty">No completions yet</li>'
           : sorted.map((e, i) => `<li>
@@ -3196,8 +3224,10 @@ function checkCompletion() {
       });
     }
   }
-  celebration.classList.add('show');
+  showCelebrationEl(celebration);
 }
+
+window.__JT_hideCelebration = hideCelebration;
 
 function setupHelp() {
   const controls = [
