@@ -317,10 +317,17 @@
       var overlay = document.getElementById('loading-overlay');
       var text    = document.getElementById('loading-text');
       var spinner = overlay ? overlay.querySelector('.spinner') : null;
-      if (overlay) overlay.classList.add('loading-overlay--error');
+      var welcomeStatus = document.getElementById('welcome-status');
+      if (overlay) {
+        overlay.hidden = false;
+        overlay.style.display = 'flex';
+        overlay.classList.add('loading-overlay--error');
+      }
       if (spinner) spinner.style.display = 'none';
-      if (text) text.textContent =
+      var msg =
         'Could not load puzzle. If you opened this from a social app, tap Share → Open in Safari. Otherwise refresh the page.';
+      if (text) text.textContent = msg;
+      if (welcomeStatus) welcomeStatus.textContent = msg;
     }
     setTimeout(function () {
       var overlay = document.getElementById('loading-overlay');
