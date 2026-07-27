@@ -7,6 +7,7 @@ import {
   updateGroupPosition,
   writePocketRestoreStates,
   writeSnappedPositions,
+  clearPieceGroupIds,
   solveGroup,
   onPiecesChanged,
   updatePlayerPresence,
@@ -35,6 +36,9 @@ import {
   rotateGroupQuarterTurnCW,
   randomQuarterRotation,
 } from './puzzle-rotation.js';
+import {
+  sanitizePieceGroupIds,
+} from './puzzle-groups.js';
 import { applyPieceBackMask, getPieceFrontSrc } from './piece-dom.js';
 import {
   getDropBoxLayout,
@@ -1469,16 +1473,19 @@ function cancelTouchHoldSelection() {
 
 // ── Face-down reveal / rotation ───────────────────────────────────────────────
 
-function revealPiece(index, { correctRotation = false } = {}) {
+function revealPiece(index, { correctRotation = false, forcedRotation = undefined } = {}) {
   const state = pieceStates[index];
   if (!state) return;
   const needsReveal = !!state.faceDown;
-  if (!needsReveal && !correctRotation) return;
+  if (!needsReveal && !correctRotation && forcedRotation === undefined) return;
 
-  const applyCorrect = needsReveal || correctRotation;
-  const rotation = applyCorrect
-    ? (meta?.hardMode ? randomQuarterRotation() : 0)
-    : (state.rotation ?? 0);
+  const applyCorrect = needsReveal || correctRotation || forcedRotation !== undefined;
+  let rotation = state.rotation ?? 0;
+  if (forcedRotation !== undefined) {
+    rotation = forcedRotation;
+  } else if (applyCorrect) {
+    rotation = meta?.hardMode ? randomQuarterRotation() : 0;
+  }
 
   state.faceDown = false;
   if (applyCorrect) state.rotation = rotation;
@@ -1494,10 +1501,21 @@ function revealPiece(index, { correctRotation = false } = {}) {
   scheduleSyncBoardScrollContentSize();
 }
 
-/** Flip face-down pieces in a drag group to the correct angle, then allow dragging. */
+/**
+ * Flip face-down pieces in a drag group. All newly revealed pieces share one
+ * rotation so a connected group cannot end up mismatched/"stacked".
+ */
 function revealFaceDownInIndices(indices) {
-  for (const i of indices) {
-    if (pieceStates[i]?.faceDown) revealPiece(i);
+  const faceDown = indices.filter(i => pieceStates[i]?.faceDown);
+  if (!faceDown.length) return;
+
+  const faceUp = indices.find(i => pieceStates[i] && !pieceStates[i].faceDown);
+  const sharedRot = faceUp != null
+    ? (pieceStates[faceUp].rotation ?? 0)
+    : (meta?.hardMode ? randomQuarterRotation() : 0);
+
+  for (const i of faceDown) {
+    revealPiece(i, { forcedRotation: sharedRot });
   }
 }
 
@@ -1508,7 +1526,10 @@ function onPieceDblClick(e) {
   const index = Number(el.dataset.index);
   if (pieceStates[index].lockedBy && pieceStates[index].lockedBy !== playerId) return;
   if (pieceStates[index].faceDown) return;
-  revealPiece(index, { correctRotation: true });
+  // Hard mode: double-click rotates the whole connected group (never a single
+  // member — that left pieces parented with mismatched rotations).
+  if (!meta?.hardMode) return;
+  rotateAtIndex(index);
 }
 
 // ── Rotation ──────────────────────────────────────────────────────────────────
@@ -1559,10 +1580,11 @@ function onDoubleTap(e) {
   if (!same) return;
 
   e.preventDefault();
+  if (!meta?.hardMode) return;
   const index = Number(el.dataset.index);
   if (pieceStates[index].lockedBy && pieceStates[index].lockedBy !== playerId) return;
   if (pieceStates[index].faceDown) return;
-  revealPiece(index, { correctRotation: true });
+  rotateAtIndex(index);
 }
 
 function rotateAtIndex(index) {
@@ -3051,7 +3073,19 @@ function mergeGroups(indices, preferredGroupId = null) {
 }
 
 function reconstructGroups() {
-  // Rebuild groups from groupId stored in Firebase (set when pieces snap together)
+  // Drop inconsistent groupIds (mixed rotations / non-aligned positions) so
+  // mismatched pieces are not stuck parented together after reload.
+  const dW = meta?._displayW ?? meta?.displayW;
+  const dH = meta?._displayH ?? meta?.displayH;
+  const cols = meta?.cols;
+  const cleared = sanitizePieceGroupIds(pieceStates, cols, dW, dH);
+  if (cleared.length && puzzleId) {
+    clearPieceGroupIds(puzzleId, cleared).catch(() => { /* best-effort repair */ });
+  }
+
+  for (const k of Object.keys(groups)) delete groups[k];
+  for (let i = 0; i < pieceGroup.length; i++) pieceGroup[i] = null;
+
   pieceStates.forEach((p, i) => {
     if (p.groupId) {
       if (!groups[p.groupId]) groups[p.groupId] = new Set();
@@ -3060,6 +3094,28 @@ function reconstructGroups() {
     }
   });
   refreshGroupStats();
+}
+
+/** Ungroup when members no longer share a rotation (partial position echoes are ignored). */
+function dissolveGroupIfInconsistent(groupId) {
+  if (!groupId || !groups[groupId]) return;
+  const members = [...groups[groupId]];
+  if (members.length <= 1) return;
+
+  const rot0 = Number(pieceStates[members[0]]?.rotation) || 0;
+  const mixed = members.some(i => (Number(pieceStates[i]?.rotation) || 0) !== rot0);
+  if (!mixed) return;
+
+  for (const i of members) {
+    pieceStates[i] = { ...pieceStates[i], groupId: null };
+    pieceGroup[i] = null;
+    updatePlacedFlag(i);
+  }
+  delete groups[groupId];
+  refreshGroupStats();
+  if (puzzleId) {
+    clearPieceGroupIds(puzzleId, members).catch(() => { /* best-effort */ });
+  }
 }
 
 // ── Remote updates ────────────────────────────────────────────────────────────
@@ -3121,6 +3177,23 @@ function applyRemoteUpdate(index, data) {
     const toMerge = knownMembers.includes(index) ? knownMembers : [...knownMembers, index];
     mergeGroups(toMerge, data.groupId);
     updateProgress();
+  } else if (
+    Object.prototype.hasOwnProperty.call(data, 'groupId')
+    && !data.groupId
+    && wasGroupId
+    && groups[wasGroupId]
+  ) {
+    groups[wasGroupId].delete(index);
+    pieceGroup[index] = null;
+    if (groups[wasGroupId].size === 0) delete groups[wasGroupId];
+    updatePlacedFlag(index);
+    refreshGroupStats();
+  }
+
+  // Guard against parented-but-mismatched rotations within a group
+  const gidNow = pieceGroup[index] || pieceStates[index]?.groupId;
+  if (gidNow && Object.prototype.hasOwnProperty.call(data, 'rotation')) {
+    dissolveGroupIfInconsistent(gidNow);
   }
 
   if (data.solved && !wasSolved) {

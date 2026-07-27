@@ -212,6 +212,14 @@ export function writeSnappedPositions(puzzleId, positions, groupId) {
   return update(ref(_db, `puzzles/${puzzleId}/pieces`), flat);
 }
 
+/** Clear groupId on pieces (e.g. after sanitizing inconsistent groups). */
+export function clearPieceGroupIds(puzzleId, indices) {
+  if (!indices?.length) return Promise.resolve();
+  const flat = {};
+  indices.forEach(i => { flat[`${i}/groupId`] = null; });
+  return update(ref(_db, `puzzles/${puzzleId}/pieces`), flat);
+}
+
 /** Update the rotation of a single piece. */
 export function updatePieceRotation(puzzleId, pieceIndex, rotation) {
   return update(ref(_db, `puzzles/${puzzleId}/pieces/${pieceIndex}`), { rotation });
@@ -475,6 +483,14 @@ export function writeVSSnap(roomId, boardKey, positions, groupId) {
     flat[`${index}/lockedBy`] = null;
     flat[`${index}/groupId`]  = groupId;
   });
+  return update(ref(_db, `vs/${roomId}/pieces/${boardKey}`), flat);
+}
+
+/** Clear groupId on VS board pieces after sanitizing inconsistent groups. */
+export function clearVSPieceGroupIds(roomId, boardKey, indices) {
+  if (!indices?.length) return Promise.resolve();
+  const flat = {};
+  indices.forEach(i => { flat[`${i}/groupId`] = null; });
   return update(ref(_db, `vs/${roomId}/pieces/${boardKey}`), flat);
 }
 
