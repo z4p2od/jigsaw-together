@@ -35,6 +35,7 @@ import {
   rotateGroupQuarterTurnCW,
   randomQuarterRotation,
 } from './puzzle-rotation.js';
+import { getSnapThreshold } from './snap-threshold.js';
 import { applyPieceBackMask, getPieceFrontSrc } from './piece-dom.js';
 import {
   getDropBoxLayout,
@@ -2912,7 +2913,7 @@ function setupViewportControls() {
  */
 function findNeighbourSnap(dragIndices) {
   const { cols, rows, _displayW: dW, _displayH: dH, edges } = meta;
-  const threshold = Math.max(40, Math.min(dW, dH) * 0.4);  // 40% of smaller piece side
+  const threshold = getSnapThreshold(dW, dH);
   const dragSet   = new Set(dragIndices);
 
   // For each direction: which edge ID of piece i must match which edge ID of neighbour

@@ -23,6 +23,7 @@ import {
   rotateGroupQuarterTurnCW,
   randomQuarterRotation,
 } from './puzzle-rotation.js';
+import { getSnapThreshold } from './snap-threshold.js';
 import { scatterFromSeed, seededRandom } from './scatter-pieces.js';
 import { applyPieceBackMask } from './piece-dom.js';
 
@@ -1637,7 +1638,7 @@ function showPowerupToast(msg, isReceived) {
 
 function findNeighbourSnap(dragIndices) {
   const { cols, rows, _displayW: dW, _displayH: dH, edges } = meta;
-  const threshold = Math.max(40, Math.min(dW, dH) * 0.4);
+  const threshold = getSnapThreshold(dW, dH);
   const dragSet   = new Set(dragIndices);
 
   const checks = [
