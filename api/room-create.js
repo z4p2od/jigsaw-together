@@ -1,29 +1,17 @@
 /**
- * Creates a collaborative puzzle room from a picked image.
- * Generates grid, edges, and scattered pieces server-side.
- * If public=true, also writes a rooms-index entry for the lobby.
+ * Creates a collaborative puzzle room from a catalogued puzzle (fixed difficulty)
+ * or from explicit image + piece params.
  *
+ * GET /api/room-create?catalog=ID&public=true
  * GET /api/room-create?pieces=100&hard=false&image=URL&w=1200&h=800&public=true
  * Returns: { puzzleId }
  */
 import crypto from 'crypto';
 import { scatterPieces } from '../js/scatter-pieces.js';
+import { ALLOWED_PIECES, calculateGrid } from '../js/puzzle-grid.js';
 
 const BOARD_W = 1080;
 const BOARD_H = 780;
-const ALLOWED_PIECES = [24, 100, 250, 500, 1000];
-
-function calculateGrid(pieceCount, imgWidth, imgHeight) {
-  const aspect = imgWidth / imgHeight;
-  let bestCols = 1, bestRows = pieceCount, bestDiff = Infinity;
-  for (let cols = 1; cols <= pieceCount; cols++) {
-    const rows = Math.round(pieceCount / cols);
-    if (cols * rows === 0) continue;
-    const diff = Math.abs(cols / rows - aspect);
-    if (diff < bestDiff) { bestDiff = diff; bestCols = cols; bestRows = rows; }
-  }
-  return { cols: bestCols, rows: bestRows };
-}
 
 function generateEdges(cols, rows) {
   let nextId = 1;
@@ -56,6 +44,11 @@ function generateEdges(cols, rows) {
   return edges;
 }
 
+function fbGet(path) {
+  const { FIREBASE_DB_URL: url, FIREBASE_DB_SECRET: s } = process.env;
+  return fetch(`${url}/${path}.json?auth=${s}`).then((r) => r.json());
+}
+
 function fbPut(path, value) {
   const { FIREBASE_DB_URL: url, FIREBASE_DB_SECRET: s } = process.env;
   return fetch(`${url}/${path}.json?auth=${s}`, {
@@ -75,19 +68,37 @@ function fbPatch(path, value) {
 }
 
 export default async function handler(req, res) {
-  const rawPieces  = parseInt(req.query.pieces, 10);
-  const pieceCount = ALLOWED_PIECES.includes(rawPieces) ? rawPieces : 100;
-  const hardMode   = req.query.hard === 'true';
-  const isPublic   = req.query.public === 'true';
-  const imageUrl   = req.query.image;
-  const imgW       = parseInt(req.query.w, 10);
-  const imgH       = parseInt(req.query.h, 10);
+  const isPublic = req.query.public === 'true';
+  const catalogId = String(req.query.catalog || '').trim();
 
-  if (!imageUrl || !imgW || !imgH) {
-    return res.status(400).json({ error: 'Missing image, w, or h params' });
+  let imageUrl;
+  let imgW;
+  let imgH;
+  let pieceCount;
+  let hardMode;
+
+  if (catalogId) {
+    const entry = await fbGet(`catalog/${catalogId}`);
+    if (!entry?.imageUrl || !entry.width || !entry.height || !entry.pieces) {
+      return res.status(404).json({ error: 'Catalog puzzle not found' });
+    }
+    imageUrl = entry.imageUrl;
+    imgW = Number(entry.width);
+    imgH = Number(entry.height);
+    pieceCount = Number(entry.pieces);
+    hardMode = !!entry.hardMode;
+  } else {
+    const rawPieces = parseInt(req.query.pieces, 10);
+    pieceCount = ALLOWED_PIECES.includes(rawPieces) ? rawPieces : 100;
+    hardMode = req.query.hard === 'true';
+    imageUrl = req.query.image;
+    imgW = parseInt(req.query.w, 10);
+    imgH = parseInt(req.query.h, 10);
+    if (!imageUrl || !imgW || !imgH) {
+      return res.status(400).json({ error: 'Missing catalog, or image/w/h params' });
+    }
   }
 
-  // Basic validation: must be a Cloudinary URL for our cloud
   const expectedHost = `res.cloudinary.com/${process.env.CLOUDINARY_CLOUD_NAME}`;
   if (!imageUrl.includes(expectedHost)) {
     return res.status(400).json({ error: 'Invalid image URL' });
@@ -128,6 +139,7 @@ export default async function handler(req, res) {
     meta: {
       imageUrl, cols, rows, pieceW, pieceH, displayW, displayH,
       edges, hardMode, isPublic, createdAt,
+      catalogId: catalogId || null,
     },
     pieces: piecesObj,
   });

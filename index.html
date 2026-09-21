@@ -70,12 +70,7 @@
         <section id="potd-section" class="potd-sidebar-panel">
           <h2 class="panel-heading potd-heading">Puzzle of the Day</h2>
           <div class="potd-card potd-card--compact">
-            <div id="potd-tabs" class="potd-tabs" role="tablist" aria-label="Daily difficulty">
-              <button type="button" class="potd-tab is-active" role="tab" data-diff="easy" id="potd-tab-easy" aria-selected="true">Easy</button>
-              <button type="button" class="potd-tab" role="tab" data-diff="medium" id="potd-tab-medium" aria-selected="false" tabindex="-1">Medium</button>
-              <button type="button" class="potd-tab" role="tab" data-diff="hard" id="potd-tab-hard" aria-selected="false" tabindex="-1">Hard</button>
-            </div>
-            <p id="potd-desc" class="potd-desc">25 pieces</p>
+            <p id="potd-desc" class="potd-desc">Today’s puzzle</p>
             <div id="potd-preview" class="potd-preview-wrap" hidden>
               <img id="potd-preview-img" class="potd-preview-img" alt="" width="640" height="360" decoding="async" fetchpriority="high" />
             </div>
@@ -93,25 +88,10 @@
           </button>
           <div class="sidebar-drawer" id="drawer-play">
             <div class="sidebar-drawer-inner">
-              <p class="subtitle">Solve puzzles from our library and invite friends</p>
+              <p class="subtitle">Pick a puzzle and invite friends</p>
               <div id="play-image-grid-wrap">
-                <p id="play-images-loading" class="potd-desc">Loading images…</p>
+                <p id="play-images-loading" class="potd-desc">Loading puzzles…</p>
                 <div id="play-image-grid" class="play-image-grid shell-image-grid" style="display:none"></div>
-              </div>
-              <div class="piece-section">
-                <p class="field-label">Pieces</p>
-                <div class="piece-options">
-                  <label><input type="radio" name="play-pieces" value="24" /> <span>24</span></label>
-                  <label><input type="radio" name="play-pieces" value="100" checked /> <span>100</span></label>
-                  <label><input type="radio" name="play-pieces" value="250" /> <span>250</span></label>
-                </div>
-              </div>
-              <div class="piece-section">
-                <p class="field-label">Mode</p>
-                <div class="piece-options">
-                  <label><input type="radio" name="play-mode" value="normal" checked /> <span>Normal</span></label>
-                  <label><input type="radio" name="play-mode" value="hard" /> <span>Hard</span></label>
-                </div>
               </div>
               <div class="piece-section">
                 <p class="field-label">Visibility</p>

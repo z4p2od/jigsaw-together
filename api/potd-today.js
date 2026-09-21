@@ -1,9 +1,6 @@
 /**
- * GET /api/potd-today — today's POTD pointers + preview image URLs in one round trip.
- * Used by the landing page so the preview does not wait on Firebase client SDK + N reads.
+ * GET /api/potd-today — today's Puzzle of the Day pointer + preview image.
  */
-const DIFFICULTIES = ['easy', 'medium', 'hard'];
-
 function todayAthens() {
   return new Date().toLocaleDateString('sv', { timeZone: 'Europe/Athens' });
 }
@@ -14,7 +11,6 @@ function fbGet(path) {
   return fetch(`${url}/${path}.json?auth=${s}`).then((r) => r.json());
 }
 
-/** Smaller Cloudinary delivery for the landing preview card. */
 function previewImageUrl(url) {
   if (!url || typeof url !== 'string') return null;
   if (!url.includes('res.cloudinary.com') || !url.includes('/upload/')) return url;
@@ -31,31 +27,33 @@ export default async function handler(req, res) {
   const today = todayAthens();
 
   try {
-    const puzzles = (
-      await Promise.all(
-        DIFFICULTIES.map(async (difficulty) => {
-          const potd = await fbGet(`potd/${difficulty}`);
-          if (!potd || potd.date !== today || !potd.puzzleId) return null;
+    let potd = await fbGet('potd/daily');
+    if (!potd?.puzzleId || potd.date !== today) {
+      potd = await fbGet('potd/easy');
+    }
+    if (!potd || potd.date !== today || !potd.puzzleId) {
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
+      return res.status(200).json({ date: today, puzzle: null });
+    }
 
-          let imageUrl = potd.imageUrl || null;
-          if (!imageUrl) {
-            const meta = await fbGet(`puzzles/${potd.puzzleId}/meta`);
-            imageUrl = meta?.imageUrl || null;
-          }
+    let imageUrl = potd.imageUrl || null;
+    if (!imageUrl) {
+      const meta = await fbGet(`puzzles/${potd.puzzleId}/meta`);
+      imageUrl = meta?.imageUrl || null;
+    }
 
-          return {
-            difficulty,
-            puzzleId: potd.puzzleId,
-            date: potd.date,
-            imageUrl: previewImageUrl(imageUrl),
-          };
-        }),
-      )
-    ).filter(Boolean);
+    const puzzle = {
+      puzzleId: potd.puzzleId,
+      date: potd.date,
+      imageUrl: previewImageUrl(imageUrl),
+      pieces: potd.pieces || null,
+      hardMode: !!potd.hardMode,
+    };
 
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('Cache-Control', 'public, s-maxage=120, stale-while-revalidate=600');
-    return res.status(200).json({ date: today, puzzles });
+    return res.status(200).json({ date: today, puzzle });
   } catch (err) {
     console.error('potd-today', err);
     return res.status(500).json({ error: 'Failed to load puzzle of the day' });

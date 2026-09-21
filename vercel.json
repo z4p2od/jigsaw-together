@@ -27,6 +27,7 @@
     { "source": "/vs-rooms", "destination": "/" },
     { "source": "/play",     "destination": "/play.html"     },
     { "source": "/rooms",    "destination": "/rooms.html"    },
+    { "source": "/admin",    "destination": "/admin.html"    },
     { "source": "/api/feedback-list", "destination": "/api/feedback?action=list" },
     { "source": "/api/feedback-triage", "destination": "/api/feedback?action=triage" },
     { "source": "/api/feedback-delete", "destination": "/api/feedback?action=delete" }

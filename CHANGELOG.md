@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased — Puzzle catalog
+- Admin catalog at a secret link (`/admin#TOKEN`): pick or upload a Cloudinary library image, set piece count and rotation, preview the cut, save
+- Play Together uses catalogued puzzles (fixed difficulty) instead of picking piece count on the fly
+- Puzzle of the Day is one random catalog puzzle each day; welcome screen still loads it first
+
 ## Unreleased — Product trim
 - Removed VS Mode from the live app (`/vs` and `/vs-rooms` rewrite to `/`). Code is frozen on `archive/vs-mode`.
 - Removed custom photo upload. Co-op games are created from the library via Play Together. Code is frozen on `archive/custom-upload`.

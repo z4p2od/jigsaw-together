@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Not found</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body class="admin-page">
+  <main class="admin-shell">
+    <p id="admin-denied" class="admin-denied">Not found.</p>
+
+    <div id="admin-app" hidden>
+      <header class="admin-head">
+        <h1>Puzzle catalog</h1>
+        <p class="subtitle">Pick a library photo (or upload one), set pieces and rotation, preview the cut, then save. Play Together and Puzzle of the Day use these entries.</p>
+      </header>
+
+      <section class="admin-panel">
+        <div class="admin-panel-head">
+          <h2 class="panel-heading">Library images</h2>
+          <label class="btn btn-sm admin-upload-btn">
+            Upload photo
+            <input id="admin-file" type="file" accept="image/*" hidden />
+          </label>
+        </div>
+        <p id="admin-images-status" class="potd-desc">Loading…</p>
+        <div id="admin-image-grid" class="play-image-grid admin-image-grid"></div>
+      </section>
+
+      <section class="admin-panel">
+        <h2 class="panel-heading">Cut preview</h2>
+        <p id="admin-preview-meta" class="potd-desc">Select an image</p>
+        <div class="piece-section">
+          <p class="field-label">Pieces</p>
+          <div class="piece-options" id="admin-pieces">
+            <label><input type="radio" name="admin-pieces" value="24" /> <span>24</span></label>
+            <label><input type="radio" name="admin-pieces" value="40" /> <span>40</span></label>
+            <label><input type="radio" name="admin-pieces" value="100" checked /> <span>100</span></label>
+            <label><input type="radio" name="admin-pieces" value="250" /> <span>250</span></label>
+            <label><input type="radio" name="admin-pieces" value="500" /> <span>500</span></label>
+          </div>
+        </div>
+        <div class="piece-section">
+          <p class="field-label">Rotation</p>
+          <div class="piece-options">
+            <label><input type="radio" name="admin-mode" value="normal" checked /> <span>Upright</span></label>
+            <label><input type="radio" name="admin-mode" value="hard" /> <span>Rotated</span></label>
+          </div>
+        </div>
+        <div class="admin-preview-wrap">
+          <canvas id="admin-preview" aria-label="Jigsaw cut preview"></canvas>
+        </div>
+        <button type="button" class="btn" id="admin-save">Save to catalog</button>
+        <p id="admin-save-status" class="status"></p>
+      </section>
+
+      <section class="admin-panel">
+        <h2 class="panel-heading">Saved puzzles</h2>
+        <p id="admin-catalog-empty" class="potd-desc">None yet.</p>
+        <div id="admin-catalog-list"></div>
+      </section>
+    </div>
+  </main>
+  <script type="module" src="/js/admin.js"></script>
+</body>
+</html>

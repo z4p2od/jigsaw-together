@@ -1,7 +1,8 @@
 /**
- * Vercel cron job — creates three Puzzle of the Day puzzles (Easy/Medium/Hard).
- * Images are picked from 'potd-pool'; if empty, fallback to 'puzzle-library'.
- * Schedule: daily at 4am UTC (configured in vercel.json).
+ * Vercel cron job — creates today's Puzzle of the Day from the admin catalog
+ * (random entry, using that puzzle's piece count and rotation). If the catalog
+ * is empty, falls back to a 100-piece upright puzzle from potd-pool / puzzle-library.
+ */
  *
  * Required env vars:
  *   FIREBASE_DB_URL        — Firebase Realtime Database URL
@@ -13,29 +14,12 @@
  */
 import crypto from 'crypto';
 import { scatterPieces } from '../js/scatter-pieces.js';
+import { calculateGrid } from '../js/puzzle-grid.js';
 
 const BOARD_W = 1080;
 const BOARD_H = 780;
 
-const DIFFICULTIES = [
-  { key: 'easy',   pieceCount: 25,  hardMode: false },
-  { key: 'medium', pieceCount: 100, hardMode: false },
-  { key: 'hard',   pieceCount: 100, hardMode: true  },
-];
-
-// ── Pure puzzle logic (duplicated from app.js / jigsaw.js — no DOM) ───────────
-
-function calculateGrid(pieceCount, imgWidth, imgHeight) {
-  const aspect = imgWidth / imgHeight;
-  let bestCols = 1, bestRows = pieceCount, bestDiff = Infinity;
-  for (let cols = 1; cols <= pieceCount; cols++) {
-    const rows = Math.round(pieceCount / cols);
-    if (cols * rows === 0) continue;
-    const diff = Math.abs(cols / rows - aspect);
-    if (diff < bestDiff) { bestDiff = diff; bestCols = cols; bestRows = rows; }
-  }
-  return { cols: bestCols, rows: bestRows };
-}
+// ── Pure puzzle logic (duplicated from jigsaw.js — no DOM) ───────────
 
 function generateEdges(cols, rows) {
   let nextId = 1;
@@ -165,90 +149,110 @@ export default async function handler(req, res) {
   }
 
   const date = new Date().toLocaleDateString('sv', { timeZone: 'Europe/Athens' });
-
-  // List available images
-  const { images, sourceFolder } = await listPOTDImages();
-  if (images.length === 0) {
-    return res.status(500).json({ error: 'No images in potd-pool or puzzle-library folders' });
-  }
-
-  // Load recent IDs to avoid repeats
   const recentIds = (await fbGet('potd/recentIds')) || [];
 
-  // Pick 3 distinct images (one per difficulty), avoiding recent ones
-  const fresh = images.filter(img => !recentIds.includes(img.public_id));
-  const pool  = fresh.length >= 3 ? fresh : images; // fallback if pool nearly exhausted
+  const catalog = (await fbGet('catalog')) || {};
+  const catalogEntries = Object.entries(catalog)
+    .map(([id, entry]) => ({ id, ...entry }))
+    .filter((e) => e.imageUrl && e.pieces && e.width && e.height);
 
-  function pickRandom(exclude = []) {
-    const available = pool.filter(img => !exclude.includes(img.public_id));
-    const src = available.length > 0 ? available : pool;
-    return src[Math.floor(Math.random() * src.length)];
+  let imageUrl;
+  let imagePublicId = null;
+  let imgW;
+  let imgH;
+  let pieceCount;
+  let hardMode;
+  let catalogId = null;
+  let sourceFolder = 'catalog';
+  let usedRecentId;
+
+  if (catalogEntries.length) {
+    const fresh = catalogEntries.filter((e) => !recentIds.includes(e.id));
+    const pool = fresh.length ? fresh : catalogEntries;
+    const picked = pool[Math.floor(Math.random() * pool.length)];
+    imageUrl = picked.imageUrl;
+    imagePublicId = picked.publicId || null;
+    imgW = Number(picked.width);
+    imgH = Number(picked.height);
+    pieceCount = Number(picked.pieces);
+    hardMode = !!picked.hardMode;
+    catalogId = picked.id;
+    usedRecentId = picked.id;
+  } else {
+    const listed = await listPOTDImages();
+    if (!listed.images.length) {
+      return res.status(500).json({ error: 'Catalog is empty and no library images were found' });
+    }
+    sourceFolder = listed.sourceFolder;
+    const fresh = listed.images.filter((img) => !recentIds.includes(img.public_id));
+    const pool = fresh.length ? fresh : listed.images;
+    const image = pool[Math.floor(Math.random() * pool.length)];
+    imageUrl = image.secure_url;
+    imagePublicId = image.public_id;
+    imgW = image.width;
+    imgH = image.height;
+    pieceCount = 100;
+    hardMode = false;
+    usedRecentId = image.public_id;
   }
 
-  const created = [];
-  const usedIds = [];
+  const { cols, rows } = calculateGrid(pieceCount, imgW, imgH);
+  const actualCount = cols * rows;
+  const pieceW = Math.floor(imgW / cols);
+  const pieceH = Math.floor(imgH / rows);
+  const scale = Math.min((BOARD_W * 0.55) / imgW, (BOARD_H * 0.55) / imgH, 1);
+  const displayW = Math.floor(pieceW * scale);
+  const displayH = Math.floor(pieceH * scale);
+  const edges = generateEdges(cols, rows);
+  const pieces = scatterPieces({
+    count: actualCount,
+    dispW: displayW,
+    dispH: displayH,
+    hardMode,
+    boardW: BOARD_W,
+    boardH: BOARD_H,
+  });
 
-  for (const diff of DIFFICULTIES) {
-    const image = pickRandom(usedIds);
-    usedIds.push(image.public_id);
-
-    const imgW = image.width;
-    const imgH = image.height;
-
-    const { cols, rows } = calculateGrid(diff.pieceCount, imgW, imgH);
-    const actualCount    = cols * rows;
-
-    const pieceW = Math.floor(imgW / cols);
-    const pieceH = Math.floor(imgH / rows);
-    const scale  = Math.min((BOARD_W * 0.55) / imgW, (BOARD_H * 0.55) / imgH, 1);
-    const displayW = Math.floor(pieceW * scale);
-    const displayH = Math.floor(pieceH * scale);
-
-    const edges  = generateEdges(cols, rows);
-    const pieces = scatterPieces({
-      count: actualCount,
-      dispW: displayW,
-      dispH: displayH,
-      hardMode: diff.hardMode,
-      boardW: BOARD_W,
-      boardH: BOARD_H,
-    });
-
-    const puzzleId   = crypto.randomUUID();
-    const piecesObj  = {};
-    pieces.forEach((p, i) => {
-      piecesObj[i] = {
-        x: p.x,
-        y: p.y,
-        rotation: p.rotation,
-        faceDown: !!p.faceDown,
-        solved: false,
-      };
-    });
-
-    const meta = {
-      imageUrl:       image.secure_url,
-      imagePublicId:  image.public_id,
-      cols, rows, pieceW, pieceH, displayW, displayH,
-      edges,
-      hardMode:       diff.hardMode,
-      isPOTD:         true,
-      potdDifficulty: diff.key,
-      createdAt:      Date.now(),
+  const puzzleId = crypto.randomUUID();
+  const piecesObj = {};
+  pieces.forEach((p, i) => {
+    piecesObj[i] = {
+      x: p.x,
+      y: p.y,
+      rotation: p.rotation,
+      faceDown: !!p.faceDown,
+      solved: false,
     };
+  });
 
-    // Write puzzle to Firebase
-    await fbPut(`puzzles/${puzzleId}`, { meta, pieces: piecesObj });
+  const meta = {
+    imageUrl,
+    imagePublicId,
+    cols, rows, pieceW, pieceH, displayW, displayH,
+    edges,
+    hardMode,
+    isPOTD: true,
+    potdDifficulty: 'daily',
+    catalogId,
+    createdAt: Date.now(),
+  };
 
-    // Update potd/{difficulty} pointer
-    await fbPatch(`potd/${diff.key}`, { puzzleId, date, imageUrl: image.secure_url });
+  await fbPut(`puzzles/${puzzleId}`, { meta, pieces: piecesObj });
+  await fbPatch('potd/daily', {
+    puzzleId,
+    date,
+    imageUrl,
+    pieces: actualCount,
+    hardMode,
+    catalogId,
+  });
 
-    created.push({ difficulty: diff.key, puzzleId, pieces: actualCount });
-  }
-
-  // Update recent IDs (keep last 30)
-  const newRecent = [...usedIds, ...recentIds].slice(0, 30);
+  const newRecent = [usedRecentId, ...recentIds].slice(0, 30);
   await fbPut('potd/recentIds', newRecent);
 
-  res.json({ date, sourceFolder, created });
+  res.json({
+    date,
+    sourceFolder,
+    created: [{ difficulty: 'daily', puzzleId, pieces: actualCount, hardMode, catalogId }],
+  });
 }

@@ -1,12 +1,8 @@
 /**
- * Creates a fresh clone of a POTD puzzle for the requesting player.
- * Each player (or team) gets their own puzzle instance so scores are independent.
- * The clone shares the same image/grid/edges as the template but has freshly
- * scattered pieces and a new puzzleId.
+ * Creates a fresh clone of today's POTD for the requesting player.
  *
- * GET /api/potd-play?difficulty=easy|medium|hard
- * GET /api/potd-play?difficulty=easy&json=1  → { puzzleId }
- * Redirects to /?id=<newPuzzleId> (or puzzle.html for legacy clients)
+ * GET /api/potd-play?json=1  → { puzzleId }
+ * Redirects to /?id=<newPuzzleId>
  */
 import crypto from 'crypto';
 import { scatterPieces } from '../js/scatter-pieces.js';
@@ -29,15 +25,12 @@ function fbPut(path, value) {
 }
 
 export default async function handler(req, res) {
-  const difficulty = req.query.difficulty;
-  if (!['easy', 'medium', 'hard'].includes(difficulty)) {
-    return res.status(400).json({ error: 'Invalid difficulty' });
-  }
-
   const today = new Date().toLocaleDateString('sv', { timeZone: 'Europe/Athens' });
 
-  // Load the POTD template for this difficulty
-  const potd = await fbGet(`potd/${difficulty}`);
+  let potd = await fbGet('potd/daily');
+  if (!potd?.puzzleId || potd.date !== today) {
+    potd = await fbGet('potd/easy');
+  }
   if (!potd || potd.date !== today) {
     return res.status(404).json({ error: 'No puzzle of the day available' });
   }
@@ -74,7 +67,7 @@ export default async function handler(req, res) {
   const newMeta = {
     ...templateMetaClean,
     isPOTD:         true,
-    potdDifficulty: difficulty,
+    potdDifficulty: 'daily',
     createdAt:      Date.now(),
   };
 

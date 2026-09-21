@@ -1,4 +1,5 @@
 import { getPOTD, getPuzzleImageUrl, onPOTDLeaderboard } from './firebase.js';
+import { formatPuzzleDifficulty } from './puzzle-grid.js';
 
 const statusEl    = document.getElementById('shell-status');
 const shellPlayBtn = document.getElementById('shell-play-btn');
@@ -10,17 +11,14 @@ const welcomeStatus = document.getElementById('welcome-status');
 /** @type {'potd' | 'play'} */
 let shellMode = 'potd';
 let shellPlayImagesLoaded = false;
-let playSelectedImage = null;
+let playSelectedCatalog = null;
 let prefetchedPuzzleId = null;
 let prefetchPromise = null;
 
 // ── POTD ──────────────────────────────────────────────────────────────────────
 
-const DIFFICULTIES = [
-  { key: 'easy',   label: 'Easy',   emoji: '🟢', pieces: 25  },
-  { key: 'medium', label: 'Medium', emoji: '🟡', pieces: 100 },
-  { key: 'hard',   label: 'Hard',   emoji: '🔴', pieces: 100, hard: true },
-];
+const DAILY_KEY = 'daily';
+const POTD_CACHE_KEY = 'jt-potd-today-v2';
 
 const potdSection   = document.getElementById('potd-section');
 const potdLb        = document.getElementById('potd-lb');
@@ -28,14 +26,10 @@ const potdDesc      = document.getElementById('potd-desc');
 const potdPreview   = document.getElementById('potd-preview');
 const potdPreviewImg = document.getElementById('potd-preview-img');
 
-let selectedPotdKey = 'easy';
-let availablePotdKeys = [];
+let todayPotd = null;
+let potdReady = false;
 const leaderboardCache = Object.create(null);
-/** @type {Record<string, string|null>} */
-const potdImageByKey = Object.create(null);
 let potdLeaderboardsAttached = false;
-
-const POTD_CACHE_KEY = 'jt-potd-today-v1';
 
 function getPotdTodayDate() {
   return new Date().toLocaleDateString('sv', { timeZone: 'Europe/Athens' });
@@ -46,7 +40,7 @@ function readPotdCache(today) {
     const raw = sessionStorage.getItem(POTD_CACHE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    if (parsed?.date !== today || !Array.isArray(parsed.puzzles)) return null;
+    if (parsed?.date !== today || !parsed.puzzle) return null;
     return parsed;
   } catch {
     return null;
@@ -61,54 +55,59 @@ function writePotdCache(payload) {
   }
 }
 
-function preloadPotdImages() {
-  for (const key of DIFFICULTIES.map((d) => d.key)) {
-    const url = potdImageByKey[key];
-    if (!url) continue;
-    const img = new Image();
-    img.decoding = 'async';
-    img.src = url;
-  }
-}
-
 async function fetchPotdTodayPayload() {
   if (window.__potdTodayFetch) {
     const data = await window.__potdTodayFetch;
     window.__potdTodayFetch = null;
-    if (data?.puzzles?.length) return data;
+    if (data?.puzzle || data?.puzzles?.length) return data;
   }
   const res = await fetch('/api/potd-today');
   if (!res.ok) return null;
   return res.json();
 }
 
-function setPotdPreview(key) {
-  if (!potdPreview || !potdPreviewImg) return;
-  const url = potdImageByKey[key];
-  if (url) {
-    potdPreviewImg.src = url;
-    potdPreviewImg.alt = `Preview: ${DIFFICULTIES.find((d) => d.key === key)?.label ?? ''} puzzle of the day`;
-    potdPreview.hidden = false;
-  } else {
-    potdPreview.hidden = true;
-    potdPreviewImg.removeAttribute('src');
-    potdPreviewImg.alt = '';
+function normalizePotdPayload(payload, today) {
+  if (!payload || payload.date !== today) return null;
+  if (payload.puzzle?.puzzleId) {
+    return {
+      date: today,
+      puzzle: {
+        puzzleId: payload.puzzle.puzzleId,
+        imageUrl: payload.puzzle.imageUrl || null,
+        pieces: payload.puzzle.pieces || null,
+        hardMode: !!payload.puzzle.hardMode,
+      },
+    };
   }
+  const first = (payload.puzzles || []).find((p) => p?.puzzleId);
+  if (!first) return null;
+  return {
+    date: today,
+    puzzle: {
+      puzzleId: first.puzzleId,
+      imageUrl: first.imageUrl || null,
+      pieces: first.pieces || null,
+      hardMode: !!first.hardMode,
+    },
+  };
 }
 
-function setSelectedPotd(key) {
+function paintTodayPotd() {
   if (!potdDesc) return;
-  selectedPotdKey = key;
-  shellMode = 'potd';
-  document.querySelectorAll('.potd-tab').forEach((btn) => {
-    const on = btn.dataset.diff === key;
-    btn.classList.toggle('is-active', on);
-    btn.setAttribute('aria-selected', on ? 'true' : 'false');
-    btn.tabIndex = on ? 0 : -1;
-  });
-  const d = DIFFICULTIES.find((x) => x.key === key);
-  potdDesc.textContent = d ? (d.hard ? `${d.pieces} pieces · rotated` : `${d.pieces} pieces`) : '';
-  setPotdPreview(key);
+  if (!todayPotd) {
+    potdReady = false;
+    potdDesc.textContent = 'No puzzle of the day right now.';
+    if (potdPreview) potdPreview.hidden = true;
+    updateShellPlayButton();
+    return;
+  }
+  potdReady = true;
+  potdDesc.textContent = formatPuzzleDifficulty(todayPotd.pieces, todayPotd.hardMode);
+  if (potdPreview && potdPreviewImg && todayPotd.imageUrl) {
+    potdPreviewImg.src = todayPotd.imageUrl;
+    potdPreviewImg.alt = 'Puzzle of the day';
+    potdPreview.hidden = false;
+  }
   paintPotdLeaderboard();
   updateShellPlayButton();
 }
@@ -132,96 +131,63 @@ function renderLeaderboardList(el, entries) {
 
 function paintPotdLeaderboard() {
   if (!potdLb) return;
-  renderLeaderboardList(potdLb, leaderboardCache[selectedPotdKey]);
+  renderLeaderboardList(potdLb, leaderboardCache[DAILY_KEY]);
 }
-
-function onPotdLeaderboardUpdate(diffKey, entries) {
-  leaderboardCache[diffKey] = entries;
-  if (diffKey === selectedPotdKey) paintPotdLeaderboard();
-}
-
 
 function applyPotdPayload(payload) {
-  if (!potdSection || !potdLb || !potdDesc || !payload) return [];
-
+  if (!potdSection || !potdLb || !potdDesc || !payload) return false;
   const today = getPotdTodayDate();
-  if (payload.date !== today) return [];
-
-  const available = [];
-  for (const p of payload.puzzles) {
-    if (!p?.difficulty || p.date !== today) continue;
-    available.push(p.difficulty);
-    potdImageByKey[p.difficulty] = p.imageUrl || null;
+  const normalized = normalizePotdPayload(payload, today);
+  if (!normalized) {
+    todayPotd = null;
+    paintTodayPotd();
+    return false;
   }
-
-  availablePotdKeys = available;
-  document.querySelectorAll('.potd-tab').forEach((tab) => {
-    const has = available.includes(tab.dataset.diff);
-    tab.disabled = !has;
-    tab.setAttribute('aria-disabled', has ? 'false' : 'true');
-  });
-
-  if (available.length === 0) {
-    if (potdDesc) potdDesc.textContent = 'No puzzle of the day right now.';
-    if (potdPreview) potdPreview.hidden = true;
-    return [];
-  }
-
-  if (!available.includes(selectedPotdKey)) {
-    setSelectedPotd(available[0]);
-  } else {
-    setSelectedPotd(selectedPotdKey);
-  }
+  todayPotd = normalized.puzzle;
+  paintTodayPotd();
 
   if (!potdLeaderboardsAttached) {
     potdLeaderboardsAttached = true;
-    for (const key of available) {
-      onPOTDLeaderboard(key, today, (entries) => onPotdLeaderboardUpdate(key, entries));
-    }
+    onPOTDLeaderboard(DAILY_KEY, today, (entries) => {
+      leaderboardCache[DAILY_KEY] = entries;
+      paintPotdLeaderboard();
+    });
   }
-
-  return available;
+  return true;
 }
 
 async function loadPOTDFromFirebase(today) {
-  const rows = await Promise.all(
-    DIFFICULTIES.map(async (diff) => {
+  try {
+    const data = await getPOTD(DAILY_KEY) || await getPOTD('easy');
+    if (!data || data.date !== today || !data.puzzleId) return null;
+    let imageUrl = data.imageUrl || null;
+    if (!imageUrl) {
       try {
-        const data = await getPOTD(diff.key);
-        if (!data || data.date !== today || !data.puzzleId) return null;
-        let imageUrl = data.imageUrl || null;
-        if (!imageUrl) {
-          try {
-            imageUrl = await getPuzzleImageUrl(data.puzzleId);
-          } catch {
-            imageUrl = null;
-          }
-        }
-        return {
-          difficulty: diff.key,
-          puzzleId: data.puzzleId,
-          date: data.date,
-          imageUrl,
-        };
+        imageUrl = await getPuzzleImageUrl(data.puzzleId);
       } catch {
-        return null;
+        imageUrl = null;
       }
-    }),
-  );
-
-  return { date: today, puzzles: rows.filter(Boolean) };
+    }
+    return {
+      date: today,
+      puzzle: {
+        puzzleId: data.puzzleId,
+        imageUrl,
+        pieces: data.pieces || null,
+        hardMode: !!data.hardMode,
+      },
+    };
+  } catch {
+    return null;
+  }
 }
 
 async function loadPOTD() {
   if (!potdSection || !potdLb || !potdDesc) return;
 
   const today = getPotdTodayDate();
-
   const cached = readPotdCache(today);
-  if (cached) {
-    applyPotdPayload(cached);
-    preloadPotdImages();
-  }
+  if (cached) applyPotdPayload(cached);
 
   let payload = null;
   try {
@@ -230,20 +196,21 @@ async function loadPOTD() {
     payload = null;
   }
 
-  if (!payload?.puzzles?.length) {
-    try {
-      payload = await loadPOTDFromFirebase(today);
-    } catch {
-      payload = null;
-    }
+  if (!normalizePotdPayload(payload, today)) {
+    payload = await loadPOTDFromFirebase(today);
   }
 
-  if (!payload?.puzzles?.length) return;
+  if (!normalizePotdPayload(payload, today)) return;
 
   writePotdCache(payload);
   applyPotdPayload(payload);
-  preloadPotdImages();
+  if (todayPotd?.imageUrl) {
+    const img = new Image();
+    img.decoding = 'async';
+    img.src = todayPotd.imageUrl;
+  }
 }
+
 
 function formatNames(names) {
   if (names.length === 0) return 'Anonymous';
@@ -291,8 +258,8 @@ function dismissLoadingOverlay() {
   }
 }
 
-async function fetchPotdPuzzleId(difficulty) {
-  const res = await fetch(`/api/potd-play?difficulty=${encodeURIComponent(difficulty)}&json=1`);
+async function fetchPotdPuzzleId() {
+  const res = await fetch('/api/potd-play?json=1');
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error || 'Could not start puzzle of the day');
@@ -310,10 +277,10 @@ async function waitForPuzzleBoot() {
   }
 }
 
-async function prefetchPotdEasy() {
+async function prefetchPotdToday() {
   await loadPOTD();
   await waitForPuzzleBoot();
-  prefetchedPuzzleId = await fetchPotdPuzzleId('easy');
+  prefetchedPuzzleId = await fetchPotdPuzzleId();
   window.__JT_prefetchPuzzle?.(prefetchedPuzzleId);
   return prefetchedPuzzleId;
 }
@@ -361,7 +328,7 @@ async function initWelcomeFlow() {
 
   prefetchPromise = existingId
     ? prefetchPuzzleById(existingId)
-    : prefetchPotdEasy();
+    : prefetchPotdToday();
 
   prefetchPromise.catch((err) => {
     console.error(err);
@@ -398,7 +365,7 @@ async function startSelectedPotd() {
   setShellStatus('Starting puzzle…');
   shellPlayBtn.disabled = true;
   try {
-    const id = await fetchPotdPuzzleId(selectedPotdKey);
+    const id = await fetchPotdPuzzleId();
     prefetchedPuzzleId = id;
     window.__JT_prefetchPuzzle?.(id);
     if (typeof window.__JT_bootPuzzle === 'function') {
@@ -427,11 +394,11 @@ function updateShellPlayButton() {
   if (!shellPlayBtn) return;
   if (shellMode === 'play') {
     shellPlayBtn.textContent = 'Play Puzzle';
-    shellPlayBtn.disabled = !playSelectedImage;
+    shellPlayBtn.disabled = !playSelectedCatalog;
     return;
   }
   shellPlayBtn.textContent = 'Play Puzzle';
-  shellPlayBtn.disabled = shellMode === 'potd' && !availablePotdKeys.includes(selectedPotdKey);
+  shellPlayBtn.disabled = shellMode === 'potd' && !potdReady;
 }
 
 function openDrawer(name) {
@@ -465,40 +432,37 @@ document.querySelectorAll('.sidebar-drawer-head').forEach((head) => {
   });
 });
 
-document.querySelectorAll('.potd-tab').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    if (btn.disabled) return;
-    shellMode = 'potd';
-    setSelectedPotd(btn.dataset.diff);
-  });
-});
-
 async function loadShellPlayImages() {
   const grid = document.getElementById('play-image-grid');
   const loading = document.getElementById('play-images-loading');
   if (!grid || !loading) return;
   try {
-    const res = await fetch('/api/room-images');
-    const images = await res.json();
-    if (!images.length) {
-      loading.textContent = 'No images available.';
+    const res = await fetch('/api/catalog');
+    const data = await res.json();
+    const puzzles = data.puzzles || [];
+    if (!puzzles.length) {
+      loading.textContent = 'No puzzles in the catalog yet.';
       return;
     }
     loading.style.display = 'none';
     grid.style.display = '';
     grid.innerHTML = '';
-    images.forEach((img) => {
+    puzzles.forEach((p) => {
       const card = document.createElement('div');
       card.className = 'play-image-card';
       const el = document.createElement('img');
-      el.src = img.url;
-      el.alt = '';
+      el.src = p.imageUrl;
+      el.alt = formatPuzzleDifficulty(p.pieces, p.hardMode);
       el.loading = 'lazy';
       card.appendChild(el);
+      const badge = document.createElement('span');
+      badge.className = 'catalog-badge';
+      badge.textContent = formatPuzzleDifficulty(p.pieces, p.hardMode);
+      card.appendChild(badge);
       card.addEventListener('click', () => {
         document.querySelectorAll('#play-image-grid .play-image-card').forEach((c) => c.classList.remove('selected'));
         card.classList.add('selected');
-        playSelectedImage = img;
+        playSelectedCatalog = p;
         shellMode = 'play';
         updateShellPlayButton();
       });
@@ -506,27 +470,21 @@ async function loadShellPlayImages() {
     });
     shellPlayImagesLoaded = true;
   } catch {
-    loading.textContent = 'Failed to load images.';
+    loading.textContent = 'Failed to load puzzles.';
   }
 }
 
 async function startPlayTogether() {
-  if (!playSelectedImage) {
-    setShellStatus('Pick an image first.', true);
+  if (!playSelectedCatalog) {
+    setShellStatus('Pick a puzzle first.', true);
     return;
   }
   shellPlayBtn.disabled = true;
   setShellStatus('Creating puzzle…');
-  const pieces = document.querySelector('input[name="play-pieces"]:checked').value;
-  const hard = document.querySelector('input[name="play-mode"]:checked').value === 'hard';
   const isPublic = document.querySelector('input[name="play-visibility"]:checked').value === 'public';
   const params = new URLSearchParams({
-    pieces,
-    hard,
+    catalog: playSelectedCatalog.id,
     public: isPublic,
-    image: playSelectedImage.url,
-    w: playSelectedImage.width,
-    h: playSelectedImage.height,
   });
   try {
     const res = await fetch(`/api/room-create?${params}`);

@@ -5,8 +5,9 @@
  * Library (`/api/room-create`), POTD, and POTD clones use `puzzle-library` /
  * `potd-pool` public IDs (or no `imagePublicId`) — never destroyed.
  *
- * Skips Firebase rows for the three live POTD template IDs (`potd/easy|medium|hard`
- * → puzzleId) so a delayed POTD cron does not leave broken pointers.
+ * Skips Firebase rows for the live POTD template (`potd/daily` and legacy
+ * `potd/easy|medium|hard` → puzzleId) so a delayed POTD cron does not leave
+ * broken pointers.
  *
  * Optional env: CLOUDINARY_USER_UPLOAD_FOLDER — must match the folder on your
  * unsigned upload preset (default: puzzles).
@@ -48,7 +49,7 @@ function isUserUploadCloudinaryPublicId(publicId) {
 }
 
 async function getLivePotdTemplateIds(dbUrl, secret) {
-  const keys = ['easy', 'medium', 'hard'];
+  const keys = ['daily', 'easy', 'medium', 'hard'];
   const ids = await Promise.all(
     keys.map((k) =>
       fetch(`${dbUrl}/potd/${k}/puzzleId.json?auth=${secret}`).then((r) => r.json())
