@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <meta name="description" content="Upload a photo, share a link, solve jigsaw puzzles together." />
+  <meta name="description" content="Solve jigsaw puzzles together — Puzzle of the Day or Play Together with friends." />
   <meta name="theme-color" content="#3A2E46" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -30,22 +30,6 @@
   </script>
 </head>
 <body class="home-shell puzzle-body">
-  <div id="in-app-hint" class="in-app-hint" hidden>
-    <p>In-app browsers (Instagram, Messenger, TikTok) often block uploads. For creating puzzles, use <strong>Safari</strong> or Chrome: Share → Open in Browser.</p>
-    <button type="button" class="in-app-hint-dismiss" aria-label="Dismiss">×</button>
-  </div>
-  <script>
-    (function () {
-      var ua = navigator.userAgent || '';
-      if (!/Instagram|FBAN|FBAV|FB_IAB|FBIOS|Line\/|Snapchat|Messenger|LinkedInApp|TikTok/i.test(ua)) return;
-      var el = document.getElementById('in-app-hint');
-      if (!el) return;
-      el.hidden = false;
-      var b = el.querySelector('.in-app-hint-dismiss');
-      if (b) b.addEventListener('click', function () { el.hidden = true; });
-    })();
-  </script>
-
   <div id="name-modal" class="modal-overlay" hidden>
     <div class="modal">
       <h3>What's your name?</h3>
@@ -137,92 +121,6 @@
                 </div>
               </div>
               <a href="/rooms" class="panel-link">Browse open rooms →</a>
-            </div>
-          </div>
-        </section>
-
-        <!-- VS Mode -->
-        <section class="sidebar-block">
-          <button type="button" class="sidebar-drawer-head" data-drawer="vs" aria-expanded="false" aria-controls="drawer-vs">
-            Vs Mode
-          </button>
-          <div class="sidebar-drawer" id="drawer-vs">
-            <div class="sidebar-drawer-inner">
-              <p class="subtitle">Play against a friend — same puzzle, first to finish wins</p>
-              <div class="piece-section">
-                <p class="field-label">Match Type</p>
-                <div class="piece-options">
-                  <label><input type="radio" name="vs-type" value="1v1" checked /> <span>1 Vs 1</span></label>
-                  <label><input type="radio" name="vs-type" value="team" /> <span>Team Vs Team</span></label>
-                </div>
-              </div>
-              <div class="piece-section">
-                <p class="field-label">Pieces</p>
-                <div class="piece-options">
-                  <label><input type="radio" name="vs-pieces" value="24" /> <span>24</span></label>
-                  <label><input type="radio" name="vs-pieces" value="40" checked /> <span>40</span></label>
-                  <label><input type="radio" name="vs-pieces" value="250" /> <span>250</span></label>
-                </div>
-              </div>
-              <div class="piece-section">
-                <p class="field-label">Mode</p>
-                <div class="piece-options">
-                  <label><input type="radio" name="vs-mode" value="normal" checked /> <span>Casual</span></label>
-                  <label><input type="radio" name="vs-mode" value="hard" /> <span>Hard</span></label>
-                  <label><input type="radio" name="vs-mode" value="chaos" /> <span>Chaos</span></label>
-                </div>
-              </div>
-              <div class="piece-section">
-                <p class="field-label">Image</p>
-                <div class="piece-options">
-                  <label><input type="radio" name="vs-image" value="random" checked /> <span>Random</span></label>
-                  <label><input type="radio" name="vs-image" value="pick" /> <span>Pick from library</span></label>
-                </div>
-                <div id="vs-image-picker" style="display:none;margin-top:10px">
-                  <div id="vs-image-grid" class="vs-image-grid"></div>
-                  <p id="vs-image-status" class="potd-desc">Loading…</p>
-                </div>
-              </div>
-              <a href="/vs-rooms" class="panel-link">Browse open rooms →</a>
-            </div>
-          </div>
-        </section>
-
-        <!-- Upload -->
-        <section class="sidebar-block">
-          <button type="button" class="sidebar-drawer-head" data-drawer="upload" aria-expanded="false" aria-controls="drawer-upload">
-            Upload
-          </button>
-          <div class="sidebar-drawer" id="drawer-upload">
-            <div class="sidebar-drawer-inner">
-              <p class="subtitle">Use your own photo and share a link</p>
-              <div class="upload-zone upload-zone--compact" id="upload-zone">
-                <input type="file" id="file-input" accept="image/*" />
-                <div id="upload-placeholder">
-                  <p><strong>Click or drag a photo</strong></p>
-                  <p>JPEG, PNG, WebP — up to 10MB</p>
-                </div>
-                <img class="preview" id="preview" alt="Preview" />
-              </div>
-              <div class="piece-section">
-                <p class="field-label">Pieces</p>
-                <div class="piece-options">
-                  <label><input type="radio" name="pieces" value="4" /> <span>4</span></label>
-                  <label><input type="radio" name="pieces" value="24" /> <span>24</span></label>
-                  <label><input type="radio" name="pieces" value="100" checked /> <span>100</span></label>
-                  <label><input type="radio" name="pieces" value="250" /> <span>250</span></label>
-                  <label><input type="radio" name="pieces" value="500" /> <span>500</span></label>
-                  <label><input type="radio" name="pieces" value="1000" /> <span>1000</span></label>
-                </div>
-              </div>
-              <div class="piece-section">
-                <p class="field-label">Mode</p>
-                <div class="piece-options">
-                  <label><input type="radio" name="mode" value="normal" checked /> <span>Normal</span></label>
-                  <label><input type="radio" name="mode" value="hard" /> <span>Hard</span></label>
-                </div>
-                <p class="mode-hint" id="mode-hint" style="display:none">Pieces start randomly rotated. Right-click or double-tap to rotate them into position.</p>
-              </div>
             </div>
           </div>
         </section>

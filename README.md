@@ -1,6 +1,6 @@
 # Jigsaw Together
 
-A real-time multiplayer jigsaw puzzle app. Upload a photo, share a link, and solve it together — or race a friend in VS Mode.
+A real-time multiplayer jigsaw puzzle app. Play Puzzle of the Day or pick a library image, share a link, and solve it together.
 
 **Live:** deployed on Vercel with Firebase Realtime Database for sync.
 
@@ -9,7 +9,8 @@ A real-time multiplayer jigsaw puzzle app. Upload a photo, share a link, and sol
 ## Features
 
 ### Co-op Puzzle
-- Upload any image (JPEG/PNG/WebP up to 10MB), pick piece count (4–1000), choose Normal or Hard mode
+- Pick an image from the library, choose piece count and Normal or Hard mode, then invite friends
+- Public rooms appear in the open rooms browser (`/rooms`); private rooms are share-link only
 - Hard mode: pieces start randomly rotated; right-click or double-tap to rotate
 - Pieces snap together automatically when close enough (edge-ID matching — only truly adjacent pieces snap)
 - Groups of connected pieces drag and rotate as one unit
@@ -24,17 +25,7 @@ A real-time multiplayer jigsaw puzzle app. Upload a photo, share a link, and sol
 - Daily leaderboard on the landing page and in the completion screen
 - Resets at midnight Greek time (Europe/Athens); cron at 22:00 UTC
 
-### VS Mode — 1v1 Race
-- Both players get the same puzzle (same image, same grid, same initial scatter via seeded RNG)
-- Each player controls only their own pieces; opponent's board shown read-only on the right
-- Lobby with share link + open rooms browser (`/vs-rooms`) — join without a link
-- Ready → 3-2-1-GO countdown → race starts
-- Progress bars at the top show both players' completion %
-- First to finish wins; result screen shows times and win/loss
-- **Rematch**: offer/accept flow — either player can offer, other sees a pulsing Accept button; on accept the new room is pre-started (no ready screen), same settings, same opponent
-- Win counter persists across rematches in the session
-- Chat + emoji reactions: your emoji flies on the opponent's board, theirs on yours
-- Piece count (24/100/250) and mode (Normal/Hard) chosen before creating a room
+VS Mode and custom photo upload are not on `main`. The last snapshot that still includes them is on `archive/vs-mode` and `archive/custom-upload`.
 
 ---
 
@@ -45,7 +36,7 @@ A real-time multiplayer jigsaw puzzle app. Upload a photo, share a link, and sol
 - **Tooling**: npm **devDependencies** only — ESLint, Vitest, TypeScript (`npm run lint` / `npm test` / `npm run typecheck`); CI runs the same on `main`
 - **Backend**: Vercel serverless functions (`/api/*`)
 - **Database**: Firebase Realtime Database (client SDK via CDN)
-- **Images**: Cloudinary (upload, storage, CDN delivery)
+- **Images**: Cloudinary (library storage, CDN delivery)
 - **Hosting**: Vercel
 
 ### File Structure
@@ -57,37 +48,37 @@ A real-time multiplayer jigsaw puzzle app. Upload a photo, share a link, and sol
 ├── tsconfig.json       typecheck entry (types/ for now)
 ├── scripts/            Node-only helpers (not deployed as `/api/*` — keeps Vercel Hobby within function limits)
 │
-├── index.html          Landing page (upload, POTD cards, VS entry)
-├── puzzle.html         Co-op puzzle page
-├── vs.html             VS mode game page
-├── vs-rooms.html       Open VS rooms browser
+├── index.html          Landing page (POTD cards, Play Together)
+├── puzzle.html         Co-op puzzle page (redirects to `/`)
+├── play.html           Library image picker
+├── rooms.html          Open co-op rooms browser
 │
 ├── js/
-│   ├── app.js          Landing page logic (upload, POTD load, VS create)
+│   ├── app.js          Landing page logic (POTD load, Play Together create)
 │   ├── puzzle.js       Co-op puzzle: rendering, drag, snap, sync, chat
-│   ├── vs.js           VS mode: lobby, countdown, split boards, rematch
-│   ├── vs-rooms.js     Open rooms list (live Firebase subscription)
+│   ├── play.js         Standalone library picker
+│   ├── rooms.js        Open rooms list (live Firebase subscription)
 │   ├── firebase.js     All Firebase read/write helpers (single source of truth)
 │   ├── jigsaw.js       Pure functions: edge generation, piece cutting (canvas)
 │   ├── mobile-quality.js  Texture / HQ heuristics (shared with puzzle paths)
 │   └── client-observe.js  Optional: POSTs errors to /api/client-error when configured
 │
 ├── css/
-│   └── style.css       All styles (dark theme, puzzle board, VS UI, chat)
+│   └── style.css       All styles (dark theme, puzzle board, chat)
 │
 ├── lib/
 │   └── structured-log.js     Shared JSON-per-line logger (kept outside api/ for Vercel Hobby function limits)
 │
 ├── api/
 │   ├── config.js       Returns Firebase config from env vars (called by client)
-│   ├── cloudinary-config.js  Returns Cloudinary upload preset (called by client)
 │   ├── client-error.js Optional: receives truncated client error payloads (logs JSON line)
 │   ├── potd.js         Cron: generates daily POTD puzzles, writes to Firebase
 │   ├── potd-play.js    Creates a private puzzle clone for each POTD player
-│   ├── vs-create.js    Creates a VS room (picks image, generates grid/edges/seed)
-│   └── cleanup.js      Cron: deletes puzzles + VS rooms older than 24h
+│   ├── room-create.js  Creates a co-op puzzle from a library image
+│   ├── room-images.js  Lists Cloudinary puzzle-library images
+│   └── cleanup.js      Cron: deletes puzzles + leftover VS rooms older than 24h
 │
-└── vercel.json         Rewrites (/puzzle, /vs, /vs-rooms) + cron schedules
+└── vercel.json         Rewrites (/puzzle, /play, /rooms; /vs and /vs-rooms → /) + cron schedules
 ```
 
 ### Firebase Data Model
@@ -101,18 +92,8 @@ puzzles/{puzzleId}/
   players/
     {playerId}/   name, color, lastSeen
 
-vs/{roomId}/
-  meta/           imageUrl, cols, rows, pieceW/H, displayW/H, edges[], seed,
-                  pieces, hardMode, status, createdAt, startedAt,
-                  winner, winnerSecs, rematchOffers/{playerId}, rematchRoomId
-  players/
-    {playerId}/   name, color, ready, finishedAt
-  pieces/
-    {playerId}/   — each player owns their own piece set
-      {index}/    x, y, rotation, solved, lockedBy, groupId
-
-vs-index/{roomId}/   lightweight index for the open rooms browser
-  pieces, hardMode, status, createdAt, creatorName
+rooms-index/{puzzleId}/  lightweight index for the open rooms browser
+  pieces, hardMode, status, createdAt, imageUrl, solvedCount, playerCount, creatorName
 
 potd/{difficulty}/
   date, imageUrl, cols, rows, ...meta
@@ -126,10 +107,6 @@ chat/{puzzleId}/{pushId}/  playerId, name, color, text, ts
 **Piece snapping** uses edge IDs — every internal edge has a unique integer ID shared between the two adjacent pieces. Snap only triggers when the shared edge IDs match and pieces are within a distance threshold (~40% of the smaller piece dimension). This prevents false snaps between non-adjacent pieces.
 
 **Groups** are tracked client-side only (not in Firebase) as `groups: {groupId → Set<index>}` + `pieceGroup: [groupId per index]`. When a snap happens, `writeSnappedPositions` persists the `groupId` field so late-joining players can reconstruct groups from Firebase on load.
-
-**VS scatter** uses a seeded LCG random number generator (`s = (s * 1664525 + 1013904223) & 0xffffffff`) with a shared seed stored in Firebase meta. Both clients run the same function and get identical starting positions/rotations — no need to write 200 piece positions server-side.
-
-**Opponent board** in VS mode renders a full second board (read-only) from `onVSOpponentPieces` (Firebase `onValue` on the opponent's piece path). Updates are full snapshots — efficient enough for 100-piece games.
 
 **POTD cloning**: each player hitting `/api/potd-play` gets their own `puzzles/{newId}` clone of the daily template, with `startedAt` stripped so their timer is fresh.
 
@@ -147,10 +124,9 @@ chat/{puzzleId}/{pushId}/  playerId, name, color, text, ts
 | `FIREBASE_STORAGE_BUCKET` | api/config.js | |
 | `FIREBASE_MESSAGING_SENDER_ID` | api/config.js | |
 | `FIREBASE_APP_ID` | api/config.js | |
-| `CLOUDINARY_CLOUD_NAME` | api/cloudinary-config.js, api/* | |
+| `CLOUDINARY_CLOUD_NAME` | api/* | Cloudinary cloud for library listing and CDN delivery |
 | `CLOUDINARY_API_KEY` | api/* | Server-side Cloudinary ops |
 | `CLOUDINARY_API_SECRET` | api/* | |
-| `CLOUDINARY_UPLOAD_PRESET` | api/cloudinary-config.js | Unsigned upload preset |
 | `CLEANUP_SECRET` | api/cleanup.js | Bearer token Vercel sends to cron routes |
 | `FEEDBACK_ADMIN_TOKEN` | api/feedback.js, scripts/feedback-agent.mjs | Admin token for secure feedback triage/listing |
 
@@ -177,7 +153,7 @@ npx vercel dev
 
 Requires a `.env` file (or Vercel environment variables) with the vars above.
 
-**Client errors**: `puzzle.html` and `vs.html` set `window.__JT_CLIENT_ERROR_ENDPOINT = '/api/client-error'`, which logs a short JSON line per report in Vercel function logs (rate-limited on the client). Remove or override the global to disable.
+**Client errors**: `index.html` sets `window.__JT_CLIENT_ERROR_ENDPOINT = '/api/client-error'`, which logs a short JSON line per report in Vercel function logs (rate-limited on the client). Remove or override the global to disable.
 
 ---
 

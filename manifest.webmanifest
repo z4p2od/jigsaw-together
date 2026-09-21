@@ -1,7 +1,7 @@
 {
   "name": "Jigsaw Together",
   "short_name": "Jigsaw",
-  "description": "Upload a photo, share a link, solve jigsaw puzzles together.",
+  "description": "Solve jigsaw puzzles together — Puzzle of the Day or Play Together with friends.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

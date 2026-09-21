@@ -1,63 +1,18 @@
-import { createPuzzle, getPOTD, getPuzzleImageUrl, onPOTDLeaderboard } from './firebase.js';
-import { generateEdges } from './jigsaw.js';
-import { getImageDimensions, withTimeout } from './image-utils.js';
-import { scatterPieces } from './scatter-pieces.js';
+import { getPOTD, getPuzzleImageUrl, onPOTDLeaderboard } from './firebase.js';
 
-const fileInput   = document.getElementById('file-input');
-const uploadZone  = document.getElementById('upload-zone');
-const placeholder = document.getElementById('upload-placeholder');
-const preview     = document.getElementById('preview');
 const statusEl    = document.getElementById('shell-status');
-const modeHint    = document.getElementById('mode-hint');
 const shellPlayBtn = document.getElementById('shell-play-btn');
 const welcomeScreen = document.getElementById('welcome-screen');
 const welcomeNameInput = document.getElementById('welcome-name-input');
 const welcomeStartBtn = document.getElementById('welcome-start-btn');
 const welcomeStatus = document.getElementById('welcome-status');
 
-/** @type {'potd' | 'play' | 'vs' | 'upload'} */
+/** @type {'potd' | 'play'} */
 let shellMode = 'potd';
 let shellPlayImagesLoaded = false;
 let playSelectedImage = null;
 let prefetchedPuzzleId = null;
 let prefetchPromise = null;
-
-const MAX_BYTES = 10 * 1024 * 1024;
-
-function jtDbgLog(payload) {
-  const line = { sessionId: 'c7426d', timestamp: Date.now(), ...payload };
-  try {
-    window.__JT_DEBUG_LOGS = window.__JT_DEBUG_LOGS || [];
-    window.__JT_DEBUG_LOGS.push(line);
-    if (window.__JT_DEBUG_LOGS.length > 120) window.__JT_DEBUG_LOGS.shift();
-  } catch (_) { /* ignore */ }
-  fetch('http://127.0.0.1:7319/ingest/be2f6902-b67c-428c-8ee3-1dabde1e3930', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'c7426d' },
-    body: JSON.stringify(line),
-  }).catch(() => {});
-}
-
-let selectedFile = null;
-let selectedDims = null;
-
-function isLikelyInAppBrowser() {
-  const ua = navigator.userAgent || '';
-  return /Instagram|FBAN|FBAV|FB_IAB|FBIOS|Line\/|Snapchat|Messenger|LinkedInApp|TikTok/i.test(ua);
-}
-
-function fetchWithTimeout(url, options, ms) {
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), ms);
-  return fetch(url, { ...options, signal: ctrl.signal }).finally(() => clearTimeout(t));
-}
-
-// Show hard mode explainer when Hard is selected
-document.querySelectorAll('input[name="mode"]').forEach(radio => {
-  radio.addEventListener('change', () => {
-    modeHint.style.display = radio.value === 'hard' && radio.checked ? '' : 'none';
-  });
-});
 
 // ── POTD ──────────────────────────────────────────────────────────────────────
 
@@ -460,275 +415,6 @@ async function startSelectedPotd() {
   }
 }
 
-// ── VS Mode create ────────────────────────────────────────────────────────────
-
-let vsPickedImage = null; // { url, width, height }
-
-// Show/hide image picker when radio changes
-document.querySelectorAll('input[name="vs-image"]').forEach(radio => {
-  radio.addEventListener('change', () => {
-    const pickerEl = document.getElementById('vs-image-picker');
-    if (radio.value === 'pick' && radio.checked) {
-      pickerEl.style.display = '';
-      loadVSImagePicker();
-    } else {
-      pickerEl.style.display = 'none';
-      vsPickedImage = null;
-    }
-  });
-});
-
-async function loadVSImagePicker() {
-  const grid     = document.getElementById('vs-image-grid');
-  const statusEl = document.getElementById('vs-image-status');
-  if (grid.dataset.loaded) return; // already loaded
-  statusEl.textContent = 'Loading…';
-  try {
-    const res  = await fetch('/api/room-images');
-    const imgs = await res.json();
-    grid.innerHTML = '';
-    if (!imgs.length) { statusEl.textContent = 'No images found.'; return; }
-    imgs.forEach(img => {
-      const el = document.createElement('div');
-      el.className = 'vs-img-thumb';
-      el.style.backgroundImage = `url(${img.url})`;
-      el.title = `${img.width}×${img.height}`;
-      el.addEventListener('click', () => {
-        grid.querySelectorAll('.vs-img-thumb').forEach(t => t.classList.remove('selected'));
-        el.classList.add('selected');
-        vsPickedImage = img;
-        statusEl.textContent = '✓ Image selected';
-      });
-      grid.appendChild(el);
-    });
-    statusEl.textContent = `${imgs.length} images — click one to select`;
-    grid.dataset.loaded = '1';
-  } catch {
-    statusEl.textContent = 'Failed to load images.';
-  }
-}
-
-document.getElementById('vs-create-btn')?.addEventListener('click', () => {
-  startVsMatch();
-});
-
-function startVsMatch() {
-  const pieces    = document.querySelector('input[name="vs-pieces"]:checked').value;
-  const mode      = document.querySelector('input[name="vs-mode"]:checked').value;
-  const hard      = mode === 'hard';
-  const chaos     = mode === 'chaos';
-  const teamEl    = document.querySelector('input[name="vs-type"]:checked');
-  const teamMode  = teamEl ? teamEl.value === 'team' : false;
-  const imageMode = document.querySelector('input[name="vs-image"]:checked')?.value ?? 'random';
-
-  let url = `/api/vs-create?pieces=${pieces}&hard=${hard}&chaos=${chaos}&teamMode=${teamMode}`;
-  if (imageMode === 'pick' && vsPickedImage) {
-    url += `&imageUrl=${encodeURIComponent(vsPickedImage.url)}&imageW=${vsPickedImage.width}&imageH=${vsPickedImage.height}`;
-  } else if (imageMode === 'pick' && !vsPickedImage) {
-    setShellStatus('Please select an image first.', true);
-    return;
-  }
-  window.location.href = url;
-}
-
-// ── Image upload ──────────────────────────────────────────────────────────────
-
-fileInput.addEventListener('change', () => handleFile(fileInput.files[0]));
-
-uploadZone.addEventListener('dragover', (e) => {
-  e.preventDefault();
-  uploadZone.classList.add('drag-over');
-});
-uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
-uploadZone.addEventListener('drop', (e) => {
-  e.preventDefault();
-  uploadZone.classList.remove('drag-over');
-  handleFile(e.dataTransfer.files[0]);
-});
-
-function handleFile(file) {
-  if (!file) return;
-  if (!file.type.startsWith('image/')) return setShellStatus('Please upload an image file.', true);
-  if (file.size > MAX_BYTES) return setShellStatus('Image must be under 10MB.', true);
-
-  // Preview using an object URL to avoid base64 memory spikes in iOS in-app browsers.
-  selectedFile = file;
-  selectedDims = null;
-  shellMode = 'upload';
-  updateShellPlayButton();
-  setShellStatus('Preparing image…');
-
-  const objUrl = URL.createObjectURL(file);
-  preview.onload = () => URL.revokeObjectURL(objUrl);
-  preview.onerror = () => URL.revokeObjectURL(objUrl);
-  preview.src = objUrl;
-  preview.style.display = 'block';
-  placeholder.style.display = 'none';
-
-  // Resolve dimensions asynchronously (enables grid calc without re-encoding).
-  getImageDimensions(file)
-    .then(dims => {
-      selectedDims = dims;
-      updateShellPlayButton();
-      setShellStatus('');
-    })
-    .catch(err => {
-      console.error(err);
-      selectedFile = null;
-      selectedDims = null;
-      updateShellPlayButton();
-      setShellStatus('Could not read that image. Please try a different photo.', true);
-    });
-}
-
-// ── Grid calculation ──────────────────────────────────────────────────────────
-
-function calculateGrid(pieceCount, imgWidth, imgHeight) {
-  const aspect = imgWidth / imgHeight;
-  let bestCols = 1, bestRows = pieceCount, bestDiff = Infinity;
-  for (let cols = 1; cols <= pieceCount; cols++) {
-    const rows = Math.round(pieceCount / cols);
-    if (cols * rows === 0) continue;
-    const diff = Math.abs(cols / rows - aspect);
-    if (diff < bestDiff) {
-      bestDiff = diff;
-      bestCols = cols;
-      bestRows = rows;
-    }
-  }
-  return { cols: bestCols, rows: bestRows };
-}
-
-// ── Scatter pieces ────────────────────────────────────────────────────────────
-
-// ── Cloudinary upload (direct from browser; in-app WebViews may block — see status copy) ──
-
-let cloudinaryConfigCache = null;
-
-async function uploadToCloudinary(file) {
-  if (!(file instanceof Blob)) throw new Error('Expected a File/Blob');
-
-  if (!cloudinaryConfigCache) {
-    cloudinaryConfigCache = await withTimeout(
-      (async () => {
-        const r = await fetch('/api/cloudinary-config');
-        if (!r.ok) throw new Error(`cloudinary config ${r.status}`);
-        return r.json();
-      })(),
-      8000,
-      'cloudinary config'
-    );
-  }
-  const { cloudName, uploadPreset } = cloudinaryConfigCache || {};
-  if (!cloudName || !uploadPreset) throw new Error('Missing Cloudinary config');
-
-  const fd = new FormData();
-  fd.append('file', file);
-  fd.append('upload_preset', uploadPreset);
-  const res = await fetchWithTimeout(
-    `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
-    { method: 'POST', body: fd },
-    120000
-  );
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error?.message || 'Cloudinary upload failed');
-  return { imageUrl: data.secure_url, imagePublicId: data.public_id };
-}
-
-// ── Create puzzle ─────────────────────────────────────────────────────────────
-
-async function handleCreatePuzzle() {
-  if (!selectedFile || !selectedDims) return;
-
-  const pieceCount = Number(document.querySelector('input[name="pieces"]:checked').value);
-  setShellStatus('Generating puzzle...');
-  shellPlayBtn.disabled = true;
-
-  try {
-    const { cols, rows } = calculateGrid(pieceCount, selectedDims.width, selectedDims.height);
-    const actualCount = cols * rows;
-
-    const pieceW = Math.floor(selectedDims.width  / cols);
-    const pieceH = Math.floor(selectedDims.height / rows);
-
-    const boardW = 1080, boardH = 780;
-    const scale    = Math.min((boardW * 0.55) / selectedDims.width, (boardH * 0.55) / selectedDims.height, 1);
-    const displayW = Math.floor(pieceW * scale);
-    const displayH = Math.floor(pieceH * scale);
-
-    const hardMode = document.querySelector('input[name="mode"]:checked').value === 'hard';
-    const edges    = generateEdges(cols, rows);
-    const pieces   = scatterPieces({ count: actualCount, dispW: displayW, dispH: displayH, hardMode });
-    // #region agent log
-    {
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-      for (const p of pieces) {
-        if (p.x < minX) minX = p.x;
-        if (p.y < minY) minY = p.y;
-        if (p.x > maxX) maxX = p.x;
-        if (p.y > maxY) maxY = p.y;
-      }
-      jtDbgLog({
-        runId: 'pre-fix-2',
-        hypothesisId: 'H6',
-        location: 'app.js:handleCreatePuzzle:scatter',
-        message: 'pieces scattered on create',
-        data: { pieceCount: actualCount, cols, rows, displayW, displayH, boardW, boardH, minX, minY, maxX, maxY },
-      });
-    }
-    // #endregion
-
-    setShellStatus('Uploading image...');
-    const { imageUrl, imagePublicId } = await withTimeout(
-      uploadToCloudinary(selectedFile),
-      120000,
-      'image upload'
-    );
-
-    const meta = { imageUrl, imagePublicId, cols, rows, pieceW, pieceH, displayW, displayH, edges, hardMode };
-    // #region agent log
-    jtDbgLog({
-      runId: 'pre-fix-2',
-      hypothesisId: 'H6-H1',
-      location: 'app.js:handleCreatePuzzle:meta',
-      message: 'createPuzzle request meta',
-      data: {
-        cols,
-        rows,
-        pieceW,
-        pieceH,
-        displayW,
-        displayH,
-        hardMode,
-        imagePublicIdPrefix: String(imagePublicId || '').split('/').slice(0, 2).join('/'),
-      },
-    });
-    // #endregion
-
-    setShellStatus(`Creating ${actualCount}-piece puzzle...`);
-    const newPuzzleId = await withTimeout(createPuzzle(meta, pieces), 15000, 'puzzle creation');
-    if (typeof window.__JT_bootPuzzle === 'function') {
-      await window.__JT_bootPuzzle(newPuzzleId);
-    } else {
-      window.location.href = `/?id=${encodeURIComponent(newPuzzleId)}`;
-    }
-    setShellStatus('');
-  } catch (err) {
-    console.error(err);
-    let msg = err?.message || 'Something went wrong. Please try again.';
-    if (err.name === 'AbortError' || /timed out/i.test(String(err?.message || ''))) {
-      msg = 'Upload or setup timed out. In-app browsers (Instagram, Messenger, TikTok) often block image uploads.';
-    }
-    if (isLikelyInAppBrowser()) {
-      msg += ' Open this page in Safari or Chrome: Share → Open in Browser.';
-    }
-    setShellStatus(msg, true);
-  } finally {
-    shellPlayBtn.disabled = false;
-    updateShellPlayButton();
-  }
-}
-
 // ── Shell sidebar ─────────────────────────────────────────────────────────────
 
 function setShellStatus(msg, isError = false) {
@@ -739,16 +425,6 @@ function setShellStatus(msg, isError = false) {
 
 function updateShellPlayButton() {
   if (!shellPlayBtn) return;
-  if (shellMode === 'upload') {
-    shellPlayBtn.textContent = 'Load Puzzle';
-    shellPlayBtn.disabled = !selectedFile || !selectedDims;
-    return;
-  }
-  if (shellMode === 'vs') {
-    shellPlayBtn.textContent = 'Start Vs Match';
-    shellPlayBtn.disabled = false;
-    return;
-  }
   if (shellMode === 'play') {
     shellPlayBtn.textContent = 'Play Puzzle';
     shellPlayBtn.disabled = !playSelectedImage;
@@ -873,8 +549,6 @@ async function startPlayTogether() {
 shellPlayBtn?.addEventListener('click', async () => {
   if (shellMode === 'potd') return startSelectedPotd();
   if (shellMode === 'play') return startPlayTogether();
-  if (shellMode === 'vs') return startVsMatch();
-  if (shellMode === 'upload') return handleCreatePuzzle();
 });
 
 document.getElementById('celebration-new-btn')?.addEventListener('click', () => {

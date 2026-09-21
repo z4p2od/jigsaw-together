@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased — Product trim
+- Removed VS Mode from the live app (`/vs` and `/vs-rooms` rewrite to `/`). Code is frozen on `archive/vs-mode`.
+- Removed custom photo upload. Co-op games are created from the library via Play Together. Code is frozen on `archive/custom-upload`.
+
 ## Unreleased — VS Mode improvements
 - Rematch offer/accept flow: either player can offer, other sees a pulsing Accept button; both are auto-redirected to a new room with no lobby/ready screen
 - Win counter displayed in result screen, persists across rematches in the session

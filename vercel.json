@@ -23,8 +23,8 @@
   ],
   "rewrites": [
     { "source": "/puzzle", "destination": "/puzzle.html" },
-    { "source": "/vs",       "destination": "/vs.html"       },
-    { "source": "/vs-rooms", "destination": "/vs-rooms.html" },
+    { "source": "/vs",       "destination": "/" },
+    { "source": "/vs-rooms", "destination": "/" },
     { "source": "/play",     "destination": "/play.html"     },
     { "source": "/rooms",    "destination": "/rooms.html"    },
     { "source": "/api/feedback-list", "destination": "/api/feedback?action=list" },

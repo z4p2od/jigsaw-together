@@ -1,5 +1,5 @@
 /* eslint-disable no-restricted-globals */
-const CACHE_VERSION = 'jt-v1';
+const CACHE_VERSION = 'jt-v2';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 
 const PRECACHE_URLS = [
@@ -8,8 +8,6 @@ const PRECACHE_URLS = [
   '/play.html',
   '/rooms.html',
   '/puzzle.html',
-  '/vs.html',
-  '/vs-rooms.html',
   '/css/style.css',
   '/js/pwa.js',
   '/js/mobile-quality.js',
