@@ -8,7 +8,7 @@
  */
 import crypto from 'crypto';
 import { scatterPieces } from '../js/scatter-pieces.js';
-import { ALLOWED_PIECES, calculateGrid } from '../js/puzzle-grid.js';
+import { ALLOWED_PIECES, calculateGrid, resolveGrid } from '../js/puzzle-grid.js';
 
 const BOARD_W = 1080;
 const BOARD_H = 780;
@@ -77,16 +77,18 @@ export default async function handler(req, res) {
   let pieceCount;
   let hardMode;
 
+  let catalogEntry = null;
   if (catalogId) {
     const entry = await fbGet(`catalog/${catalogId}`);
-    if (!entry?.imageUrl || !entry.width || !entry.height || !entry.pieces) {
+    if (!entry?.imageUrl || !entry.width || !entry.height) {
       return res.status(404).json({ error: 'Catalog puzzle not found' });
     }
     imageUrl = entry.imageUrl;
     imgW = Number(entry.width);
     imgH = Number(entry.height);
-    pieceCount = Number(entry.pieces);
+    pieceCount = Number(entry.pieces) || Number(entry.cols) * Number(entry.rows);
     hardMode = !!entry.hardMode;
+    catalogEntry = entry;
   } else {
     const rawPieces = parseInt(req.query.pieces, 10);
     pieceCount = ALLOWED_PIECES.includes(rawPieces) ? rawPieces : 100;
@@ -104,7 +106,9 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Invalid image URL' });
   }
 
-  const { cols, rows } = calculateGrid(pieceCount, imgW, imgH);
+  const { cols, rows } = catalogEntry
+    ? resolveGrid({ ...catalogEntry, width: imgW, height: imgH })
+    : calculateGrid(pieceCount, imgW, imgH);
   const pieceW   = Math.floor(imgW / cols);
   const pieceH   = Math.floor(imgH / rows);
   const scale    = Math.min((BOARD_W * 0.55) / imgW, (BOARD_H * 0.55) / imgH, 1);

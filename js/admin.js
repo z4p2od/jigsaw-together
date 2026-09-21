@@ -1,7 +1,13 @@
 import { generateEdges, drawJigsawPath } from './jigsaw.js';
-import { ALLOWED_PIECES, calculateGrid, formatPuzzleDifficulty } from './puzzle-grid.js';
-
-const TOKEN_KEY = 'jt-admin-token';
+import {
+  TARGET_PIECE_COUNTS,
+  calculateGrid,
+  clampGrid,
+  defaultTargetPieces,
+  resolveGrid,
+  describePieceShape,
+  formatPuzzleDifficulty,
+} from './puzzle-grid.js';
 
 const deniedEl = document.getElementById('admin-denied');
 const appEl = document.getElementById('admin-app');
@@ -14,35 +20,55 @@ const saveBtn = document.getElementById('admin-save');
 const saveStatus = document.getElementById('admin-save-status');
 const catalogList = document.getElementById('admin-catalog-list');
 const catalogEmpty = document.getElementById('admin-catalog-empty');
+const colsInput = document.getElementById('admin-cols');
+const rowsInput = document.getElementById('admin-rows');
+const gridHint = document.getElementById('admin-grid-hint');
 
-let token = '';
 /** @type {{ url: string, width: number, height: number, publicId?: string } | null} */
 let selectedImage = null;
 /** @type {string | null} */
 let editingId = null;
+/** @type {Array<Record<string, unknown>>} */
+let catalogPuzzles = [];
 let previewTimer = 0;
-
-function authHeaders() {
-  return { Authorization: `Bearer ${token}` };
-}
+let previewGen = 0;
 
 async function adminFetch(url, options = {}) {
   const res = await fetch(url, {
     ...options,
-    headers: { ...authHeaders(), ...(options.headers || {}) },
+    headers: { ...(options.headers || {}) },
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
   return data;
 }
 
-function selectedPieces() {
-  const raw = parseInt(document.querySelector('input[name="admin-pieces"]:checked')?.value, 10);
-  return ALLOWED_PIECES.includes(raw) ? raw : 100;
-}
-
 function selectedHard() {
   return document.querySelector('input[name="admin-mode"]:checked')?.value === 'hard';
+}
+
+function selectedGrid(commit = false) {
+  const grid = clampGrid(colsInput.value, rowsInput.value);
+  if (commit) {
+    colsInput.value = String(grid.cols);
+    rowsInput.value = String(grid.rows);
+  }
+  return grid;
+}
+
+function applySuggestedGrid(pieceCount) {
+  if (!selectedImage) return;
+  const grid = calculateGrid(pieceCount, selectedImage.width, selectedImage.height);
+  colsInput.value = String(grid.cols);
+  rowsInput.value = String(grid.rows);
+  highlightTarget(pieceCount);
+  schedulePreview();
+}
+
+function highlightTarget(pieceCount) {
+  document.querySelectorAll('#admin-targets [data-target]').forEach((btn) => {
+    btn.classList.toggle('is-active', Number(btn.getAttribute('data-target')) === pieceCount);
+  });
 }
 
 function setStatus(el, msg, isError = false) {
@@ -51,45 +77,12 @@ function setStatus(el, msg, isError = false) {
   el.className = 'status' + (isError ? ' error' : '');
 }
 
-async function unlock(nextToken) {
-  token = String(nextToken || '').trim();
-  if (!token) throw new Error('Missing token');
-  try {
-    await adminFetch('/api/admin?action=catalog');
-  } catch (err) {
-    token = '';
-    throw err;
-  }
-  try {
-    sessionStorage.setItem(TOKEN_KEY, token);
-  } catch { /* private mode */ }
-  stripSecretFromUrl();
-  if (deniedEl) deniedEl.hidden = true;
-  appEl.hidden = false;
-  document.title = 'Puzzle catalog';
-  await Promise.all([loadLibrary(), loadCatalog()]);
-}
-
-function readSecretFromUrl() {
-  const params = new URLSearchParams(location.search);
-  const fromQuery = (params.get('k') || params.get('token') || '').trim();
-  if (fromQuery) return fromQuery;
-  const hash = (location.hash || '').replace(/^#/, '').trim();
-  if (!hash) return '';
-  if (hash.startsWith('k=')) return decodeURIComponent(hash.slice(2));
-  return decodeURIComponent(hash);
-}
-
-function stripSecretFromUrl() {
-  try {
-    history.replaceState(null, '', location.pathname);
-  } catch { /* ignore */ }
-}
-
-function showDenied() {
-  appEl.hidden = true;
-  if (deniedEl) deniedEl.hidden = false;
-  document.title = 'Not found';
+function findCatalogForImage(img) {
+  const url = img.url || img.imageUrl;
+  const publicId = img.publicId;
+  return catalogPuzzles.find((p) =>
+    (publicId && p.publicId === publicId) || (url && p.imageUrl === url)
+  ) || null;
 }
 
 function renderLibrary(images) {
@@ -108,7 +101,10 @@ function renderLibrary(images) {
     el.alt = '';
     el.loading = 'lazy';
     card.appendChild(el);
-    card.addEventListener('click', () => selectImage(img, null));
+    card.addEventListener('click', () => {
+      const existing = findCatalogForImage(img);
+      selectImage(img, existing?.id || null, existing);
+    });
     imageGrid.appendChild(card);
   });
 }
@@ -117,7 +113,7 @@ async function loadLibrary() {
   imagesStatus.textContent = 'Loading…';
   try {
     const images = await fetch('/api/room-images').then((r) => r.json());
-    renderLibrary(images);
+    renderLibrary(Array.isArray(images) ? images : []);
   } catch {
     imagesStatus.textContent = 'Failed to load library.';
   }
@@ -150,24 +146,42 @@ fileInput.addEventListener('change', async () => {
     };
     await loadLibrary();
     selectImage(img, null);
-    setStatus(saveStatus, 'Uploaded. Set difficulty and save to catalog.');
+    setStatus(saveStatus, 'Uploaded. Check the cut preview, then save.');
   } catch (err) {
     setStatus(saveStatus, err.message || 'Upload failed', true);
   }
 });
 
-function selectImage(img, catalogId) {
+function selectImage(img, catalogId, saved) {
   selectedImage = {
     url: img.url || img.fullUrl || img.imageUrl,
     width: img.width,
     height: img.height,
     publicId: img.publicId,
   };
-  editingId = catalogId;
+  editingId = catalogId || null;
   document.querySelectorAll('#admin-image-grid .play-image-card').forEach((c) => {
     const src = c.querySelector('img')?.src;
     c.classList.toggle('selected', !!src && src === selectedImage.url);
   });
+  if (saved) {
+    const grid = resolveGrid({
+      cols: saved.cols,
+      rows: saved.rows,
+      pieces: saved.pieces,
+      width: selectedImage.width,
+      height: selectedImage.height,
+    });
+    colsInput.value = String(grid.cols);
+    rowsInput.value = String(grid.rows);
+    document.querySelector(`input[name="admin-mode"][value="${saved.hardMode ? 'hard' : 'normal'}"]`).checked = true;
+    highlightTarget(null);
+  } else {
+    const target = defaultTargetPieces(selectedImage.publicId);
+    applySuggestedGrid(target);
+    document.querySelector('input[name="admin-mode"][value="normal"]').checked = true;
+    return;
+  }
   schedulePreview();
 }
 
@@ -176,8 +190,25 @@ function schedulePreview() {
   previewTimer = setTimeout(renderPreview, 40);
 }
 
-document.querySelectorAll('input[name="admin-pieces"], input[name="admin-mode"]').forEach((el) => {
+document.querySelectorAll('input[name="admin-mode"]').forEach((el) => {
   el.addEventListener('change', schedulePreview);
+});
+[colsInput, rowsInput].forEach((el) => {
+  el.addEventListener('input', () => {
+    highlightTarget(null);
+    schedulePreview();
+  });
+  el.addEventListener('change', () => {
+    selectedGrid(true);
+    highlightTarget(null);
+    schedulePreview();
+  });
+});
+document.querySelectorAll('#admin-targets [data-target]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const n = parseInt(btn.getAttribute('data-target'), 10);
+    if (TARGET_PIECE_COUNTS.includes(n)) applySuggestedGrid(n);
+  });
 });
 
 function loadImage(url) {
@@ -190,6 +221,31 @@ function loadImage(url) {
   });
 }
 
+function drawCutOverlay(ctx, cols, rows, w, h) {
+  const edges = generateEdges(cols, rows);
+  const cellW = w / cols;
+  const cellH = h / rows;
+  const count = cols * rows;
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      ctx.save();
+      ctx.translate(col * cellW, row * cellH);
+      drawJigsawPath(ctx, cellW, cellH, edges[row * cols + col], 0);
+      ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+      ctx.lineWidth = count > 80 ? 2.2 : 3;
+      ctx.stroke();
+      drawJigsawPath(ctx, cellW, cellH, edges[row * cols + col], 0);
+      ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+      ctx.lineWidth = count > 80 ? 1 : 1.4;
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+}
+
 async function renderPreview() {
   if (!selectedImage) {
     previewMeta.textContent = 'Select an image';
@@ -198,16 +254,18 @@ async function renderPreview() {
     return;
   }
 
-  const pieces = selectedPieces();
+  const { cols, rows } = selectedGrid();
   const hardMode = selectedHard();
-  const { cols, rows } = calculateGrid(pieces, selectedImage.width, selectedImage.height);
   const actual = cols * rows;
-  previewMeta.textContent = `${formatPuzzleDifficulty(actual, hardMode)} · ${cols}×${rows} grid`;
+  if (gridHint) gridHint.textContent = describePieceShape(cols, rows, selectedImage.width, selectedImage.height);
+  previewMeta.textContent = `${formatPuzzleDifficulty(actual, hardMode, cols, rows)} — live cut`;
 
+  const gen = ++previewGen;
   try {
     const img = await loadImage(selectedImage.url);
+    if (gen !== previewGen) return;
     const maxW = Math.min(720, previewCanvas.parentElement?.clientWidth || 720);
-    const scale = Math.min(maxW / img.naturalWidth, 520 / img.naturalHeight, 1);
+    const scale = Math.min(maxW / img.naturalWidth, 560 / img.naturalHeight, 1);
     const w = Math.max(1, Math.round(img.naturalWidth * scale));
     const h = Math.max(1, Math.round(img.naturalHeight * scale));
     previewCanvas.width = w;
@@ -215,29 +273,9 @@ async function renderPreview() {
     const ctx = previewCanvas.getContext('2d');
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(img, 0, 0, w, h);
-
-    const edges = generateEdges(cols, rows);
-    const cellW = w / cols;
-    const cellH = h / rows;
-    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-    ctx.lineWidth = actual > 200 ? 0.8 : 1.2;
-    ctx.lineJoin = 'round';
-
-    for (let row = 0; row < rows; row++) {
-      for (let col = 0; col < cols; col++) {
-        ctx.save();
-        ctx.translate(col * cellW, row * cellH);
-        if (hardMode) {
-          ctx.translate(cellW / 2, cellH / 2);
-          ctx.rotate((Math.PI / 2) * ((row + col) % 4));
-          ctx.translate(-cellW / 2, -cellH / 2);
-        }
-        drawJigsawPath(ctx, cellW, cellH, edges[row * cols + col], 0);
-        ctx.stroke();
-        ctx.restore();
-      }
-    }
+    drawCutOverlay(ctx, cols, rows, w, h);
   } catch (err) {
+    if (gen !== previewGen) return;
     previewMeta.textContent = err.message || 'Preview failed';
   }
 }
@@ -250,6 +288,7 @@ saveBtn.addEventListener('click', async () => {
   saveBtn.disabled = true;
   setStatus(saveStatus, 'Saving…');
   try {
+    const { cols, rows } = selectedGrid(true);
     const saved = await adminFetch('/api/admin?action=catalog', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -259,7 +298,9 @@ saveBtn.addEventListener('click', async () => {
         publicId: selectedImage.publicId || null,
         width: selectedImage.width,
         height: selectedImage.height,
-        pieces: selectedPieces(),
+        pieces: cols * rows,
+        cols,
+        rows,
         hardMode: selectedHard(),
       }),
     });
@@ -282,17 +323,14 @@ function renderCatalog(puzzles) {
     row.innerHTML = `
       <img src="${p.imageUrl}" alt="" width="72" height="54" />
       <div>
-        <strong>${formatPuzzleDifficulty(p.pieces, p.hardMode)}</strong>
+        <strong>${formatPuzzleDifficulty(p.pieces, p.hardMode, p.cols, p.rows)}</strong>
         <div class="potd-desc">${p.width}×${p.height}</div>
       </div>
       <button type="button" class="btn btn-sm" data-edit>Edit</button>
       <button type="button" class="btn btn-sm" data-del>Delete</button>
     `;
     row.querySelector('[data-edit]').addEventListener('click', () => {
-      const piecesRadio = document.querySelector(`input[name="admin-pieces"][value="${p.pieces}"]`);
-      if (piecesRadio) piecesRadio.checked = true;
-      document.querySelector(`input[name="admin-mode"][value="${p.hardMode ? 'hard' : 'normal'}"]`).checked = true;
-      selectImage({ url: p.imageUrl, width: p.width, height: p.height, publicId: p.publicId }, p.id);
+      selectImage({ url: p.imageUrl, width: p.width, height: p.height, publicId: p.publicId }, p.id, p);
     });
     row.querySelector('[data-del]').addEventListener('click', async () => {
       if (!confirm('Remove this puzzle from the catalog? The Cloudinary image stays.')) return;
@@ -310,23 +348,30 @@ function renderCatalog(puzzles) {
 
 async function loadCatalog() {
   const data = await adminFetch('/api/admin?action=catalog');
-  renderCatalog(data.puzzles || []);
+  catalogPuzzles = data.puzzles || [];
+  renderCatalog(catalogPuzzles);
 }
 
-(async function boot() {
-  let candidate = readSecretFromUrl();
-  if (!candidate) {
-    try {
-      candidate = sessionStorage.getItem(TOKEN_KEY) || '';
-    } catch { /* private mode */ }
-  }
-  if (candidate) {
-    try {
-      await unlock(candidate);
-      return;
-    } catch {
-      try { sessionStorage.removeItem(TOKEN_KEY); } catch { /* ignore */ }
+async function bootOpen() {
+  if (deniedEl) deniedEl.hidden = true;
+  appEl.hidden = false;
+  document.title = 'Puzzle catalog';
+  await loadLibrary();
+  try {
+    const seeded = await adminFetch('/api/admin?action=seed', { method: 'POST' });
+    if (seeded.created) {
+      setStatus(saveStatus, `Filled ${seeded.created} library puzzles (~25 / ~50 / ~100). Edit any of them and save.`);
     }
+  } catch (err) {
+    setStatus(saveStatus, err.message || 'Could not fill defaults', true);
   }
-  showDenied();
-})();
+  await loadCatalog();
+}
+
+bootOpen();
+
+/*
+Restore secret-link auth later:
+- Require Bearer ADMIN_TOKEN / FEEDBACK_ADMIN_TOKEN in api/admin.js
+- Read /admin#TOKEN here, sessionStorage, showDenied() if missing
+*/

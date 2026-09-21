@@ -75,6 +75,8 @@ function normalizePotdPayload(payload, today) {
         puzzleId: payload.puzzle.puzzleId,
         imageUrl: payload.puzzle.imageUrl || null,
         pieces: payload.puzzle.pieces || null,
+        cols: payload.puzzle.cols || null,
+        rows: payload.puzzle.rows || null,
         hardMode: !!payload.puzzle.hardMode,
       },
     };
@@ -87,6 +89,8 @@ function normalizePotdPayload(payload, today) {
       puzzleId: first.puzzleId,
       imageUrl: first.imageUrl || null,
       pieces: first.pieces || null,
+      cols: first.cols || null,
+      rows: first.rows || null,
       hardMode: !!first.hardMode,
     },
   };
@@ -102,7 +106,7 @@ function paintTodayPotd() {
     return;
   }
   potdReady = true;
-  potdDesc.textContent = formatPuzzleDifficulty(todayPotd.pieces, todayPotd.hardMode);
+  potdDesc.textContent = formatPuzzleDifficulty(todayPotd.pieces, todayPotd.hardMode, todayPotd.cols, todayPotd.rows);
   if (potdPreview && potdPreviewImg && todayPotd.imageUrl) {
     potdPreviewImg.src = todayPotd.imageUrl;
     potdPreviewImg.alt = 'Puzzle of the day';
@@ -174,6 +178,8 @@ async function loadPOTDFromFirebase(today) {
         puzzleId: data.puzzleId,
         imageUrl,
         pieces: data.pieces || null,
+        cols: data.cols || null,
+        rows: data.rows || null,
         hardMode: !!data.hardMode,
       },
     };
@@ -452,12 +458,12 @@ async function loadShellPlayImages() {
       card.className = 'play-image-card';
       const el = document.createElement('img');
       el.src = p.imageUrl;
-      el.alt = formatPuzzleDifficulty(p.pieces, p.hardMode);
+      el.alt = formatPuzzleDifficulty(p.pieces, p.hardMode, p.cols, p.rows);
       el.loading = 'lazy';
       card.appendChild(el);
       const badge = document.createElement('span');
       badge.className = 'catalog-badge';
-      badge.textContent = formatPuzzleDifficulty(p.pieces, p.hardMode);
+      badge.textContent = formatPuzzleDifficulty(p.pieces, p.hardMode, p.cols, p.rows);
       card.appendChild(badge);
       card.addEventListener('click', () => {
         document.querySelectorAll('#play-image-grid .play-image-card').forEach((c) => c.classList.remove('selected'));

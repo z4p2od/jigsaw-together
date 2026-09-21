@@ -2401,3 +2401,48 @@ body.home-shell .play-viewport.is-loading .puzzle-status-bar {
 .admin-catalog-row .btn {
   width: auto;
 }
+
+.admin-grid-axes {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: end;
+  gap: 12px;
+}
+
+.admin-axis {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.admin-axis .name-input {
+  width: 100%;
+}
+
+.admin-axis-x {
+  padding-bottom: 10px;
+  color: var(--accent);
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+}
+
+#admin-targets button {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 6px;
+  border: 1px solid var(--border-muted);
+  background: var(--surface);
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+#admin-targets button.is-active,
+#admin-targets button:hover {
+  border-color: var(--neon);
+  color: var(--neon);
+}

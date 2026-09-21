@@ -25,14 +25,20 @@ export default async function handler(req, res) {
     const raw = (await fbGet('catalog')) || {};
     const puzzles = Object.entries(raw)
       .map(([id, entry]) => {
-        if (!entry?.imageUrl || !entry.pieces) return null;
+        if (!entry?.imageUrl) return null;
+        const cols = Number(entry.cols) || 0;
+        const rows = Number(entry.rows) || 0;
+        const pieces = (cols > 0 && rows > 0) ? cols * rows : Number(entry.pieces);
+        if (!pieces) return null;
         return {
           id,
           imageUrl: previewUrl(entry.imageUrl),
           fullUrl: entry.imageUrl,
           width: entry.width,
           height: entry.height,
-          pieces: entry.pieces,
+          cols: cols || null,
+          rows: rows || null,
+          pieces,
           hardMode: !!entry.hardMode,
           createdAt: entry.createdAt || 0,
         };

@@ -32,12 +32,12 @@ async function loadCatalog() {
     card.className = 'play-image-card';
     const el = document.createElement('img');
     el.src = p.imageUrl;
-    el.alt = formatPuzzleDifficulty(p.pieces, p.hardMode);
+    el.alt = formatPuzzleDifficulty(p.pieces, p.hardMode, p.cols, p.rows);
     el.loading = 'lazy';
     card.appendChild(el);
     const badge = document.createElement('span');
     badge.className = 'catalog-badge';
-    badge.textContent = formatPuzzleDifficulty(p.pieces, p.hardMode);
+    badge.textContent = formatPuzzleDifficulty(p.pieces, p.hardMode, p.cols, p.rows);
     card.appendChild(badge);
     card.addEventListener('click', () => {
       document.querySelectorAll('.play-image-card').forEach((c) => c.classList.remove('selected'));

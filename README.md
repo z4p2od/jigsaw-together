@@ -9,7 +9,7 @@ A real-time multiplayer jigsaw puzzle app. Play Puzzle of the Day or pick a libr
 ## Features
 
 ### Co-op Puzzle
-- Pick a catalogued puzzle (piece count and rotation are set by admin), then invite friends
+- Pick a catalogued puzzle (grid and rotation are set by admin), then invite friends
 - Public rooms appear in the open rooms browser (`/rooms`); private rooms are share-link only
 - Hard mode: pieces start randomly rotated; right-click or double-tap to rotate
 - Pieces snap together automatically when close enough (edge-ID matching — only truly adjacent pieces snap)
@@ -19,8 +19,14 @@ A real-time multiplayer jigsaw puzzle app. Play Puzzle of the Day or pick a libr
 - Chat panel (bottom-left) with emoji reactions that float across the board
 - Zoom with pinch-to-zoom (mobile) or scroll
 
+### Catalog admin
+- `/admin` is temporarily open (no secret) for testing
+- Aim for ~25 / ~50 / ~100; `calculateGrid` picks a squarish cols×rows for that photo
+- Live cut preview overlays the jigsaw outline on the image as you change parameters
+- Library images missing from Firebase `catalog/` are auto-filled; you can still edit and save
+
 ### Puzzle of the Day (POTD)
-- One daily puzzle, picked at random from the admin catalog (keeps that puzzle’s piece count and rotation)
+- One daily puzzle, picked at random from the admin catalog (keeps that puzzle’s grid and rotation)
 - Each player gets their own private clone — progress is independent
 - Daily leaderboard on the landing page and in the completion screen
 - Resets at midnight Greek time (Europe/Athens); cron at 08:05 UTC
@@ -52,17 +58,17 @@ VS Mode and custom photo upload are not on `main`. The last snapshot that still 
 ├── puzzle.html         Co-op puzzle page (redirects to `/`)
 ├── play.html           Catalog picker
 ├── rooms.html          Open co-op rooms browser
-├── admin.html          Secret catalog admin (unlocked with /admin#TOKEN)
+├── admin.html          Catalog admin (temporarily open at /admin, no token)
 │
 ├── js/
 │   ├── app.js          Landing page logic (POTD load, Play Together create)
 │   ├── puzzle.js       Co-op puzzle: rendering, drag, snap, sync, chat
 │   ├── play.js         Standalone catalog picker
-│   ├── admin.js        Catalog admin: Cloudinary pick/upload, cut preview, save
+│   ├── admin.js        Catalog admin: Cloudinary pick/upload, live cut preview, save
 │   ├── rooms.js        Open rooms list (live Firebase subscription)
 │   ├── firebase.js     All Firebase read/write helpers (single source of truth)
 │   ├── jigsaw.js       Pure functions: edge generation, piece cutting (canvas)
-│   ├── puzzle-grid.js  Piece-count grid helper (shared client/server)
+│   ├── puzzle-grid.js  Squarish cols×rows helper (shared client/server)
 │   ├── mobile-quality.js  Texture / HQ heuristics (shared with puzzle paths)
 │   └── client-observe.js  Optional: POSTs errors to /api/client-error when configured
 │
@@ -70,7 +76,8 @@ VS Mode and custom photo upload are not on `main`. The last snapshot that still 
 │   └── style.css       All styles (dark theme, puzzle board, chat)
 │
 ├── lib/
-│   └── structured-log.js     Shared JSON-per-line logger (kept outside api/ for Vercel Hobby function limits)
+│   ├── structured-log.js     Shared JSON-per-line logger (kept outside api/ for Vercel Hobby function limits)
+│   └── puzzle-library.js     Cloudinary puzzle-library listing (shared by room-images + admin seed)
 │
 ├── api/
 │   ├── config.js       Returns Firebase config from env vars (called by client)
@@ -102,10 +109,10 @@ rooms-index/{puzzleId}/  lightweight index for the open rooms browser
   pieces, hardMode, status, createdAt, imageUrl, solvedCount, playerCount, creatorName
 
 catalog/{id}/
-  imageUrl, publicId, width, height, pieces, hardMode, createdAt
+  imageUrl, publicId, width, height, cols, rows, pieces, hardMode, createdAt
 
 potd/daily/
-  puzzleId, date, imageUrl, pieces, hardMode, catalogId
+  puzzleId, date, imageUrl, pieces, cols, rows, hardMode, catalogId
   leaderboard/{puzzleId}/  names[], secs, date
 
 chat/{puzzleId}/{pushId}/  playerId, name, color, text, ts
@@ -137,8 +144,8 @@ chat/{puzzleId}/{pushId}/  playerId, name, color, text, ts
 | `CLOUDINARY_API_KEY` | api/* | Server-side Cloudinary ops |
 | `CLOUDINARY_API_SECRET` | api/* | |
 | `CLEANUP_SECRET` | api/cleanup.js | Bearer token Vercel sends to cron routes |
-| `FEEDBACK_ADMIN_TOKEN` | api/feedback.js, api/admin.js | Admin token for feedback triage and the secret catalog link (`/admin#TOKEN`) |
-| `ADMIN_TOKEN` | api/admin.js | Optional extra token for `/admin` (falls back to `FEEDBACK_ADMIN_TOKEN`) |
+| `FEEDBACK_ADMIN_TOKEN` | api/feedback.js | Admin token for feedback triage. Catalog `/admin` is temporarily open (no token). |
+| `ADMIN_TOKEN` | api/admin.js | Unused while `/admin` is open; restore later for the secret catalog link |
 
 ---
 

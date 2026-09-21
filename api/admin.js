@@ -1,26 +1,30 @@
 /**
- * Admin catalog + signed Cloudinary upload.
+ * Admin catalog + signed Cloudinary upload + library seed.
  *
- * Auth: Authorization: Bearer <ADMIN_TOKEN or FEEDBACK_ADMIN_TOKEN>
+ * TEMPORARY: auth is skipped so /admin is easy to test.
+ * Restore: uncomment requireAdmin() in handler and the token boot in js/admin.js.
  *
  * GET  ?action=sign     — Cloudinary signed-upload params (folder puzzle-library)
  * GET  ?action=catalog  — full catalog entries
- * POST ?action=catalog  — create/update { imageUrl, publicId, width, height, pieces, hardMode }
+ * POST ?action=catalog  — create/update { imageUrl, publicId, width, height, cols, rows, hardMode }
  * DELETE ?action=catalog&id= — remove a catalog entry
+ * POST ?action=seed     — add missing puzzle-library images (~25 / ~50 / ~100 squarish grids)
  */
 import crypto from 'crypto';
-import { ALLOWED_PIECES } from '../js/puzzle-grid.js';
+import { calculateGrid, defaultTargetPieces, resolveGrid } from '../js/puzzle-grid.js';
+import { listPuzzleLibraryImages } from '../lib/puzzle-library.js';
 
 const LIBRARY_FOLDER = 'puzzle-library';
 
-function requireAdmin(req) {
-  const header = req.headers.authorization || req.headers.Authorization;
-  if (!header || typeof header !== 'string') return false;
-  const [scheme, token] = header.split(' ');
-  if (scheme !== 'Bearer' || !token) return false;
-  const valid = [process.env.ADMIN_TOKEN, process.env.FEEDBACK_ADMIN_TOKEN].filter(Boolean);
-  return valid.includes(token);
-}
+// Restore secret-link auth:
+// function requireAdmin(req) {
+//   const header = req.headers.authorization || req.headers.Authorization;
+//   if (!header || typeof header !== 'string') return false;
+//   const [scheme, token] = header.split(' ');
+//   if (scheme !== 'Bearer' || !token) return false;
+//   const valid = [process.env.ADMIN_TOKEN, process.env.FEEDBACK_ADMIN_TOKEN].filter(Boolean);
+//   return valid.includes(token);
+// }
 
 function fbUrl(path) {
   const { FIREBASE_DB_URL: url, FIREBASE_DB_SECRET: s } = process.env;
@@ -68,10 +72,6 @@ async function listCatalog(_req, res) {
 
 async function saveCatalog(req, res) {
   const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
-  const pieces = parseInt(body.pieces, 10);
-  if (!ALLOWED_PIECES.includes(pieces)) {
-    return res.status(400).json({ error: `pieces must be one of ${ALLOWED_PIECES.join(', ')}` });
-  }
   const imageUrl = String(body.imageUrl || '');
   const width = parseInt(body.width, 10);
   const height = parseInt(body.height, 10);
@@ -82,13 +82,23 @@ async function saveCatalog(req, res) {
     return res.status(400).json({ error: 'Image must be on this Cloudinary cloud' });
   }
 
+  const { cols, rows } = resolveGrid({
+    cols: body.cols,
+    rows: body.rows,
+    pieces: body.pieces,
+    width,
+    height,
+  });
+
   const id = String(body.id || crypto.randomUUID());
   const entry = {
     imageUrl,
     publicId: body.publicId || null,
     width,
     height,
-    pieces,
+    cols,
+    rows,
+    pieces: cols * rows,
     hardMode: body.hardMode === true || body.hardMode === 'true',
     createdAt: body.createdAt || Date.now(),
     updatedAt: Date.now(),
@@ -104,10 +114,45 @@ async function deleteCatalog(req, res) {
   return res.status(200).json({ deleted: id });
 }
 
-export default async function handler(req, res) {
-  if (!requireAdmin(req)) {
-    return res.status(401).json({ error: 'Unauthorized' });
+async function seedCatalog(_req, res) {
+  const images = await listPuzzleLibraryImages();
+  const raw = (await fbGet('catalog')) || {};
+  const known = new Set();
+  for (const entry of Object.values(raw)) {
+    if (entry?.publicId) known.add(String(entry.publicId));
+    if (entry?.imageUrl) known.add(String(entry.imageUrl));
   }
+
+  const created = [];
+  for (const img of images) {
+    if (known.has(img.publicId) || known.has(img.url)) continue;
+    const target = defaultTargetPieces(img.publicId);
+    const { cols, rows } = calculateGrid(target, img.width, img.height);
+    const id = crypto.randomUUID();
+    const now = Date.now();
+    const entry = {
+      imageUrl: img.url,
+      publicId: img.publicId,
+      width: img.width,
+      height: img.height,
+      cols,
+      rows,
+      pieces: cols * rows,
+      hardMode: false,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await fbPut(`catalog/${id}`, entry);
+    known.add(img.publicId);
+    known.add(img.url);
+    created.push({ id, publicId: img.publicId, pieces: entry.pieces, cols, rows, target });
+  }
+
+  return res.status(200).json({ created: created.length, puzzles: created });
+}
+
+export default async function handler(req, res) {
+  // if (!requireAdmin(req)) return res.status(401).json({ error: 'Unauthorized' });
 
   const action = String(req.query.action || '');
 
@@ -121,6 +166,7 @@ export default async function handler(req, res) {
     if (action === 'catalog' && req.method === 'GET') return listCatalog(req, res);
     if (action === 'catalog' && req.method === 'POST') return saveCatalog(req, res);
     if (action === 'catalog' && req.method === 'DELETE') return deleteCatalog(req, res);
+    if (action === 'seed' && req.method === 'POST') return seedCatalog(req, res);
     res.setHeader('Allow', 'GET, POST, DELETE');
     return res.status(400).json({ error: 'Unknown action' });
   } catch (err) {

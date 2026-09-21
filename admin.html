@@ -4,17 +4,17 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="robots" content="noindex, nofollow" />
-  <title>Not found</title>
+  <title>Puzzle catalog</title>
   <link rel="stylesheet" href="/css/style.css" />
 </head>
 <body class="admin-page">
   <main class="admin-shell">
-    <p id="admin-denied" class="admin-denied">Not found.</p>
+    <p id="admin-denied" class="admin-denied" hidden>Not found.</p>
 
-    <div id="admin-app" hidden>
+    <div id="admin-app">
       <header class="admin-head">
         <h1>Puzzle catalog</h1>
-        <p class="subtitle">Pick a library photo (or upload one), set pieces and rotation, preview the cut, then save. Play Together and Puzzle of the Day use these entries.</p>
+        <p class="subtitle">Pick a library photo, aim for ~25 / ~50 / ~100 pieces (the grid stays squarish for that photo), and check the live cut below. Save writes to Firebase. Play Together and Puzzle of the Day use these entries.</p>
       </header>
 
       <section class="admin-panel">
@@ -31,16 +31,28 @@
 
       <section class="admin-panel">
         <h2 class="panel-heading">Cut preview</h2>
+        <p class="potd-desc">The overlay is the actual jigsaw cut for the columns × rows below. It updates as you change Aim for or the axes.</p>
         <p id="admin-preview-meta" class="potd-desc">Select an image</p>
         <div class="piece-section">
-          <p class="field-label">Pieces</p>
-          <div class="piece-options" id="admin-pieces">
-            <label><input type="radio" name="admin-pieces" value="24" /> <span>24</span></label>
-            <label><input type="radio" name="admin-pieces" value="40" /> <span>40</span></label>
-            <label><input type="radio" name="admin-pieces" value="100" checked /> <span>100</span></label>
-            <label><input type="radio" name="admin-pieces" value="250" /> <span>250</span></label>
-            <label><input type="radio" name="admin-pieces" value="500" /> <span>500</span></label>
+          <p class="field-label">Aim for (squarish pieces)</p>
+          <div class="piece-options" id="admin-targets">
+            <button type="button" data-target="25">~25</button>
+            <button type="button" data-target="50">~50</button>
+            <button type="button" data-target="100">~100</button>
           </div>
+          <p class="field-label">Grid</p>
+          <div class="admin-grid-axes">
+            <label class="admin-axis">
+              Columns
+              <input id="admin-cols" class="name-input" type="number" min="2" max="40" value="10" />
+            </label>
+            <span class="admin-axis-x" aria-hidden="true">×</span>
+            <label class="admin-axis">
+              Rows
+              <input id="admin-rows" class="name-input" type="number" min="2" max="40" value="10" />
+            </label>
+          </div>
+          <p id="admin-grid-hint" class="potd-desc">Pieces will be close to square</p>
         </div>
         <div class="piece-section">
           <p class="field-label">Rotation</p>

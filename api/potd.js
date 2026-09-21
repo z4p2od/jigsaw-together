@@ -2,7 +2,6 @@
  * Vercel cron job — creates today's Puzzle of the Day from the admin catalog
  * (random entry, using that puzzle's piece count and rotation). If the catalog
  * is empty, falls back to a 100-piece upright puzzle from potd-pool / puzzle-library.
- */
  *
  * Required env vars:
  *   FIREBASE_DB_URL        — Firebase Realtime Database URL
@@ -14,7 +13,7 @@
  */
 import crypto from 'crypto';
 import { scatterPieces } from '../js/scatter-pieces.js';
-import { calculateGrid } from '../js/puzzle-grid.js';
+import { calculateGrid, resolveGrid } from '../js/puzzle-grid.js';
 
 const BOARD_W = 1080;
 const BOARD_H = 780;
@@ -154,7 +153,7 @@ export default async function handler(req, res) {
   const catalog = (await fbGet('catalog')) || {};
   const catalogEntries = Object.entries(catalog)
     .map(([id, entry]) => ({ id, ...entry }))
-    .filter((e) => e.imageUrl && e.pieces && e.width && e.height);
+    .filter((e) => e.imageUrl && e.width && e.height && (e.cols || e.pieces));
 
   let imageUrl;
   let imagePublicId = null;
@@ -164,6 +163,7 @@ export default async function handler(req, res) {
   let hardMode;
   let catalogId = null;
   let sourceFolder = 'catalog';
+  let catalogEntry = null;
   let usedRecentId;
 
   if (catalogEntries.length) {
@@ -174,9 +174,10 @@ export default async function handler(req, res) {
     imagePublicId = picked.publicId || null;
     imgW = Number(picked.width);
     imgH = Number(picked.height);
-    pieceCount = Number(picked.pieces);
+    pieceCount = Number(picked.pieces) || Number(picked.cols) * Number(picked.rows);
     hardMode = !!picked.hardMode;
     catalogId = picked.id;
+    catalogEntry = picked;
     usedRecentId = picked.id;
   } else {
     const listed = await listPOTDImages();
@@ -196,7 +197,9 @@ export default async function handler(req, res) {
     usedRecentId = image.public_id;
   }
 
-  const { cols, rows } = calculateGrid(pieceCount, imgW, imgH);
+  const { cols, rows } = catalogEntry
+    ? resolveGrid({ ...catalogEntry, width: imgW, height: imgH })
+    : calculateGrid(pieceCount, imgW, imgH);
   const actualCount = cols * rows;
   const pieceW = Math.floor(imgW / cols);
   const pieceH = Math.floor(imgH / rows);
@@ -243,6 +246,8 @@ export default async function handler(req, res) {
     date,
     imageUrl,
     pieces: actualCount,
+    cols,
+    rows,
     hardMode,
     catalogId,
   });

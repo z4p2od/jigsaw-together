@@ -1,8 +1,9 @@
 # Changelog
 
 ## Unreleased — Puzzle catalog
-- Admin catalog at a secret link (`/admin#TOKEN`): pick or upload a Cloudinary library image, set piece count and rotation, preview the cut, save
-- Play Together uses catalogued puzzles (fixed difficulty) instead of picking piece count on the fly
+- Admin catalog at `/admin` (temporarily open, no secret): pick or upload a Cloudinary library image, aim for ~25 / ~50 / ~100 squarish pieces, preview the live jigsaw cut, save
+- Missing library images are auto-filled into Firebase `catalog/` with a stable ~25 / ~50 / ~100 default (existing saved grids are never overwritten)
+- Play Together uses catalogued puzzles (fixed grid) instead of picking piece count on the fly
 - Puzzle of the Day is one random catalog puzzle each day; welcome screen still loads it first
 
 ## Unreleased — Product trim

@@ -48,6 +48,8 @@ export default async function handler(req, res) {
       date: potd.date,
       imageUrl: previewImageUrl(imageUrl),
       pieces: potd.pieces || null,
+      cols: potd.cols || null,
+      rows: potd.rows || null,
       hardMode: !!potd.hardMode,
     };
 
